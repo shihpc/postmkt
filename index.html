@@ -89,7 +89,7 @@ const SUBS = {
   margin:"個股融資餘額增減排行與融資使用率（餘額／限額），單位：張。",
   lending:"借券成交明細依股票彙總的當日借券成交量排行，單位：張。",
   shortbal:"融券餘額與借券賣出（SBL）餘額的當日增減排行，單位：張。",
-  daytrade:"當沖成交金額排行與當沖比重（當沖量／當日總成交量）。",
+  daytrade:"當沖成交金額排行與當沖比重（當沖量／當日總成交量）。分點推估為估算法，非逐筆交易證據。",
   block:"當日鉅額交易逐筆列表，同股票分組並附總張數/總金額；買方/賣方券商分點為盡力比對（同股同價當日多筆時可能無法唯一判定，顯示—）。類型僅「配對交易／逐筆交易」兩種，FinMind未提供單一/組合證券的區分欄位。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
@@ -300,13 +300,23 @@ function renderPM(){
     html += sec("借券賣出餘額增減排行","SBL 借券系統") + tbl(cols, s.sbl||[]);
   } else if (state.tab === "daytrade"){
     const t = d.daytrading || {};
+    const tradersCell = r => {
+      const ts = r.traders || [];
+      if (!ts.length) return '<span class="mut">—</span>';
+      const [first, ...rest] = ts;
+      return `${esc(first.trader)} ${num(first.vol)}張`
+        + rest.map(x => `<span class="nm">${esc(x.trader)} ${num(x.vol)}張</span>`).join("");
+    };
     const cols = [
       {h:"個股",cls:"l",f:nameCell},
       {h:"當沖量(張)",f:r=>num(r.vol/1000)},
       {h:"當沖金額",f:r=>yiAbs(r.amt)},
-      {h:"比重",f:r=>r.ratio==null?'<span class="mut">—</span>':r.ratio.toFixed(1)+"%"}];
+      {h:"比重",f:r=>r.ratio==null?'<span class="mut">—</span>':r.ratio.toFixed(1)+"%"},
+      {h:"分點推估(當沖貢獻)",cls:"l",f:tradersCell}];
     html += sec("當沖金額排行", esc(t.date||"")) + tbl(cols, t.by_amount||[]);
     html += sec("當沖比重排行","當沖量／當日總成交量 · 已濾除總量 500 張以下") + tbl(cols, t.by_ratio||[]);
+    html += `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px">分點推估：同分點當日買量／賣量取較小值視為「有能力形成當沖」的量，`
+      + `為分析常見估算法，非逐筆交易的直接證據，僅供參考。</div>`;
   } else if (state.tab === "block"){
     const b = d.blocktrade || {};
     html += sec("鉅額交易逐筆", `${esc(b.date||"")} · 共 ${(b.rows||[]).length} 筆 · 同股票分組、組間依總金額排序`);

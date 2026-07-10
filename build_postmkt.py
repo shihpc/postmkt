@@ -140,6 +140,33 @@ def build_short_balance(date: str, rows: list, nm: dict) -> dict:
     return {"date": date, "margin_short": ms[:TOP_N], "sbl": sbl[:TOP_N]}
 
 
+def daytrading_broker_estimate(date: str, codes: list, top_k: int = 3) -> dict:
+    """當沖無逐筆券商分點資料（TaiwanStockDayTrading只有個股加總）。用
+    TaiwanStockTradingDailyReport（各分點逐價位買賣量）估算：同分點當日
+    買量/賣量取較小值 = 該分點「有能力形成當沖」的量，是分析圈常見的
+    分點當沖貢獻度估算法，非逐筆交易的直接證據（可能是不同客戶各自
+    單向交易剛好量相近）。每檔一次API call，逐檔失敗不影響其他檔。"""
+    out = {}
+    for c in codes:
+        try:
+            rows = api_get("TaiwanStockTradingDailyReport", data_id=c, start_date=date, end_date=date)
+        except Exception as e:
+            print(f"  分點資料抓取失敗 {c}：{e}", flush=True)
+            continue
+        agg: dict[str, list] = {}
+        for r in rows:
+            t = r.get("securities_trader")
+            if not t:
+                continue
+            a = agg.setdefault(t, [0, 0])
+            a[0] += r.get("buy") or 0
+            a[1] += r.get("sell") or 0
+        est = [{"trader": t, "vol": round(min(b, s) / 1000)} for t, (b, s) in agg.items() if min(b, s) > 0]
+        est.sort(key=lambda x: -x["vol"])
+        out[c] = est[:top_k]
+    return out
+
+
 def build_daytrading(date: str, rows: list, price_rows: list, nm: dict) -> dict:
     """當沖：金額排行＋當沖比重排行（分母 = 同日 TaiwanStockPrice 的 Trading_Volume）。"""
     tv = {r.get("stock_id"): (r.get("Trading_Volume") or 0) for r in price_rows}
@@ -160,6 +187,16 @@ def build_daytrading(date: str, rows: list, price_rows: list, nm: dict) -> dict:
     # 比重榜過濾極小量股（總量 < 500 張）避免失真
     by_ratio = sorted((x for x in recs if x["ratio"] is not None and (tv.get(x["c"]) or 0) >= 500_000),
                       key=lambda x: -x["ratio"])[:TOP_N]
+
+    codes = sorted({x["c"] for x in by_amount} | {x["c"] for x in by_ratio})
+    if date and codes:
+        print(f"  券商分點推估：{len(codes)} 檔逐一查詢…", flush=True)
+        brokers = daytrading_broker_estimate(date, codes)
+        for x in by_amount:
+            x["traders"] = brokers.get(x["c"], [])
+        for x in by_ratio:
+            x["traders"] = brokers.get(x["c"], [])
+
     return {"date": date, "by_amount": by_amount, "by_ratio": by_ratio}
 
 
