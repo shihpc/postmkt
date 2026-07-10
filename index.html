@@ -90,7 +90,7 @@ const SUBS = {
   lending:"借券成交明細依股票彙總的當日借券成交量排行，單位：張。",
   shortbal:"融券餘額與借券賣出（SBL）餘額的當日增減排行，單位：張。",
   daytrade:"當沖成交金額排行與當沖比重（當沖量／當日總成交量）。",
-  block:"當日鉅額交易逐筆列表，依成交金額排序。",
+  block:"當日鉅額交易逐筆列表，同股票分組並附總張數/總金額；買方/賣方券商分點為盡力比對（同股同價當日多筆時可能無法唯一判定，顯示—）。類型僅「配對交易／逐筆交易」兩種，FinMind未提供單一/組合證券的區分欄位。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
 const state = { tab:"aetf", openEtf:null, openSub:null, aetf:null, pm:null, pmErr:null };
@@ -279,13 +279,21 @@ function renderPM(){
     html += sec("當沖比重排行","當沖量／當日總成交量 · 已濾除總量 500 張以下") + tbl(cols, t.by_ratio||[]);
   } else if (state.tab === "block"){
     const b = d.blocktrade || {};
-    html += sec("鉅額交易逐筆", `${esc(b.date||"")} · 共 ${(b.rows||[]).length} 筆 · 依金額排序`);
+    html += sec("鉅額交易逐筆", `${esc(b.date||"")} · 共 ${(b.rows||[]).length} 筆 · 同股票分組、組間依總金額排序`);
+    const traderCell = r => {
+      const buy = r.buy_trader ? esc(r.buy_trader) : '<span class="mut">—</span>';
+      const sell = r.sell_trader ? esc(r.sell_trader) : '<span class="mut">—</span>';
+      return `${buy}<span class="nm">賣：${sell}</span>`;
+    };
     html += tbl([
       {h:"個股",cls:"l",f:nameCell},
       {h:"類型",f:r=>esc(r.type)},
       {h:"價格",f:r=>r.price==null?"—":r.price.toLocaleString("en-US")},
       {h:"張數",f:r=>num(r.vol/1000)},
-      {h:"金額",f:r=>yiAbs(r.money)}], b.rows||[]);
+      {h:"金額",f:r=>yiAbs(r.money)},
+      {h:"同股總張數",f:r=>num((r.stock_vol||0)/1000)},
+      {h:"同股總金額",f:r=>yiAbs(r.stock_money)},
+      {h:"買方券商分點",cls:"l",f:traderCell}], b.rows||[]);
   }
   main.innerHTML = html || `<div class="empty">無資料</div>`;
 }

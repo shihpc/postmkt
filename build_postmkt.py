@@ -163,19 +163,62 @@ def build_daytrading(date: str, rows: list, price_rows: list, nm: dict) -> dict:
     return {"date": date, "by_amount": by_amount, "by_ratio": by_ratio}
 
 
+def block_trader_map(date: str) -> dict:
+    """TaiwanStockBlockTradingDailyReport：同一筆鉅額交易的買方/賣方券商分點各一列
+    （buy=量代表買方、sell=量代表賣方），用(股票,價格)分組後嘗試唯一匹配對應
+    TaiwanStockBlockTrade的每一筆量。只在買賣雙方各剛好一筆候選時採用，
+    避免同股同價當天多筆交易時誤配（該dataset僅2026-04-28起有資料，之前日期查無）。
+    """
+    try:
+        rows = api_get("TaiwanStockBlockTradingDailyReport", start_date=date, end_date=date)
+    except Exception as e:
+        print(f"券商分點資料抓取失敗（不影響其餘欄位）：{e}", flush=True)
+        return {}
+    by_sp: dict[tuple, list] = {}
+    for r in rows:
+        key = (r.get("stock_id"), r.get("price"))
+        by_sp.setdefault(key, []).append(r)
+    return by_sp
+
+
 def build_blocktrade(date: str, rows: list, nm: dict) -> dict:
-    """鉅額交易：當日逐筆列表，依金額排序（全量，本質稀疏）。"""
-    out = []
+    """鉅額交易：依股票分組（組內依金額排序、組間依該股當日總金額排序），
+    每列附上同股票當日總張數/總金額，並嘗試附上買方/賣方券商分點。"""
+    trader_map = block_trader_map(date) if date else {}
+    items = []
     for r in rows:
         c = r.get("stock_id", "")
-        out.append({
+        vol = r.get("volume") or 0
+        price = r.get("price")
+        buy_trader = sell_trader = None
+        cands = trader_map.get((c, price), [])
+        buyers = [x for x in cands if x.get("buy") == vol]
+        sellers = [x for x in cands if x.get("sell") == vol]
+        if len(buyers) == 1:
+            buy_trader = buyers[0].get("securities_trader")
+        if len(sellers) == 1:
+            sell_trader = sellers[0].get("securities_trader")
+        items.append({
             "c": c, "n": nm.get(c, ""),
             "type": r.get("trade_type", ""),
-            "price": r.get("price"),
-            "vol": r.get("volume") or 0,
+            "price": price,
+            "vol": vol,
             "money": r.get("trading_money") or 0,
+            "buy_trader": buy_trader, "sell_trader": sell_trader,
         })
-    out.sort(key=lambda x: -x["money"])
+
+    by_stock: dict[str, list] = {}
+    for it in items:
+        by_stock.setdefault(it["c"], []).append(it)
+    groups = sorted(by_stock.values(), key=lambda g: -sum(x["money"] for x in g))
+    out = []
+    for g in groups:
+        g.sort(key=lambda x: -x["money"])
+        tv, tm = sum(x["vol"] for x in g), sum(x["money"] for x in g)
+        for it in g:
+            it["stock_vol"] = tv
+            it["stock_money"] = tm
+            out.append(it)
     return {"date": date, "rows": out}
 
 
