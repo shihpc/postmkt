@@ -44,7 +44,8 @@
   .mtable th,.mtable td{padding:6px 7px;text-align:right;border-bottom:1px solid rgba(36,53,86,.5);white-space:nowrap}
   .mtable tr:last-child td{border-bottom:none}
   .mtable th:first-child,.mtable td:first-child{text-align:left}
-  .mtable th{color:var(--muted);font-weight:600;font-size:.74rem}
+  .mtable th{color:var(--muted);font-weight:600;font-size:.74rem;cursor:pointer;user-select:none}
+  .mtable th:hover{color:var(--txt)}
   .mtable .nm{display:block;color:var(--muted);font-size:.72rem;line-height:1.3}
   .code{font-family:"Space Mono",Consolas,monospace;font-weight:700;color:var(--accent)}
   .up{color:#ef5b5b}.down{color:#2fbf71}.mut{color:var(--muted)}
@@ -104,13 +105,43 @@ const yiAbs = v => v==null ? "—" : (v/1e8).toFixed(2)+"億";
 const nameCell = r => `<span class="code">${esc(r.c)}</span><span class="nm">${esc(r.n||"")}</span>`;
 const cleanSub = s => String(s||"").replace(/^.*?·/,"");
 
-// 通用表格：cols=[{h,f,cls?}]，包在可橫向捲動的卡片裡
+// 通用表格：cols=[{h,f,cls?}]，包在可橫向捲動的卡片裡；每欄可點表頭排序
+const TBLS = {}; let TBLID = 0;
+const tblCellText = h => { const d = document.createElement("div"); d.innerHTML = h; return d.textContent.trim(); };
+const tblCellVal = t => {
+  if (t === "" || t === "—") return null;
+  const n = parseFloat(t.replace(/,/g,"").replace(/[^0-9.\-]/g,""));
+  return isNaN(n) ? t : n;
+};
 function tbl(cols, rows){
   if (!rows || !rows.length) return `<div class="empty">無資料</div>`;
-  const head = cols.map(c=>`<th${c.cls?` class="${c.cls}"`:""}>${c.h}</th>`).join("");
-  const body = rows.map(r=>`<tr>`+cols.map(c=>`<td${c.cls?` class="${c.cls}"`:""}>${c.f(r)}</td>`).join("")+`</tr>`).join("");
-  return `<div class="tblbox"><table class="mtable"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  const id = "tb" + (++TBLID);
+  TBLS[id] = { cols, rows: [...rows], sort: { i: null, d: 1 } };
+  return `<div class="tblbox" data-tbl="${id}">${tblInner(id)}</div>`;
 }
+function tblInner(id){
+  const { cols, rows, sort } = TBLS[id];
+  const head = cols.map((c,i) => `<th${c.cls?` class="${c.cls}"`:""} data-i="${i}">${c.h}${sort.i===i?(sort.d>0?" ▲":" ▼"):""}</th>`).join("");
+  const body = rows.map(r=>`<tr>`+cols.map(c=>`<td${c.cls?` class="${c.cls}"`:""}>${c.f(r)}</td>`).join("")+`</tr>`).join("");
+  return `<table class="mtable"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+document.addEventListener("click", e => {
+  const th = e.target.closest("th[data-i]");
+  if (!th) return;
+  const wrap = th.closest("[data-tbl]");
+  if (!wrap) return;
+  const o = TBLS[wrap.dataset.tbl], i = +th.dataset.i;
+  if (o.sort.i === i) o.sort.d *= -1; else { o.sort.i = i; o.sort.d = 1; }
+  const col = o.cols[i], d = o.sort.d;
+  const val = r => tblCellVal(tblCellText(col.f(r)));
+  o.rows.sort((a,b) => {
+    const x = val(a), y = val(b);
+    if (x === null) return 1;
+    if (y === null) return -1;
+    return typeof x==="number" && typeof y==="number" ? (x-y)*d : String(x).localeCompare(String(y),"zh-Hant")*d;
+  });
+  wrap.innerHTML = tblInner(wrap.dataset.tbl);
+});
 const sec = (t,n) => `<div class="msection">${t}${n?`<span class="n">${n}</span>`:""}</div>`;
 
 // ---------- 主動ETF（跨repo唯讀 taiwan-flow-live-v2 data/aetf/） ----------
