@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>盤後分析 · 股市雷達</title>
+<style>
+  :root{
+    --bg:#0b1120; --bg2:#111a2e; --card:#16213a; --card-hover:#1d2b4a;
+    --line:#243556; --txt:#e6edf7; --muted:#8aa0c0; --accent:#4f9cff;
+    --chip:#1b2a49;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"Segoe UI","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+    background:radial-gradient(1200px 600px at 50% -10%,var(--bg2),var(--bg));
+    color:var(--txt); min-height:100vh; padding:24px 16px 64px;
+  }
+  .wrap{max-width:880px;margin:0 auto}
+  .top{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  .top a.back{color:var(--muted);text-decoration:none;font-size:.9rem;border:1px solid var(--line);
+    border-radius:9px;padding:4px 10px;transition:.15s}
+  .top a.back:hover{color:var(--accent);border-color:var(--accent)}
+  header h1{font-size:1.5rem;font-weight:700;letter-spacing:.5px}
+  .sub{color:var(--muted);font-size:.85rem;margin-top:6px;line-height:1.6}
+  .tabs{display:flex;gap:6px;margin:14px 0 10px;flex-wrap:wrap}
+  .tab{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 13px;
+    font-size:.86rem;color:var(--muted);cursor:pointer;user-select:none;transition:.15s;white-space:nowrap}
+  .tab:hover{border-color:#33507e}
+  .tab.active{color:var(--txt);border-color:var(--accent);background:var(--card-hover);font-weight:650}
+  .stats{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:11px;
+    padding:6px 11px;font-size:.76rem;color:var(--muted)}
+  .stat b{color:var(--txt);font-weight:700;margin-right:4px}
+  .mcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 16px;
+    margin:10px 0;font-size:.9rem;line-height:1.7}
+  .mcard b{color:var(--txt)}
+  .msection{margin:18px 2px 6px;font-size:.98rem;font-weight:700}
+  .msection::before{content:"▸";color:var(--accent);margin-right:6px;font-size:.85rem}
+  .msection .n{color:var(--muted);font-weight:400;font-size:.74rem;margin-left:8px}
+  .tblbox{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:6px 12px 10px;margin:8px 0;overflow-x:auto}
+  .mtable{width:100%;border-collapse:collapse;font-size:.84rem}
+  .mtable th,.mtable td{padding:6px 7px;text-align:right;border-bottom:1px solid rgba(36,53,86,.5);white-space:nowrap}
+  .mtable tr:last-child td{border-bottom:none}
+  .mtable th:first-child,.mtable td:first-child{text-align:left}
+  .mtable th{color:var(--muted);font-weight:600;font-size:.74rem}
+  .mtable .nm{display:block;color:var(--muted);font-size:.72rem;line-height:1.3}
+  .code{font-family:"Space Mono",Consolas,monospace;font-weight:700;color:var(--accent)}
+  .up{color:#ef5b5b}.down{color:#2fbf71}.mut{color:var(--muted)}
+  .clk{cursor:pointer}
+  .clk:hover .code{text-decoration:underline}
+  .clk.sel .code{color:#f0b45a}
+  .grid2{display:flex;gap:10px;flex-wrap:wrap}
+  .grid2>div{flex:1;min-width:260px}
+  .empty{text-align:center;color:var(--muted);padding:40px 20px;font-size:.92rem}
+  footer{margin-top:32px;color:var(--muted);font-size:.78rem;text-align:center;line-height:1.7}
+  footer a{color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a class="back" href="https://shihpc.github.io/">← 回 Hub</a></div>
+  <header>
+    <h1>📊 盤後分析</h1>
+    <div class="sub" id="pageSub"></div>
+  </header>
+
+  <div class="tabs" id="tabs"></div>
+  <div class="stats" id="stats"></div>
+  <div id="main"><div class="empty">載入中…</div></div>
+
+  <footer>
+    資料來源：FinMind（融資／借券／融券借券／當沖／鉅額）·
+    <a href="https://github.com/shihpc/taiwan-flow-live-v2">taiwan-flow-live-v2</a>（主動ETF）｜
+    <a href="https://github.com/shihpc/postmkt">postmkt</a>
+  </footer>
+</div>
+
+<script>
+"use strict";
+const TABS = [
+  ["aetf","主動ETF"],["margin","融資"],["lending","借券"],
+  ["shortbal","融券借券賣出餘額"],["daytrade","當沖"],["block","鉅額交易"],
+];
+const SUBS = {
+  aetf:"主動式ETF每日投組快照＋主動加減碼（資料源：taiwan-flow-live-v2，投信 16:30 揭露）。",
+  margin:"個股融資餘額增減排行與融資使用率（餘額／限額），單位：張。",
+  lending:"借券成交明細依股票彙總的當日借券成交量排行，單位：張。",
+  shortbal:"融券餘額與借券賣出（SBL）餘額的當日增減排行，單位：張。",
+  daytrade:"當沖成交金額排行與當沖比重（當沖量／當日總成交量）。",
+  block:"當日鉅額交易逐筆列表，依成交金額排序。",
+};
+const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
+const state = { tab:"aetf", openEtf:null, openSub:null, aetf:null, pm:null, pmErr:null };
+
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const sgn = (v,t) => `<span class="${v>0?"up":v<0?"down":"mut"}">${t}</span>`;
+const num = v => v==null ? "—" : Math.round(v).toLocaleString("en-US");
+const zh = v => v==null ? '<span class="mut">—</span>' : sgn(v,(v>0?"+":"")+Math.round(v).toLocaleString("en-US")+"張");
+const yi = v => v==null ? '<span class="mut">—</span>' : sgn(v,(v>0?"+":"")+(v/1e8).toFixed(2)+"億");
+const yiAbs = v => v==null ? "—" : (v/1e8).toFixed(2)+"億";
+const nameCell = r => `<span class="code">${esc(r.c)}</span><span class="nm">${esc(r.n||"")}</span>`;
+const cleanSub = s => String(s||"").replace(/^.*?·/,"");
+
+// 通用表格：cols=[{h,f,cls?}]，包在可橫向捲動的卡片裡
+function tbl(cols, rows){
+  if (!rows || !rows.length) return `<div class="empty">無資料</div>`;
+  const head = cols.map(c=>`<th${c.cls?` class="${c.cls}"`:""}>${c.h}</th>`).join("");
+  const body = rows.map(r=>`<tr>`+cols.map(c=>`<td${c.cls?` class="${c.cls}"`:""}>${c.f(r)}</td>`).join("")+`</tr>`).join("");
+  return `<div class="tblbox"><table class="mtable"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+const sec = (t,n) => `<div class="msection">${t}${n?`<span class="n">${n}</span>`:""}</div>`;
+
+// ---------- 主動ETF（跨repo唯讀 taiwan-flow-live-v2 data/aetf/） ----------
+function aetfAdvice(diff){
+  const L = [];
+  const st = diff.stocks||[], sb = diff.subs||[];
+  const co = st.filter(s=>Object.values(s.by||{}).filter(v=>v>0).length>=2).slice(0,3);
+  if (co.length) L.push(`<b class="up">多檔同買</b>：${co.map(s=>esc(s.n||s.c)).join("、")}`);
+  const cs = st.filter(s=>Object.values(s.by||{}).filter(v=>v<0).length>=2).slice(0,2);
+  if (cs.length) L.push(`<b class="down">多檔同賣</b>：${cs.map(s=>esc(s.n||s.c)).join("、")}`);
+  const inn = sb.filter(s=>s.val>0)[0], out = sb.filter(s=>s.val<0)[0];
+  if (inn) L.push(`次產業最大加碼：<span class="up">${esc(cleanSub(inn.name))} +${(inn.val/1e8).toFixed(1)}億</span>`);
+  if (out) L.push(`最大減碼：<span class="down">${esc(cleanSub(out.name))} ${(out.val/1e8).toFixed(1)}億</span>`);
+  for (const [k,v] of Object.entries(diff.etfs||{})){
+    if (v.est_flow && Math.abs(v.est_flow) >= 10e8)
+      L.push(`${esc(k)} 淨${v.est_flow>0?"申購":"贖回"}約 ${(Math.abs(v.est_flow)/1e8).toFixed(0)}億`);
+  }
+  return L;
+}
+const byChips = by => Object.entries(by||{}).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]))
+  .map(([k,v])=>`<span class="${v>0?'up':'down'}" style="white-space:nowrap">${esc(k)} ${(v>0?"+":"")+v.toLocaleString("en-US")}</span>`).join("　");
+
+function renderAETF(){
+  const main = document.getElementById("main");
+  const a = state.aetf;
+  if (!a){ main.innerHTML = `<div class="empty">載入主動ETF資料…</div>`; return; }
+  const {latest, diff} = a;
+  if (!latest){ main.innerHTML = `<div class="empty">主動ETF資料載入失敗（來源：taiwan-flow-live-v2）。</div>`; return; }
+  let html = `<div class="mcard" style="font-size:.8rem;color:var(--muted)">主動式ETF每日投組（投信 16:30 揭露）。`
+    + `「主動加減碼」已排除申購贖回的等比效應，呈現經理人真實動作。快照 ${esc(latest.run_date||"—")}。</div>`;
+  if (diff && (diff.stocks||[]).length){
+    const adv = aetfAdvice(diff);
+    if (adv.length) html += `<div class="mcard">${adv.map(x=>`<div>${x}</div>`).join("")}</div>`;
+  }
+  // ① ETF 總覽（點 ETF 名稱展開加碼/減碼子表）
+  const dd = x => String(x||"").slice(5).replace("/","-");
+  const ov = Object.entries(latest.etfs||{}).map(([code,e])=>{
+    const d = (diff && diff.etfs && diff.etfs[code]) || {};
+    return { code, name:e.name, aum:e.twse_aum_yi, src:String(e.src_date||"").slice(5),
+      d0:dd(d.d0), d1:dd(d.d1), flow:d.est_flow!=null?d.est_flow:null,
+      nb:d.n_buy, ns:d.n_sell, hasDiff:!!((d.buy&&d.buy.length)||(d.sell&&d.sell.length)) };
+  }).sort((a,b)=>(b.aum||0)-(a.aum||0));
+  html += sec("ETF 總覽","規模＝集保口徑 · 點 ETF 名稱看加減碼明細");
+  html += tbl([
+    {h:"ETF",cls:"l",f:r=>r.hasDiff
+      ? `<span class="clk ${state.openEtf===r.code?"sel":""}" data-etf="${esc(r.code)}"><span class="code">${esc(r.code)}</span><span class="nm">${esc(r.name||"")}</span></span>`
+      : `<span class="code">${esc(r.code)}</span><span class="nm">${esc(r.name||"")}</span>`},
+    {h:"規模(億)",f:r=>r.aum==null?'<span class="mut">—</span>':r.aum.toLocaleString("en-US")},
+    {h:"申贖估",f:r=>yi(r.flow)},
+    {h:"加碼檔",f:r=>r.nb==null?'<span class="mut">—</span>':`<span class="up">${r.nb}</span>`},
+    {h:"減碼檔",f:r=>r.ns==null?'<span class="mut">—</span>':`<span class="down">${r.ns}</span>`},
+    {h:"資料日",f:r=>r.d0?`${esc(r.d0)}→${esc(r.d1)}`:esc(r.src||"—")}], ov);
+  if (state.openEtf && diff && diff.etfs && diff.etfs[state.openEtf]){
+    const de = diff.etfs[state.openEtf];
+    const cols = [{h:"個股",cls:"l",f:nameCell},{h:"張數",f:r=>zh(r.zh)},{h:"金額",f:r=>yi(r.val)}];
+    html += sec(`${esc(state.openEtf)} ${esc(de.name||"")} 加減碼明細`,"依金額排序 · 再點 ETF 名稱收合");
+    html += `<div class="grid2" id="etfdd">`
+      + `<div><div class="mut" style="font-size:.76rem;margin:4px 2px">加碼（${(de.buy||[]).length}檔）</div>${tbl(cols,de.buy||[])}</div>`
+      + `<div><div class="mut" style="font-size:.76rem;margin:4px 2px">減碼（${(de.sell||[]).length}檔）</div>${tbl(cols,de.sell||[])}</div>`
+      + `</div>`;
+  }
+  if (!diff || !(diff.stocks||[]).length){
+    html += `<div class="empty">主動加減碼需累積 2 個揭露日的快照，資料累積中。</div>`;
+    main.innerHTML = html; return;
+  }
+  // ② 進出個股
+  html += sec("進出個股", `主動加減碼，${esc((diff.generated_dates||[]).join("、"))}`);
+  html += tbl([
+    {h:"個股",cls:"l",f:nameCell},
+    {h:"合計",f:r=>zh(r.zh)},
+    {h:"金額",f:r=>yi(r.val)},
+    {h:"各ETF明細(張)",cls:"l",f:r=>byChips(r.by)}], (diff.stocks||[]).slice(0,60));
+  // ③ 次產業流向（點名稱展開明細）
+  html += sec("次產業流向","點名稱展開明細");
+  html += tbl([
+    {h:"次產業",cls:"l",f:r=>`<span class="clk ${state.openSub===r.name?"sel":""}" data-asub="${encodeURIComponent(r.name)}"><span class="code">${esc(cleanSub(r.name))}</span></span>`},
+    {h:"淨金額",f:r=>yi(r.val)},
+    {h:"筆數",f:r=>(r.detail||[]).length}], (diff.subs||[]).slice(0,40));
+  if (state.openSub){
+    const so = (diff.subs||[]).find(s=>s.name===state.openSub);
+    if (so){
+      html += sec(`${esc(cleanSub(state.openSub))} 明細`,"ETF×個股 · 再點收合");
+      html += `<div id="subdd">`+tbl([
+        {h:"ETF",cls:"l",f:r=>esc(r.etf)},
+        {h:"個股",cls:"l",f:nameCell},
+        {h:"張數",f:r=>zh(r.zh)},
+        {h:"金額",f:r=>yi(r.val)}], so.detail||[])+`</div>`;
+    }
+  }
+  main.innerHTML = html;
+}
+
+// ---------- 盤後五 tab（data/postmkt.json，GitHub Actions 每交易日 21:30 產） ----------
+function renderPM(){
+  const main = document.getElementById("main");
+  if (state.pmErr){ main.innerHTML = `<div class="empty">尚無盤後資料（data/postmkt.json 未產生或載入失敗）。<br>每交易日 21:30 由 GitHub Actions 更新。</div>`; return; }
+  const d = state.pm;
+  if (!d){ main.innerHTML = `<div class="empty">載入中…</div>`; return; }
+  let html = "";
+  if (state.tab === "margin"){
+    const m = d.margin || {};
+    const cols = [
+      {h:"個股",cls:"l",f:nameCell},
+      {h:"餘額(張)",f:r=>num(r.bal)},
+      {h:"增減",f:r=>zh(r.chg)},
+      {h:"使用率",f:r=>r.usage==null?'<span class="mut">—</span>':r.usage.toFixed(1)+"%"}];
+    html += sec("融資餘額增加排行", esc(m.date||"")) + tbl(cols, m.increase||[]);
+    html += sec("融資餘額減少排行", esc(m.date||"")) + tbl(cols, m.decrease||[]);
+    html += sec("融資使用率排行","餘額／限額") + tbl(cols, m.usage||[]);
+  } else if (state.tab === "lending"){
+    const l = d.lending || {};
+    html += sec("借券成交量排行", `${esc(l.date||"")} · 逐筆成交依股票彙總`);
+    html += tbl([
+      {h:"個股",cls:"l",f:nameCell},
+      {h:"借券量(張)",f:r=>num(r.vol)},
+      {h:"筆數",f:r=>r.deals},
+      {h:"收盤",f:r=>r.close==null?"—":r.close.toLocaleString("en-US")},
+      {h:"最高費率",f:r=>r.fee_max==null?"—":r.fee_max.toFixed(2)+"%"}], l.top||[]);
+  } else if (state.tab === "shortbal"){
+    const s = d.short_balance || {};
+    const cols = [
+      {h:"個股",cls:"l",f:nameCell},
+      {h:"餘額(張)",f:r=>num(r.bal)},
+      {h:"增減",f:r=>zh(r.chg)}];
+    html += sec("融券餘額增減排行", `${esc(s.date||"")} · 依增減幅排序`) + tbl(cols, s.margin_short||[]);
+    html += sec("借券賣出餘額增減排行","SBL 借券系統") + tbl(cols, s.sbl||[]);
+  } else if (state.tab === "daytrade"){
+    const t = d.daytrading || {};
+    const cols = [
+      {h:"個股",cls:"l",f:nameCell},
+      {h:"當沖量(張)",f:r=>num(r.vol/1000)},
+      {h:"當沖金額",f:r=>yiAbs(r.amt)},
+      {h:"比重",f:r=>r.ratio==null?'<span class="mut">—</span>':r.ratio.toFixed(1)+"%"}];
+    html += sec("當沖金額排行", esc(t.date||"")) + tbl(cols, t.by_amount||[]);
+    html += sec("當沖比重排行","當沖量／當日總成交量 · 已濾除總量 500 張以下") + tbl(cols, t.by_ratio||[]);
+  } else if (state.tab === "block"){
+    const b = d.blocktrade || {};
+    html += sec("鉅額交易逐筆", `${esc(b.date||"")} · 共 ${(b.rows||[]).length} 筆 · 依金額排序`);
+    html += tbl([
+      {h:"個股",cls:"l",f:nameCell},
+      {h:"類型",f:r=>esc(r.type)},
+      {h:"價格",f:r=>r.price==null?"—":r.price.toLocaleString("en-US")},
+      {h:"張數",f:r=>num(r.vol/1000)},
+      {h:"金額",f:r=>yiAbs(r.money)}], b.rows||[]);
+  }
+  main.innerHTML = html || `<div class="empty">無資料</div>`;
+}
+
+// ---------- 共用 ----------
+function renderStats(){
+  const el = document.getElementById("stats");
+  if (state.tab === "aetf"){
+    const l = state.aetf && state.aetf.latest;
+    el.innerHTML = l ? `<div class="stat"><b>${Object.keys(l.etfs||{}).length}</b>檔 ETF</div>`
+      + `<div class="stat">快照 ${esc(l.run_date||"—")}</div>` : "";
+  } else {
+    const d = state.pm;
+    el.innerHTML = d ? `<div class="stat">資料日 <b>${esc(d.date||"—")}</b></div>`
+      + `<div class="stat">更新 ${esc(String(d.generated_at||"").slice(0,16).replace("T"," "))} UTC</div>` : "";
+  }
+}
+function render(){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===state.tab));
+  document.getElementById("pageSub").textContent = SUBS[state.tab] || "";
+  renderStats();
+  if (state.tab === "aetf") renderAETF(); else renderPM();
+}
+function renderTabs(){
+  document.getElementById("tabs").innerHTML = TABS.map(([k,label])=>
+    `<div class="tab ${state.tab===k?"active":""}" data-tab="${k}">${label}</div>`).join("");
+  document.querySelectorAll(".tab").forEach(t=>t.onclick = ()=>{ state.tab = t.dataset.tab; render(); });
+}
+document.addEventListener("click", e=>{
+  const el1 = e.target.closest(".clk[data-etf]");
+  if (el1){ state.openEtf = state.openEtf===el1.dataset.etf ? null : el1.dataset.etf; render();
+    if (state.openEtf){ const x=document.getElementById("etfdd"); if(x)x.scrollIntoView({behavior:"smooth",block:"start"}); } return; }
+  const el2 = e.target.closest(".clk[data-asub]");
+  if (el2){ const v = decodeURIComponent(el2.dataset.asub);
+    state.openSub = state.openSub===v ? null : v; render();
+    if (state.openSub){ const x=document.getElementById("subdd"); if(x)x.scrollIntoView({behavior:"smooth",block:"start"}); } }
+});
+
+async function loadJSON(url){
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("HTTP "+r.status);
+  return r.json();
+}
+async function load(){
+  renderTabs(); render();
+  const t = Date.now();
+  const pAetf = (async ()=>{
+    const o = {latest:null, diff:null};
+    try{ o.latest = await loadJSON(V2_BASE+"/latest.json?t="+t); }catch(e){}
+    try{ o.diff = await loadJSON(V2_BASE+"/diff.json?t="+t); }catch(e){}
+    state.aetf = o;
+  })();
+  const pPm = (async ()=>{
+    try{ state.pm = await loadJSON("data/postmkt.json?t="+t); }
+    catch(e){ state.pmErr = e; }
+  })();
+  pAetf.then(render); pPm.then(render);
+  await Promise.all([pAetf, pPm]);
+  render();
+}
+load();
+</script>
+</body>
+</html>
