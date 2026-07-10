@@ -41,7 +41,7 @@
   .tblbox{background:var(--card);border:1px solid var(--line);border-radius:14px;
     padding:6px 12px 10px;margin:8px 0;overflow-x:auto}
   .mtable{width:100%;border-collapse:collapse;font-size:.84rem}
-  .mtable th,.mtable td{padding:6px 7px;text-align:right;border-bottom:1px solid rgba(36,53,86,.5);white-space:nowrap}
+  .mtable th,.mtable td{padding:6px 7px;text-align:right;border-bottom:1px solid rgba(36,53,86,.5);white-space:nowrap;vertical-align:middle}
   .mtable tr:last-child td{border-bottom:none}
   .mtable th:first-child,.mtable td:first-child{text-align:left}
   .mtable th{color:var(--muted);font-weight:600;font-size:.74rem;cursor:pointer;user-select:none}
@@ -143,6 +143,36 @@ document.addEventListener("click", e => {
   wrap.innerHTML = tblInner(wrap.dataset.tbl);
 });
 const sec = (t,n) => `<div class="msection">${t}${n?`<span class="n">${n}</span>`:""}</div>`;
+
+// 鉅額交易逐筆：個股/總張數/總金額 依股票分組合併(rowspan)，其餘欄位逐筆呈現
+// （資料已依股票分組，同股票的列必連續，不做點表頭排序——排序會打散分組）。
+function blockTradeTable(rows){
+  if (!rows || !rows.length) return `<div class="empty">無資料</div>`;
+  const traderCell = r => {
+    const buy = r.buy_trader ? esc(r.buy_trader) : '<span class="mut">—</span>';
+    const sell = r.sell_trader ? esc(r.sell_trader) : '<span class="mut">—</span>';
+    return `買：${buy}<span class="nm">賣：${sell}</span>`;
+  };
+  const head = `<th class="l">個股</th><th>總張數</th><th>總金額</th><th>類型</th><th>價格</th><th>張數</th><th>金額</th><th class="l">券商分點</th>`;
+  let body = "";
+  for (let i = 0; i < rows.length; i++){
+    const r = rows[i];
+    const isFirst = i === 0 || rows[i-1].c !== r.c;
+    let span = 0;
+    if (isFirst){ let j = i; while (j < rows.length && rows[j].c === r.c) j++; span = j - i; }
+    body += `<tr>`
+      + (isFirst ? `<td class="l" rowspan="${span}">${nameCell(r)}</td>`
+        + `<td rowspan="${span}">${num((r.stock_vol||0)/1000)}</td>`
+        + `<td rowspan="${span}">${yiAbs(r.stock_money)}</td>` : "")
+      + `<td>${esc(r.type)}</td>`
+      + `<td>${r.price==null?"—":r.price.toLocaleString("en-US")}</td>`
+      + `<td>${num(r.vol/1000)}</td>`
+      + `<td>${yiAbs(r.money)}</td>`
+      + `<td class="l">${traderCell(r)}</td>`
+      + `</tr>`;
+  }
+  return `<div class="tblbox"><table class="mtable"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
 
 // ---------- 主動ETF（跨repo唯讀 taiwan-flow-live-v2 data/aetf/） ----------
 function aetfAdvice(diff){
@@ -280,20 +310,7 @@ function renderPM(){
   } else if (state.tab === "block"){
     const b = d.blocktrade || {};
     html += sec("鉅額交易逐筆", `${esc(b.date||"")} · 共 ${(b.rows||[]).length} 筆 · 同股票分組、組間依總金額排序`);
-    const traderCell = r => {
-      const buy = r.buy_trader ? esc(r.buy_trader) : '<span class="mut">—</span>';
-      const sell = r.sell_trader ? esc(r.sell_trader) : '<span class="mut">—</span>';
-      return `${buy}<span class="nm">賣：${sell}</span>`;
-    };
-    html += tbl([
-      {h:"個股",cls:"l",f:nameCell},
-      {h:"類型",f:r=>esc(r.type)},
-      {h:"價格",f:r=>r.price==null?"—":r.price.toLocaleString("en-US")},
-      {h:"張數",f:r=>num(r.vol/1000)},
-      {h:"金額",f:r=>yiAbs(r.money)},
-      {h:"同股總張數",f:r=>num((r.stock_vol||0)/1000)},
-      {h:"同股總金額",f:r=>yiAbs(r.stock_money)},
-      {h:"買方券商分點",cls:"l",f:traderCell}], b.rows||[]);
+    html += blockTradeTable(b.rows||[]);
   }
   main.innerHTML = html || `<div class="empty">無資料</div>`;
 }
