@@ -873,6 +873,8 @@ document.addEventListener("click", e=>{
 // ---------- 摘要分析（前端即時呼叫 Claude API） ----------
 // key 只存本機 localStorage，只隨查詢送給 Anthropic，不進 repo、不傳第三方。
 const anthKey = () => localStorage.getItem("anthropic_key") || "";
+// 台灣時間 "YYYY-MM-DD HH:MM:SS"（sv-SE locale 給 ISO 樣式，指定 Asia/Taipei 時區）
+const twNow = () => new Date().toLocaleString("sv-SE", { timeZone:"Asia/Taipei" });
 // 極簡 markdown→HTML（LLM 輸出用）：標題/清單/粗體/行內碼/表格/段落。夠用即可，不引入外部庫。
 function mdToHtml(md){
   const esc2 = s => s.replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
@@ -1001,7 +1003,8 @@ async function callClaude(key, model, system, userMsg){
   const j = await r.json();
   if (!r.ok || (j.type==="error")) throw new Error((j.error && j.error.message) || ("HTTP "+r.status));
   if (j.stop_reason === "refusal") throw new Error("模型基於安全政策婉拒本次請求");
-  return (j.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+  const text = (j.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+  return { text, usage: j.usage || null };
 }
 async function runInsight(){
   if (!anthKey()){ alert("請先輸入並儲存 Anthropic API token"); return; }
@@ -1012,17 +1015,19 @@ async function runInsight(){
     const bk = await insightFetchBrokers(g.primary);
     const SYS = "你是積極的台股盤後籌碼策略分析師。任務：彙整本頁各 tab 資料，產出以「找出 alpha 標的」為核心的洞見與可操作建議。"
       + "要求："
-      + "(1) 著重跨資料源的背離與共振訊號，這是 alpha 的來源（例：借券賣出大增但外資同步買超＝空方可能被軋；某分點大買且同檔當沖比重高＝主力進場伴隨投機；主動ETF加碼且鉅額買盤同向＝法人共識）。"
-      + "(2) 依據資料呈現的歷史統計傾向，做出方向性判斷：可以預測後續傾向、給出偏多／偏空看法、提出明確的進出（觀察／偏多操作／偏空操作）建議。"
-      + "(3) 每一條洞見／建議都必須點名個股代號＋可追溯的具體數據依據，禁止空泛或無數據支撐的臆測。"
-      + "(4) 洞見與建議合計不超過 10 條，挑訊號最強、依據最紮實的。"
-      + "(5) 日期對齊：各段已標注資料日，若某段標注『與主資料日不同』，該段資料只能單獨解讀，嚴禁跨不同交易日直接比較或串連成訊號。"
-      + "(6) 繁體中文、markdown（## 標題、- 清單、**粗體**、可用表格）。"
-      + "結構：## 核心洞見與操作建議（≤10 條，每條格式＝個股代號名稱 ｜ 訊號 ｜ 數據依據 ｜ 方向與建議）／## 訊號邏輯（簡述背離或共振的推論）。"
+      + "(1) 進出建議一律以『同向共振』為基礎——多個資料源指向同一方向才算有效訊號（例：主動ETF加碼＋鉅額買盤同向＋指定分點大買同一檔＝法人共識偏多；或多源同步偏空）。"
+      + "(2) 『背離』（如借券賣出大增但外資買超）只可當作觀察/風險提示描述，明確標示『背離對作不適合作為進出參考』，不得據以給出進出建議。"
+      + "(3) 依據資料呈現的歷史統計傾向做方向性判斷：對『同向共振』的標的可預測後續傾向、給偏多／偏空看法與明確進出建議；背離標的只描述不建議操作。"
+      + "(4) 每一條洞見／建議都必須點名個股代號＋可追溯的具體數據依據，禁止空泛或無數據支撐的臆測。"
+      + "(5) 洞見與建議合計不超過 10 條，挑同向共振最強、依據最紮實的。"
+      + "(6) 建議個股的市值分布：屬大型權值股者（如台灣50成分、市值前段班：2330台積電、2317鴻海、2454聯發科、金控股等）合計不得超過清單的一半，其餘須為中小型標的，以保留 alpha 空間。"
+      + "(7) 日期對齊：各段已標注資料日，若某段標注『與主資料日不同』，該段資料只能單獨解讀，嚴禁跨不同交易日直接比較或串連成訊號。"
+      + "(8) 繁體中文、markdown（## 標題、- 清單、**粗體**、可用表格）。"
+      + "結構：## 核心洞見與操作建議（≤10 條，每條格式＝個股代號名稱 ｜ 共振訊號 ｜ 數據依據 ｜ 方向與進出建議；大型股≤一半）／## 背離觀察（僅描述、不建議操作）／## 訊號邏輯（簡述同向共振推論）。"
       + "最後一行附免責：以上為當日籌碼結構的模型即時研判、未經歷史回測、非保證獲利，僅供你自行參考。";
     const USER = `主資料日（以此為準）：${g.primary}\n各段資料日：${JSON.stringify(g.dates)}\n（凡標注「與主資料日不同」的段落，僅可單獨解讀，勿跨日比較）\n\n${g.text}\n\n${bk.text}`;
-    const text = await callClaude(anthKey(), state.insightModel, SYS, USER);
-    state.insight = { text, at: new Date().toISOString(), date: g.primary, model: state.insightModel };
+    const res = await callClaude(anthKey(), state.insightModel, SYS, USER);
+    state.insight = { text: res.text, usage: res.usage, at: twNow(), date: g.primary, model: state.insightModel };
   }catch(e){
     state.insightErr = String(e.message || e);
   }
@@ -1050,7 +1055,9 @@ function insightHtml(){
   if (state.insightLoading){ h += `<div class="empty">Claude 分析中…（依資料量約需 10-30 秒）</div>`; return h; }
   if (state.insightErr){ h += `<div class="empty" style="text-align:left;padding:14px">分析失敗：${esc(state.insightErr)}</div>`; return h; }
   if (state.insight){
-    h += `<div class="insight-meta">生成時間 ${esc(state.insight.at.slice(0,19).replace("T"," "))}（資料日 ${esc(state.insight.date||"—")} · 模型 ${esc(state.insight.model||state.insightModel)}）</div>`;
+    const u = state.insight.usage;
+    const tok = u ? `輸入 ${num((u.input_tokens||0)+(u.cache_read_input_tokens||0)+(u.cache_creation_input_tokens||0))}／輸出 ${num(u.output_tokens||0)} token` : "token數不明";
+    h += `<div class="insight-meta">生成時間 ${esc(state.insight.at)}（台灣）· 資料日 ${esc(state.insight.date||"—")} · 模型 ${esc(state.insight.model||state.insightModel)} · 本次 ${tok}</div>`;
     h += `<div class="insight-card insight-md">${mdToHtml(state.insight.text)}</div>`;
   }
   return h;
