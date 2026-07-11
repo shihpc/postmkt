@@ -194,9 +194,11 @@ const SUBS = {
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
 // 摘要分析要分析的固定分點（使用者指定）：9268凱基台北、9800元大、9600富邦、9A00永豐金
 const INSIGHT_BROKERS = ["9268","9800","9600","9A00"];
+const INSIGHT_MODELS = [["claude-opus-4-8","Opus 4.8（最佳判讀，約NT$3/次）"],["claude-sonnet-5","Sonnet 5（近Opus、約半價更快）"]];
 const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQuery:"",
   oddSub:"intraday", bkSub:"branch", bkListQuery:"", aetf:null, pm:null, pmErr:null,
-  insight:null, insightLoading:false, insightErr:null, insightModel:"claude-opus-4-8" };
+  insight:null, insightLoading:false, insightErr:null,
+  insightModel: localStorage.getItem("insight_model") || "claude-opus-4-8" };
 
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -903,48 +905,65 @@ function mdToHtml(md){
   return html;
 }
 // 從各 tab 的記憶體資料彙整成給 LLM 的精簡文字（不 dump 全量，只取關鍵訊號欄位）。
+// 日期對齊：以 postmkt 主資料日(primary)為準，各段標注自己的資料日；不同日的段落
+// 明確標警告，避免 LLM 跨不同交易日直接比較(雞同鴨講)。回傳 {text, primary, dates}。
 function insightGatherContext(){
   const d = state.pm || {}, a = state.aetf || {};
   const parts = [];
   const yiK = v => v==null ? "—" : (v/1e5).toFixed(1); // 千元→億
   const yiY = v => v==null ? "—" : (v/1e8).toFixed(1); // 元→億
-  // 主動ETF
+  const primary = d.date || "";
+  const dates = {};
+  // 日期比較用正規化（aetf 跨repo用斜線 2026/07/13，postmkt 用連字號 2026-07-09，
+  // 格式不同會誤判成不同日，比較前統一成連字號）。
+  const norm = s => String(s||"").replace(/\//g,"-");
+  const dlabel = (name, secDate) => {
+    dates[name] = secDate || "?";
+    if (!secDate) return `【${name}（資料日不明）】`;
+    if (norm(secDate) === norm(primary)) return `【${name}（資料日 ${secDate}）】`;
+    return `【${name}（⚠資料日 ${secDate}，與主資料日 ${primary} 不同，請勿與其他段落跨日直接比較）】`;
+  };
+  // 主動ETF（跨repo，投信揭露日常與盤後籌碼不同日，特別要標）
   if (a.diff && (a.diff.stocks||[]).length){
+    const aDate = (a.diff.generated_dates && a.diff.generated_dates[a.diff.generated_dates.length-1])
+      || (a.latest && a.latest.run_date) || "";
     const adv = aetfAdvice(a.diff);
     const st = (a.diff.stocks||[]).slice(0,12).map(s=>`${s.c}${s.n||""} 合計${s.zh>0?"+":""}${s.zh}張 金額${yiY(s.val)}億`).join("；");
     const subs = (a.diff.subs||[]).slice(0,6).map(s=>`${cleanSub(s.name)} ${yiY(s.val)}億`).join("；");
-    parts.push(`【主動ETF 主動加減碼】\n重點：${adv.map(x=>x.replace(/<[^>]+>/g,"")).join("；")||"—"}\n進出個股(前12)：${st}\n次產業流向(前6)：${subs}`);
+    parts.push(`${dlabel("主動ETF 主動加減碼", aDate)}\n重點：${adv.map(x=>x.replace(/<[^>]+>/g,"")).join("；")||"—"}\n進出個股(前12)：${st}\n次產業流向(前6)：${subs}`);
   }
   // 融借券整合排行（依兩平台借券餘額；含放空/融資/當沖/三大法人）
   const lr = (d.lending && d.lending.rows) || [];
   if (lr.length){
     const line = r => `${r.c}${r.n||""}|借券餘額${num(r.plat_total)}張(異動${r.plat_total_chg>0?"+":""}${r.plat_total_chg})|借賣${num(r.sbl_short_bal)}張(異動${r.sbl_short_chg>0?"+":""}${r.sbl_short_chg},使用率${r.usage_ratio==null?"—":r.usage_ratio.toFixed(0)}%)|融資${num(r.margin_bal)}張(異動${r.margin_chg>0?"+":""}${r.margin_chg},券資比${r.credit_ratio==null?"—":r.credit_ratio.toFixed(1)}%)|外資${yiK(r.foreign_net)}億/投信${yiK(r.trust_net)}億/自營${yiK(r.dealer_net)}億|當沖${yiK(r.dt_amt)}億`;
-    parts.push(`【融借券整合排行 前25（依兩平台借券餘額）】\n`+lr.slice(0,25).map(line).join("\n"));
+    parts.push(`${dlabel("融借券整合排行 前25（依兩平台借券餘額）", (d.lending&&d.lending.date))}\n`+lr.slice(0,25).map(line).join("\n"));
   }
   // 當沖排行
   const dt = (d.daytrading && d.daytrading.by_amount) || [];
   if (dt.length){
     const line = r => `${r.c}${r.n||""}|當沖${yiY(r.amt)}億 量${num(r.vol/1000)}張 比重${r.ratio==null?"—":r.ratio.toFixed(0)}%|漲跌${r.chg_pct==null?"—":(r.chg_pct>0?"+":"")+r.chg_pct.toFixed(1)}% 振幅${r.amp_pct==null?"—":r.amp_pct.toFixed(1)}%|分點推估:${(r.traders||[]).slice(0,3).map(t=>t.trader+num(t.vol)+"張").join(",")}`;
-    parts.push(`【當沖排行 前15】\n`+dt.slice(0,15).map(line).join("\n"));
+    parts.push(`${dlabel("當沖排行 前15", (d.daytrading&&d.daytrading.date))}\n`+dt.slice(0,15).map(line).join("\n"));
   }
   // 鉅額（依股票分組，取各股一筆代表＝總量/總額）
   const bt = (d.blocktrade && d.blocktrade.rows) || [];
   if (bt.length){
     const seen = new Set(), groups = [];
     for (const r of bt){ if (!seen.has(r.c)){ seen.add(r.c); groups.push(r); } }
-    parts.push(`【鉅額交易 依總金額前15】\n`+groups.slice(0,15).map(r=>`${r.c}${r.n||""} 總${num((r.stock_vol||0)/1000)}張/${yiY(r.stock_money)}億`).join("；"));
+    parts.push(`${dlabel("鉅額交易 依總金額前15", (d.blocktrade&&d.blocktrade.date))}\n`+groups.slice(0,15).map(r=>`${r.c}${r.n||""} 總${num((r.stock_vol||0)/1000)}張/${yiY(r.stock_money)}億`).join("；"));
   }
   // 零股盤中
   const od = (d.oddlot && d.oddlot.intraday && d.oddlot.intraday.rows) || [];
   if (od.length){
-    parts.push(`【零股盤中 依金額前15】\n`+od.slice(0,15).map(r=>`${r.c}${r.n||""} ${(r.amt/1e4).toFixed(0)}萬元 ${num(r.deals)}筆`).join("；"));
+    parts.push(`${dlabel("零股盤中 依金額前15", (d.oddlot&&d.oddlot.intraday&&d.oddlot.intraday.date))}\n`+od.slice(0,15).map(r=>`${r.c}${r.n||""} ${(r.amt/1e4).toFixed(0)}萬元 ${num(r.deals)}筆`).join("；"));
   }
-  return parts.join("\n\n");
+  return { text: parts.join("\n\n"), primary, dates };
 }
 // 即時抓指定分點當日進出（FinMind），依股票聚合成買賣超金額，回傳各分點的前N買/賣。
-async function insightFetchBrokers(){
-  if (!fmToken()) return { text:"（未設定 FinMind token，略過分點分析）", ok:false };
+// primary=主資料日，分點資料日不同時標警告(日期對齊)。
+async function insightFetchBrokers(primary){
+  if (!fmToken()) return { text:"【指定分點單點進出】（未設定 FinMind token，略過分點分析）", ok:false };
   const date = (state.pm && state.pm.brokers && state.pm.brokers.date) || "";
+  const dwarn = (date && primary && date !== primary) ? `（⚠資料日 ${date}，與主資料日 ${primary} 不同，勿跨日比較）` : `（資料日 ${date||"?"}）`;
   const nm = (state.pm && state.pm.brokers && state.pm.brokers.list) || [];
   const nmById = Object.fromEntries(nm.map(x=>[x.id, x.name]));
   const out = [];
@@ -965,35 +984,45 @@ async function insightFetchBrokers(){
       out.push(`[${id} ${bname}] 買超前8：${buys.map(fmt).join(",")||"—"}｜賣超前8：${sells.map(fmt).join(",")||"—"}`);
     }catch(e){ out.push(`[${id}] 查詢失敗：${String(e.message||e)}`); }
   }
-  return { text:`【指定分點單點進出（買賣超金額，元）】\n`+out.join("\n"), ok:true };
+  return { text:`【指定分點單點進出（買賣超金額，元）${dwarn}】\n`+out.join("\n"), ok:true };
 }
+// 打開 adaptive thinking：Opus 4.8 省略 thinking=不思考，故明確指定；effort medium 平衡
+// 深度與延遲；只取 text block(thinking display 預設 omitted，不渲染思考)。max_tokens 拉高
+// 給思考+輸出留空間。
 async function callClaude(key, model, system, userMsg){
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method:"POST",
     headers:{ "content-type":"application/json", "x-api-key":key,
       "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-    body: JSON.stringify({ model, max_tokens:3000, system, messages:[{role:"user",content:userMsg}] })
+    body: JSON.stringify({ model, max_tokens:8000,
+      thinking:{ type:"adaptive" }, output_config:{ effort:"medium" },
+      system, messages:[{role:"user",content:userMsg}] })
   });
   const j = await r.json();
   if (!r.ok || (j.type==="error")) throw new Error((j.error && j.error.message) || ("HTTP "+r.status));
+  if (j.stop_reason === "refusal") throw new Error("模型基於安全政策婉拒本次請求");
   return (j.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
 }
 async function runInsight(){
   if (!anthKey()){ alert("請先輸入並儲存 Anthropic API token"); return; }
   state.insightLoading = true; state.insightErr = null; render();
   try{
-    const dataDate = (state.pm && state.pm.date) || "";
-    const ctx = insightGatherContext();
-    if (!ctx.trim()) throw new Error("本頁資料尚未載入完成，請稍候再試");
-    const bk = await insightFetchBrokers();
-    const SYS = "你是資深台股盤後分析師。任務：從提供的盤後籌碼資料中，找出值得留意、以「找出具 alpha 潛力標的」為目標的 insight 洞見。"
-      + "嚴格遵守：(1) 只描述資料呈現的歷史統計傾向與籌碼結構，不做漲跌預測、不喊進出、不提供投資建議；每個觀察都要能追溯到提供的數據。"
-      + "(2) 明確點出跨資料源的背離/共振訊號（例：借券賣出大增但外資同步買超；某分點大買且同檔當沖比重高；主動ETF加碼且鉅額買盤同向）。"
-      + "(3) 語氣客觀、具體點名個股代號與數字，避免空泛。(4) 用繁體中文，markdown 格式（## 標題、- 清單、**粗體**）。"
-      + "結構建議：## 重點摘要（3-5條）／## 跨源背離與共振（列出個股與訊號）／## 分點動向（若有）／## 值得追蹤的觀察清單。最後附一行免責：本分析僅為歷史籌碼統計描述，非投資建議、非預測。";
-    const USER = `資料日：${dataDate}\n\n${ctx}\n\n${bk.text}`;
+    const g = insightGatherContext();
+    if (!g.text.trim()) throw new Error("本頁資料尚未載入完成，請稍候再試");
+    const bk = await insightFetchBrokers(g.primary);
+    const SYS = "你是積極的台股盤後籌碼策略分析師。任務：彙整本頁各 tab 資料，產出以「找出 alpha 標的」為核心的洞見與可操作建議。"
+      + "要求："
+      + "(1) 著重跨資料源的背離與共振訊號，這是 alpha 的來源（例：借券賣出大增但外資同步買超＝空方可能被軋；某分點大買且同檔當沖比重高＝主力進場伴隨投機；主動ETF加碼且鉅額買盤同向＝法人共識）。"
+      + "(2) 依據資料呈現的歷史統計傾向，做出方向性判斷：可以預測後續傾向、給出偏多／偏空看法、提出明確的進出（觀察／偏多操作／偏空操作）建議。"
+      + "(3) 每一條洞見／建議都必須點名個股代號＋可追溯的具體數據依據，禁止空泛或無數據支撐的臆測。"
+      + "(4) 洞見與建議合計不超過 10 條，挑訊號最強、依據最紮實的。"
+      + "(5) 日期對齊：各段已標注資料日，若某段標注『與主資料日不同』，該段資料只能單獨解讀，嚴禁跨不同交易日直接比較或串連成訊號。"
+      + "(6) 繁體中文、markdown（## 標題、- 清單、**粗體**、可用表格）。"
+      + "結構：## 核心洞見與操作建議（≤10 條，每條格式＝個股代號名稱 ｜ 訊號 ｜ 數據依據 ｜ 方向與建議）／## 訊號邏輯（簡述背離或共振的推論）。"
+      + "最後一行附免責：以上為當日籌碼結構的模型即時研判、未經歷史回測、非保證獲利，僅供你自行參考。";
+    const USER = `主資料日（以此為準）：${g.primary}\n各段資料日：${JSON.stringify(g.dates)}\n（凡標注「與主資料日不同」的段落，僅可單獨解讀，勿跨日比較）\n\n${g.text}\n\n${bk.text}`;
     const text = await callClaude(anthKey(), state.insightModel, SYS, USER);
-    state.insight = { text, at: new Date().toISOString(), date: dataDate };
+    state.insight = { text, at: new Date().toISOString(), date: g.primary, model: state.insightModel };
   }catch(e){
     state.insightErr = String(e.message || e);
   }
@@ -1011,15 +1040,17 @@ function insightHtml(){
   if (!fmToken()){
     h += `<div class="insight-note">⚠ 尚未設定 FinMind token（分點 tab 可設定），「指定分點」段落將略過。其餘各 tab 分析不受影響。</div>`;
   }
+  const modelOpts = INSIGHT_MODELS.map(([v,l])=>`<option value="${v}"${state.insightModel===v?" selected":""}>${esc(l)}</option>`).join("");
   h += `<div class="mcard" style="padding:12px 14px"><div class="qrow">`
     + `<span class="qbtn" data-insight-run>${state.insight?"🔄 重新分析":"🔍 產生 AI 摘要分析"}</span>`
+    + `<select id="insightModelSel" style="background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:7px 10px;font-size:.84rem;outline:none;cursor:pointer">${modelOpts}</select>`
     + (anthKey()?`<span class="mut" style="font-size:.74rem;cursor:pointer" data-anth-clear>Anthropic token已設定（點此清除）</span>`:"")
     + `</div><div class="insight-note">分析範圍：主動ETF、融借券整合排行、當沖、鉅額、零股(盤中)、指定分點 ${INSIGHT_BROKERS.join("／")}。`
-    + `使用模型 ${esc(state.insightModel)}，每次分析約消耗數千 token（費用計入你的 Anthropic 帳戶）。</div></div>`;
+    + `已開啟 adaptive thinking（模型先推理再輸出，命中率較高、略慢）；資料自動對齊最近交易日、不同日段落會標警告。每次分析約消耗數千 token（費用計入你的 Anthropic 帳戶）。</div></div>`;
   if (state.insightLoading){ h += `<div class="empty">Claude 分析中…（依資料量約需 10-30 秒）</div>`; return h; }
   if (state.insightErr){ h += `<div class="empty" style="text-align:left;padding:14px">分析失敗：${esc(state.insightErr)}</div>`; return h; }
   if (state.insight){
-    h += `<div class="insight-meta">生成時間 ${esc(state.insight.at.slice(0,19).replace("T"," "))}（資料日 ${esc(state.insight.date||"—")}）</div>`;
+    h += `<div class="insight-meta">生成時間 ${esc(state.insight.at.slice(0,19).replace("T"," "))}（資料日 ${esc(state.insight.date||"—")} · 模型 ${esc(state.insight.model||state.insightModel)}）</div>`;
     h += `<div class="insight-card insight-md">${mdToHtml(state.insight.text)}</div>`;
   }
   return h;
@@ -1031,6 +1062,9 @@ document.addEventListener("click", e => {
   if (sv){ const i=document.getElementById("anthTok"); if(i&&i.value.trim()){ localStorage.setItem("anthropic_key", i.value.trim()); render(); } return; }
   const cl = e.target.closest("[data-anth-clear]");
   if (cl){ localStorage.removeItem("anthropic_key"); render(); return; }
+});
+document.addEventListener("change", e => {
+  if (e.target.id === "insightModelSel"){ state.insightModel = e.target.value; localStorage.setItem("insight_model", e.target.value); }
 });
 document.addEventListener("keydown", e => {
   if (e.key==="Enter" && e.target.id==="anthTok"){ const b=document.querySelector("[data-anth-save]"); if(b) b.click(); }
