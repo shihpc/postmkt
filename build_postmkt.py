@@ -242,7 +242,9 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
         row["dt_amt"] = round(((d.get("BuyAmount") or 0) + (d.get("SellAmount") or 0)) / 2 / 1000) if d else None
 
     rows_out.sort(key=lambda x: -x["plat_total"])
-    return {"date": date, "rows": rows_out[:TOP_N],
+    # 不截斷到TOP_N：Table1的定位是「查任一檔股票」，前端主排行榜只顯示前TOP_N，
+    # 但完整清單要留給搜尋功能查詢不在前段班的股票（見cmoney-sbl-mapping-research.md）。
+    return {"date": date, "rows": rows_out,
             "sys_available": bool(sys_bal), "otc_available": bool(otc_bal)}
 
 

@@ -42,13 +42,19 @@
   .msection::before{content:"▸";color:var(--accent);margin-right:6px;font-size:.85rem}
   .msection .n{color:var(--muted);font-weight:400;font-size:.74rem;margin-left:8px}
   .tblbox{background:var(--card);border:1px solid var(--line);border-radius:14px;
-    padding:6px 12px 10px;margin:8px 0;overflow-x:auto}
+    padding:6px 12px 10px;margin:8px 0;overflow-x:auto;overflow-y:visible}
   .mtable{width:100%;border-collapse:collapse;font-size:.84rem}
   .mtable th,.mtable td{padding:6px 7px;text-align:right;border-bottom:1px solid rgba(36,53,86,.5);white-space:nowrap;vertical-align:middle}
   .mtable tr:last-child td{border-bottom:none}
   .mtable th:first-child,.mtable td:first-child{text-align:left}
-  .mtable th{color:var(--muted);font-weight:600;font-size:.74rem;cursor:pointer;user-select:none}
+  .mtable th{color:var(--muted);font-weight:600;font-size:.74rem;cursor:pointer;user-select:none;
+    position:sticky;top:0;background:var(--card);z-index:2}
   .mtable th:hover{color:var(--txt)}
+  /* 固定第一欄（股票名稱）：只套用在一般排行榜表格，鉅額交易的rowspan合併表格
+     第一格不是每列都存在，套用會讓固定欄位跟其他欄位錯位，故排除 */
+  .mtable-stickycol td:first-child, .mtable-stickycol th:first-child{position:sticky;left:0;
+    background:var(--card);z-index:1}
+  .mtable-stickycol th:first-child{z-index:3}
   .mtable .nm{display:block;color:var(--muted);font-size:.72rem;line-height:1.3}
   .code{font-family:"Space Mono",Consolas,monospace;font-weight:700;color:var(--accent)}
   .up{color:#ef5b5b}.down{color:#2fbf71}.mut{color:var(--muted)}
@@ -96,7 +102,7 @@ const SUBS = {
   block:"當日鉅額交易逐筆列表，同股票分組並附總張數/總金額；買方/賣方券商分點為盡力比對（同股同價當日多筆時可能無法唯一判定，顯示—）。類型僅「配對交易／逐筆交易」兩種，FinMind未提供單一/組合證券的區分欄位。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
-const state = { tab:"aetf", openEtf:null, openSub:null, openLend:null, aetf:null, pm:null, pmErr:null };
+const state = { tab:"aetf", openEtf:null, openSub:null, openLend:null, lendQuery:"", aetf:null, pm:null, pmErr:null };
 
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -126,7 +132,7 @@ function tblInner(id){
   const { cols, rows, sort } = TBLS[id];
   const head = cols.map((c,i) => `<th${c.cls?` class="${c.cls}"`:""} data-i="${i}">${c.h}${sort.i===i?(sort.d>0?" ▲":" ▼"):""}</th>`).join("");
   const body = rows.map(r=>`<tr>`+cols.map(c=>`<td${c.cls?` class="${c.cls}"`:""}>${c.f(r)}</td>`).join("")+`</tr>`).join("");
-  return `<table class="mtable"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  return `<table class="mtable mtable-stickycol"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 document.addEventListener("click", e => {
   const th = e.target.closest("th[data-i]");
@@ -149,6 +155,31 @@ const sec = (t,n) => `<div class="msection">${t}${n?`<span class="n">${n}</span>
 
 // 借券tab個股明細（對應CMoney Table1）：點主表個股展開，呈現主表放不下的細項
 // （分項異動/市值、SBL流量明細、成交明細彙總、外資持股、融資融券衍生比率）。
+let LEND_ALL_ROWS = [];
+// 個股查詢結果＋展開明細，獨立於主表render()之外更新（輸入框不能整頁重render，
+// 否則每打一個字就重繪整個tab、輸入框失焦打不下去）。
+function lendSearchAreaHtml(allRows){
+  let h = "";
+  if (state.lendQuery && state.lendQuery.trim()){
+    const q = state.lendQuery.trim().toLowerCase();
+    const hits = allRows.filter(r => r.c.toLowerCase().includes(q) || (r.n||"").toLowerCase().includes(q)).slice(0,20);
+    h += `<div class="mcard" style="padding:8px 14px">` + (hits.length
+      ? hits.map(r => `<span class="clk ${state.openLend===r.c?"sel":""}" data-lend="${esc(r.c)}" style="display:inline-block;margin:3px 10px 3px 0">${nameCell(r)}</span>`).join("")
+      : `<span class="mut">查無符合「${esc(state.lendQuery)}」的股票</span>`) + `</div>`;
+  }
+  if (state.openLend){
+    const r = allRows.find(x=>x.c===state.openLend);
+    if (r) h += lendDetailHtml(r);
+  }
+  return h;
+}
+document.addEventListener("input", e => {
+  if (e.target.id !== "lendQ") return;
+  state.lendQuery = e.target.value;
+  const area = document.getElementById("lendSearchArea");
+  if (area) area.innerHTML = lendSearchAreaHtml(LEND_ALL_ROWS);
+});
+
 function lendDetailHtml(r){
   const kv = (label, val) => `<div class="kv"><span class="mut">${label}</span><span>${val}</span></div>`;
   const pct = v => v==null ? '<span class="mut">—</span>' : v.toFixed(2)+"%";
@@ -315,7 +346,18 @@ function renderPM(){
     html += sec("融資使用率排行","餘額／限額") + tbl(cols, m.usage||[]);
   } else if (state.tab === "lending"){
     const l = d.lending || {};
-    html += sec("借券／融資融券／當沖／三大法人 整合排行", `${esc(l.date||"")} · 依兩平台借券餘額排序 · 點個股展開明細`);
+    const allRows = l.rows || [];
+    LEND_ALL_ROWS = allRows; // 給 input 事件的輕量更新用，不用整頁重render
+    // 個股查詢（對應CMoney Table1）：完整清單(所有有借券/融資融券活動的股票，
+    // 非只限主排行榜前50)，輸入代號或名稱即可查任一檔，不用它剛好在排行榜前段班。
+    html += sec("個股查詢", "輸入代號或名稱查完整明細（不限排行榜前50）");
+    html += `<div class="mcard" style="padding:10px 14px">`
+      + `<input id="lendQ" type="search" placeholder="🔍 股票代號或名稱…" value="${esc(state.lendQuery||"")}" `
+      + `style="width:100%;background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:8px 12px;font-size:.88rem;outline:none">`
+      + `</div>`;
+    html += `<div id="lendSearchArea">${lendSearchAreaHtml(allRows)}</div>`;
+
+    html += sec("借券／融資融券／當沖／三大法人 整合排行", `${esc(l.date||"")} · 依兩平台借券餘額排序前50 · 點個股展開明細`);
     if (l.sys_available === false || l.otc_available === false){
       html += `<div class="empty" style="padding:10px 14px;text-align:left">⚠ TWSE兩平台借券端點本次抓取失敗，該欄位可能缺值（不影響其他欄位）。</div>`;
     }
@@ -335,11 +377,7 @@ function renderPM(){
       {h:"外資買賣超(千)",f:r=>moneyK(r.foreign_net)},
       {h:"投信買賣超(千)",f:r=>moneyK(r.trust_net)},
       {h:"自營商買賣超(千)",f:r=>moneyK(r.dealer_net)},
-    ], l.rows||[]);
-    if (state.openLend){
-      const r = (l.rows||[]).find(x=>x.c===state.openLend);
-      if (r) html += lendDetailHtml(r);
-    }
+    ], allRows.slice(0,50));
     html += `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px">資料源：兩平台借券餘額(TWSE公開端點，非官方保證SLA)、`
       + `融資融券/借券賣出餘額/當沖/三大法人買賣超/外資持股(FinMind)。個股融資融券維持率、投信/自營商持股水位、`
       + `借券還券完成日期明細為官方未公開資料，查無來源，不提供估計值。</div>`;
