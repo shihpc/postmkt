@@ -3,26 +3,45 @@
 台股盤後資料的靜態儀表板（單一 `index.html`，無 build 工具），
 是[股市雷達 Hub](https://shihpc.github.io/) 的子站之一。
 
-## 六個 Tab
+## 六個 Tab（2026-07-11 改版後）
 
 | Tab | 資料源 | 內容 |
 |---|---|---|
 | 主動ETF | taiwan-flow-live-v2 `data/aetf/`（跨 repo 唯讀） | 每日投組快照、主動加減碼、進出個股、次產業流向 |
-| 融資 | FinMind `TaiwanStockMarginPurchaseShortSale` | 融資餘額增減排行、融資使用率排行 |
-| 借券 | FinMind `TaiwanStockSecuritiesLending` | 借券成交量排行（逐筆彙總） |
-| 融券借券賣出餘額 | FinMind `TaiwanDailyShortSaleBalances` | 融券餘額增減、借券賣出（SBL）餘額增減 |
-| 當沖 | FinMind `TaiwanStockDayTrading` + `TaiwanStockPrice` | 當沖金額排行、當沖比重排行 |
-| 鉅額交易 | FinMind `TaiwanStockBlockTrade` | 當日逐筆列表，依金額排序 |
+| 融資券借券 | FinMind 融資/融券/借券 + TWSE TWT72U 兩平台借券餘額 | 個股查詢（點開完整明細）＋整合排行（全市場 2200+ 檔、分組雙列表頭、虛擬捲動） |
+| 當沖 | FinMind `TaiwanStockDayTrading` + `TaiwanStockPrice` + `TradingDailyReport` | 當沖排行（含漲跌幅/振幅/分點推估） |
+| 鉅額交易 | FinMind `TaiwanStockBlockTrade`(+`BlockTradingDailyReport`) | 當日逐筆列表，同股分組、買賣方分點盡力比對 |
+| 零股 | TWSE `TWTC7U`（盤中）/`TWT53U`（盤後），公開端點免金鑰 | 盤中/盤後兩子標籤，個股成交股數/筆數/金額 |
+| 分點 | FinMind `TaiwanSecuritiesTraderInfo`＋`TradingDailyReport` 專屬 endpoint | 單點（查分點進出個股）/個股（查個股進出分點）/清單（1010 分點模糊查找） |
+
+原「融資」「融券借券賣出餘額」兩 tab 於 2026-07-11 併入「融資券借券」整合排行。
 
 ## 架構
 
-- `build_postmkt.py`：抓 FinMind 5 個 dataset 的最新交易日全市場資料，
-  各 tab 預先聚合排序（排行榜前 50 檔、鉅額全量），輸出 `data/postmkt.json`。
-  找不到最新交易日資料時自動往前回退最多 5 天。
+- `build_postmkt.py`：抓 FinMind dataset＋TWSE 公開端點的最新交易日全市場資料，
+  各 tab 預先聚合排序，輸出 `data/postmkt.json`（~2.4MB）。
+  找不到最新交易日資料時自動往前回退最多 5 天；TWSE 端點失敗重試一次後降級（缺欄警示）。
 - `.github/workflows/build.yml`：平日 21:30 台北（13:30 UTC）排程＋手動觸發，
   跑完自動 commit `data/postmkt.json`。
-- 前端不直連 FinMind（避免曝露 token），只讀靜態 JSON。
+- 預產資料的 tab 前端不直連 FinMind（token 走 Actions secret）。
+- **例外：分點 tab 的「單點/個股」是互動查詢**（無法預產 1010 分點×2215 檔組合），
+  前端直呼 FinMind `/api/v4/taiwan_stock_trading_daily_report`（CORS 開放）。
+  token 由使用者在頁面輸入一次、只存瀏覽器 localStorage，不進 repo。
 - 主動ETF tab 直接讀 taiwan-flow-live-v2 的 raw JSON，不搬遷該站管線。
+
+## 快速接手（2026-07-11）
+
+- 前端表格框架 `tbl(cols, rows, opts)`：表頭排序（`col.sortVal` 供複合欄位給原始值）、
+  分組雙列表頭（`col.g`）、加總列（`opts.totals`，sticky 在表頭下）、凍結首二欄
+  （`opts.s2`）、>200 列自動虛擬捲動。sticky 相關已知坑全記在 `<style>` 區註解：
+  border-collapse/`.tblbox` padding 與 overflow 裁切邊界差（sticky top/left 要設負 padding 值）、
+  thead 兩列要 `<tr>` 本身 sticky、rAF 在背景分頁不觸發（量測用 setTimeout、
+  虛擬捲動有 200ms 輪詢保險）。
+- TWSE 端點的「合計」市場總計列要濾掉（代號欄非 ASCII 英數），TWT72U/TWTC7U/TWT53U 都有。
+- 分點查詢聚合：張數保留小數、只在顯示時捨入（先逐列 round 再加總會偏差且讓個股
+  買賣超合計出現假非零）。
+- 未解：分點互動查詢在無 token 環境只能看到輸入提示；FinMind 個股層級維持率、
+  投信/自營商持股水位等官方未公開，明細面板已註明不提供。
 
 ## 部署設定（需手動做一次）
 
