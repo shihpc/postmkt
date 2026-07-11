@@ -3,10 +3,11 @@
 台股盤後資料的靜態儀表板（單一 `index.html`，無 build 工具），
 是[股市雷達 Hub](https://shihpc.github.io/) 的子站之一。
 
-## 六個 Tab（2026-07-11 改版後）
+## 七個 Tab（2026-07-11 改版後）
 
 | Tab | 資料源 | 內容 |
 |---|---|---|
+| 摘要分析 | 前端彙整以下各 tab ＋ 即時呼叫 Anthropic Claude API | AI 生成以查找 alpha 標的為目標的洞見（首頁預設 tab） |
 | 主動ETF | taiwan-flow-live-v2 `data/aetf/`（跨 repo 唯讀） | 每日投組快照、主動加減碼、進出個股、次產業流向 |
 | 融資券借券 | FinMind 融資/融券/借券 + TWSE TWT72U 兩平台借券餘額 | 個股查詢（點開完整明細）＋整合排行（全市場 2200+ 檔、分組雙列表頭、虛擬捲動） |
 | 當沖 | FinMind `TaiwanStockDayTrading` + `TaiwanStockPrice` + `TradingDailyReport` | 當沖排行（含漲跌幅/振幅/分點推估） |
@@ -27,6 +28,12 @@
 - **例外：分點 tab 的「單點/個股」是互動查詢**（無法預產 1010 分點×2215 檔組合），
   前端直呼 FinMind `/api/v4/taiwan_stock_trading_daily_report`（CORS 開放）。
   token 由使用者在頁面輸入一次、只存瀏覽器 localStorage，不進 repo。
+- **例外：摘要分析 tab 前端即時呼叫 Anthropic Claude API**（`insightHtml`/`runInsight`
+  /`callClaude`）。`insightGatherContext()` 把主動ETF/融借券/當沖/鉅額/零股盤中彙整成
+  ~2.4K token 精簡文字，`insightFetchBrokers()` 即時抓 4 個指定分點（9268/9800/9600/9A00），
+  組成 prompt 送 Claude（`anthropic-dangerous-direct-browser-access:true` header 開瀏覽器
+  CORS，已實測）。Anthropic token 存 localStorage `anthropic_key`，只送 Anthropic，不進 repo。
+  模型 `state.insightModel`（預設 `claude-opus-4-8`）。輸出走 `mdToHtml()` 極簡 markdown 渲染。
 - 主動ETF tab 直接讀 taiwan-flow-live-v2 的 raw JSON，不搬遷該站管線。
 
 ## 快速接手（2026-07-11）
@@ -40,8 +47,14 @@
 - TWSE 端點的「合計」市場總計列要濾掉（代號欄非 ASCII 英數），TWT72U/TWTC7U/TWT53U 都有。
 - 分點查詢聚合：張數保留小數、只在顯示時捨入（先逐列 round 再加總會偏差且讓個股
   買賣超合計出現假非零）。
+- 摘要分析：LLM 洞見機制由使用者決定用「LLM 前端即時」（見 2026-07-11 對話）；
+  system prompt 強制「只描述歷史統計傾向、非投資建議、非預測、每個觀察可追溯數據」，
+  符合工作區共同原則。這是四站摘要分析的**範本站**——其餘三站（即時類股動態、
+  盤後法人動態、新聞晨報）待範本確認後套用，尚未做。退版點：git tag `pre-insight-tab`。
 - 未解：分點互動查詢在無 token 環境只能看到輸入提示；FinMind 個股層級維持率、
   投信/自營商持股水位等官方未公開，明細面板已註明不提供。
+- 未解：摘要分析在無 Anthropic token 環境只能看到輸入提示（無法自動化驗證真實 200 回應，
+  已用 dummy key 驗證 CORS/請求格式/錯誤處理/回應解析路徑）。
 
 ## 部署設定（需手動做一次）
 
