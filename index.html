@@ -144,7 +144,7 @@ const TABS = [
 const SUBS = {
   aetf:"主動式ETF每日投組快照＋主動加減碼（資料源：taiwan-flow-live-v2，投信 16:30 揭露）。",
   lending:"借券系統(SLB)＋證商營業處所(NLB)兩平台餘額、Short Interest、融資融券、當沖、三大法人買賣超整合排行，依兩平台借券餘額排序。點個股展開完整明細。單位：張／千元／億元。",
-  daytrade:"當沖成交金額排行與當沖比重（當沖量／當日總成交量）。分點推估為估算法，非逐筆交易證據。",
+  daytrade:"當沖成交金額排行。分點推估為估算法，非逐筆交易證據。",
   block:"當日鉅額交易逐筆列表，同股票分組並附總張數/總金額；買方/賣方券商分點為盡力比對（同股同價當日多筆時可能無法唯一判定，顯示—）。類型僅「配對交易／逐筆交易」兩種，FinMind未提供單一/組合證券的區分欄位。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
@@ -537,6 +537,8 @@ function renderPM(){
       {h:"TSE(張)",g:"借券餘額",f:r=>num(r.sys_bal)},
       {h:"券商(張)",g:"借券餘額",f:r=>num(r.otc_bal)},
       {h:"合計(張)",g:"借券餘額",f:r=>num(r.plat_total)},
+      {h:"合計異動(張)",g:"借券餘額",f:r=>zh(r.plat_total_chg)},
+      {h:"合計市值(億)",g:"借券餘額",f:r=>yiK(r.plat_total_mv)},
       {h:"餘額(張)",g:"借賣",f:r=>num(r.sbl_short_bal)},
       {h:"異動(張)",g:"借賣",f:r=>zh(r.sbl_short_chg)},
       {h:"市值(億)",g:"借賣",f:r=>yiK(r.sbl_short_mv)},
@@ -545,10 +547,6 @@ function renderPM(){
       {h:"異動(張)",g:"融券",f:r=>zh(r.margin_short_chg)},
       {h:"市值(億)",g:"融券",f:r=>yiK(r.margin_short_mv)},
       {h:"異動(億)",g:"融券",f:r=>yiChgK(r.margin_short_mv_chg)},
-      {h:"餘額(張)",g:"合計",f:r=>num(r.short_total)},
-      {h:"異動(張)",g:"合計",f:r=>zh(r.short_total_chg)},
-      {h:"市值(億)",g:"合計",f:r=>yiK(r.short_total_mv)},
-      {h:"異動(億)",g:"合計",f:r=>yiChgK(r.short_total_mv_chg)},
       {h:"借賣使用率(%)",f:r=>r.usage_ratio==null?'<span class="mut">—</span>':r.usage_ratio.toFixed(2)+"%"},
       {h:"餘額(張)",g:"融資",f:r=>num(r.margin_bal)},
       {h:"異動(張)",g:"融資",f:r=>zh(r.margin_chg)},
@@ -582,8 +580,7 @@ function renderPM(){
       {h:"漲跌幅(%)",f:r=>r.chg_pct==null?'<span class="mut">—</span>':sgn(r.chg_pct,(r.chg_pct>0?"+":"")+r.chg_pct.toFixed(2))},
       {h:"振幅(%)",f:r=>r.amp_pct==null?'<span class="mut">—</span>':r.amp_pct.toFixed(2)},
       {h:"分點推估",cls:"l",f:tradersCell}];
-    html += sec("當沖金額排行", esc(t.date||"")) + tbl(cols, t.by_amount||[]);
-    html += sec("當沖比重排行","當沖量／當日總成交量 · 已濾除總量 500 張以下") + tbl(cols, t.by_ratio||[]);
+    html += sec("當沖排行", esc(t.date||"")) + tbl(cols, t.by_amount||[]);
     html += `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px">分點推估：同分點當日買量／賣量取較小值視為「有能力形成當沖」的量，`
       + `為分析常見估算法，非逐筆交易的直接證據，僅供參考。</div>`;
   } else if (state.tab === "block"){

@@ -330,7 +330,7 @@ def daytrading_broker_estimate(date: str, codes: list, close_map: dict, top_k: i
         est = [{"trader": t, "vol": round(min(b, s) / 1000),
                 "money": round(min(b, s) / 1000 * px) if px else None}
                for t, (b, s) in agg.items() if min(b, s) > 0]
-        est.sort(key=lambda x: -x["vol"])
+        est.sort(key=lambda x: -(x["money"] or 0))
         out[c] = est[:top_k]
     return out
 
