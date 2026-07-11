@@ -38,6 +38,10 @@
   .kvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 16px;font-size:.82rem}
   .kv{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid rgba(36,53,86,.4)}
   .kv .mut{white-space:nowrap}
+  /* 明細面板依資料性質分組（借券餘額/放空部位/融資/當沖/三大法人），跨滿整列寬度 */
+  .kvsec{grid-column:1/-1;color:var(--accent);font-weight:700;font-size:.76rem;
+    margin:10px 0 0;padding-top:8px;border-top:1px solid var(--line)}
+  .kvsec:first-child{margin-top:2px;padding-top:0;border-top:none}
   .msection{margin:18px 2px 6px;font-size:.98rem;font-weight:700}
   .msection::before{content:"▸";color:var(--accent);margin-right:6px;font-size:.85rem}
   .msection .n{color:var(--muted);font-weight:400;font-size:.74rem;margin-left:8px}
@@ -47,28 +51,38 @@
     padding:6px 12px 10px;margin:8px 0;overflow:auto;max-height:495px}
   /* border-collapse:collapse 會讓 position:sticky 的儲存格在多數瀏覽器算圖時
      跟相鄰儲存格的邊框/內容顯示錯位(sticky格「浮起」後collapse的邊框模型撐不住)，
-     這是sticky欄位左側會看到別欄資料透出來的根因。改用separate+0間距。 */
+     這是sticky欄位左側會看到別欄資料透出來的根因。改用separate+0間距。
+     border-bottom 改用 box-shadow(inset)畫格線：一般border在sticky格與相鄰格
+     疊圖時，各瀏覽器對「格線該歸哪一格」算法不一致，容易在接縫處算出1px縫隙
+     讓底下內容透出；box-shadow畫在自己的盒子內側，不受相鄰格影響，不會有縫。
+     will-change:transform 讓sticky格獨立成合成層：手機慣性捲動(momentum scroll)
+     時，若sticky格跟一般格在同一層合成，捲動最後一刻常有一楨no同步，讓後面
+     的欄位在sticky格左/上緣「閃」一下穿幫，這是Safari/行動瀏覽器常見sticky
+     渲染bug，強制GPU合成層可以避免。 */
   .mtable{width:100%;border-collapse:separate;border-spacing:0;font-size:.84rem}
-  .mtable th,.mtable td{padding:6px 7px;text-align:right;border-bottom:1px solid rgba(36,53,86,.5);
+  .mtable th,.mtable td{padding:6px 7px;text-align:right;box-shadow:inset 0 -1px 0 rgba(36,53,86,.5);
     white-space:nowrap;vertical-align:middle;background:var(--card)}
-  .mtable tr:last-child td{border-bottom:none}
+  .mtable tr:last-child td{box-shadow:none}
   .mtable th:first-child,.mtable td:first-child{text-align:left}
   .mtable th{color:var(--muted);font-weight:600;font-size:.74rem;cursor:pointer;user-select:none;
-    position:sticky;top:-1px;z-index:2}
+    position:sticky;top:0;z-index:2;will-change:transform}
   .mtable th:hover{color:var(--txt)}
   /* 固定第一欄（股票名稱）：只套用在一般排行榜表格，鉅額交易的rowspan合併表格
      第一格不是每列都存在，套用會讓固定欄位跟其他欄位錯位，故排除（該表格另有
-     bstick1/2/3 專屬class，見blockTradeTable()） */
-  .mtable-stickycol td:first-child, .mtable-stickycol th:first-child{position:sticky;left:0;z-index:1}
+     bstick1/2 專屬class，見blockTradeTable()） */
+  .mtable-stickycol td:first-child, .mtable-stickycol th:first-child{position:sticky;left:0;z-index:1;will-change:transform}
   .mtable-stickycol th:first-child{z-index:3}
-  /* 鉅額交易表格：前三欄(個股/總張數/總金額，rowspan合併)固定，其餘欄位可左右捲動。
-     固定寬度才能算出正確的累加left位移，用JS(blockTradeTable)動態量測較脆弱，
-     這裡改用CSS固定寬度換取可預期的sticky位移。 */
-  .bstick1,.bstick2,.bstick3{position:sticky;z-index:1}
-  .bstick1{left:0;width:96px;min-width:96px;max-width:96px}
-  .bstick2{left:96px;width:84px;min-width:84px;max-width:84px}
-  .bstick3{left:180px;width:96px;min-width:96px;max-width:96px}
-  thead .bstick1,thead .bstick2,thead .bstick3{z-index:3}
+  /* 鉅額交易表格：前兩欄(個股/張數金額合併)固定，其餘欄位可左右捲動。手機寬度有限，
+     把總張數+總金額合併成一欄兩行顯示並收窄欄寬，讓固定區佔比小一點、右側可捲動
+     欄位能多露出來。固定寬度才能算出正確的累加left位移，用JS動態量測較脆弱，
+     這裡改用CSS固定寬度換取可預期的sticky位移。靠左對齊+允許換行，避免內容在
+     窄欄裡溢出到旁邊欄位(那樣視覺上就跟穿幫一樣了)。 */
+  .mtable th.bstick1,.mtable td.bstick1,.mtable th.bstick2,.mtable td.bstick2{
+    position:sticky;z-index:1;will-change:transform;text-align:left;
+    white-space:normal;overflow:hidden;padding:5px 6px}
+  .bstick1{left:0;width:64px;min-width:64px;max-width:64px}
+  .bstick2{left:64px;width:72px;min-width:72px;max-width:72px}
+  thead .bstick1,thead .bstick2{z-index:3}
   .mtable .nm{display:block;color:var(--muted);font-size:.72rem;line-height:1.3}
   .code{font-family:"Space Mono",Consolas,monospace;font-weight:700;color:var(--accent)}
   .up{color:#ef5b5b}.down{color:#2fbf71}.mut{color:var(--muted)}
@@ -196,26 +210,36 @@ document.addEventListener("input", e => {
 
 function lendDetailHtml(r){
   const kv = (label, val) => `<div class="kv"><span class="mut">${label}</span><span>${val}</span></div>`;
+  const kvsec = t => `<div class="kvsec">${t}</div>`;
   const pct = v => v==null ? '<span class="mut">—</span>' : v.toFixed(2)+"%";
+  // 「張數（異動±X，市值Y億）」是餘額類欄位共用格式（TSE/券商/合計/借賣/融券/放空加總/融資）
+  const balFmt = (bal, chg, mv) => `${num(bal)}張（異動${zh(chg)}，市值${mv==null?'<span class="mut">—</span>':yiAbs(mv*1000)}）`;
   return `<div id="lenddd" class="mcard" style="margin:8px 0">`
     + `<div style="font-weight:700;margin-bottom:6px">${nameCell(r)} 完整明細</div>`
     + `<div class="kvgrid">`
-    + kv("借券系統餘額", `${num(r.sys_bal)}張（異動${zh(r.sys_chg)}，市值${yiAbs(r.sys_mv*1000)}）`)
-    + kv("證商營業處所餘額", `${num(r.otc_bal)}張（異動${zh(r.otc_chg)}，市值${yiAbs(r.otc_mv*1000)}）`)
-    + kv("兩平台合計", `${num(r.plat_total)}張`)
-    + kv("借券賣出(SBL)餘額", `${num(r.sbl_short_bal)}張`)
-    + kv("借券賣出當日借出/還券", `${num(r.sbl_sales)}張／${num(r.sbl_returns)}張`)
-    + kv("融券放空餘額", `${num(r.margin_short_bal)}張`)
-    + kv("放空加總", `${num(r.short_total)}張`)
-    + kv("借券賣出使用率", pct(r.usage_ratio))
-    + kv("借券成交(明細彙總)", `${num(r.lend_vol)}張・${r.lend_deals||0}筆・最高費率${r.lend_fee_max==null?"—":r.lend_fee_max.toFixed(2)+"%"}`)
-    + kv("融資買進／餘額／增減", `${r.margin_buy==null?"—":num(r.margin_buy)}張／${num(r.margin_bal)}張／${zh(r.margin_chg)}`)
+    + kvsec("借券餘額（兩平台）")
+    + kv("TSE餘額", balFmt(r.sys_bal, r.sys_chg, r.sys_mv))
+    + kv("券商餘額", balFmt(r.otc_bal, r.otc_chg, r.otc_mv))
+    + kv("兩平台合計", balFmt(r.plat_total, r.plat_total_chg, r.plat_total_mv))
+    + kvsec("放空部位")
+    + kv("借賣餘額", balFmt(r.sbl_short_bal, r.sbl_short_chg, r.sbl_short_mv))
+    + kv("融券餘額", balFmt(r.margin_short_bal, r.margin_short_chg, r.margin_short_mv))
+    + kv("放空加總", balFmt(r.short_total, r.short_total_chg, r.short_total_mv))
+    + kv("借賣使用率", pct(r.usage_ratio))
+    + kv("今日TSE", `${num(r.lend_vol)}張・${r.lend_deals||0}筆・最高費率${r.lend_fee_max==null?"—":r.lend_fee_max.toFixed(2)+"%"}`)
+    + kv("借賣當日借出/還券", `${num(r.sbl_sales)}張／${num(r.sbl_returns)}張`)
+    + kvsec("融資")
+    + kv("融資餘額", balFmt(r.margin_bal, r.margin_chg, r.margin_mv))
     + kv("融資使用率／融券使用率", `${pct(r.margin_usage)}／${pct(r.short_usage)}`)
     + kv("券資比", pct(r.credit_ratio))
     + kv("資券相抵", r.offset==null?'<span class="mut">—</span>':num(r.offset)+"張")
-    + kv("當沖金額", r.dt_amt==null?'<span class="mut">—</span>':yiAbs(r.dt_amt*1000))
-    + kv("外資／投信／自營商買賣超", `${r.foreign_net==null?"—":yiAbs(r.foreign_net*1000)}／${r.trust_net==null?"—":yiAbs(r.trust_net*1000)}／${r.dealer_net==null?"—":yiAbs(r.dealer_net*1000)}`)
-    + kv("外資持股", r.foreign_shares==null?'<span class="mut">—</span>':`${num(r.foreign_shares/1000)}張（${pct(r.foreign_ratio)}，尚可投資${pct(r.foreign_remain_ratio)}，上限${pct(r.foreign_limit_ratio)}）`)
+    + kvsec("當沖")
+    + kv("當沖", r.dt_amt==null?'<span class="mut">—</span>':`${num((r.dt_vol||0)/1000)}張・金額${yiAbs(r.dt_amt*1000)}・差額${yi(r.dt_diff*1000)}`)
+    + kvsec("三大法人／外資持股")
+    + kv("外資買賣超", `${r.foreign_net==null?"—":zh(r.foreign_vol)+"／"+yi(r.foreign_net*1000)}`)
+    + kv("投信買賣超", `${r.trust_net==null?"—":zh(r.trust_vol)+"／"+yi(r.trust_net*1000)}`)
+    + kv("自營商買賣超", `${r.dealer_net==null?"—":zh(r.dealer_vol)+"／"+yi(r.dealer_net*1000)}`)
+    + kv("外資持股", r.foreign_shares==null?'<span class="mut">—</span>':`${num(r.foreign_shares/1000)}張・市值${r.foreign_shares_mv==null?"—":yiAbs(r.foreign_shares_mv*1000)}（${pct(r.foreign_ratio)}，尚可投資${pct(r.foreign_remain_ratio)}，上限${pct(r.foreign_limit_ratio)}）`)
     + `</div>`
     + `<div class="mut" style="font-size:.72rem;margin-top:6px">點個股名稱收合。以下未提供（官方未公開個股層級資料）：融資融券維持率、投信／自營商持股水位、借券還券實際完成日期明細。</div>`
     + `</div>`;
@@ -230,7 +254,7 @@ function blockTradeTable(rows){
     const sell = r.sell_trader ? esc(r.sell_trader) : '<span class="mut">—</span>';
     return `買：${buy}<span class="nm">賣：${sell}</span>`;
   };
-  const head = `<th class="l bstick1">個股</th><th class="bstick2">總張數</th><th class="bstick3">總金額</th>`
+  const head = `<th class="l bstick1">個股</th><th class="l bstick2">張數/金額</th>`
     + `<th>類型</th><th>價格</th><th>張數</th><th>金額</th><th class="l">券商分點</th>`;
   let body = "";
   for (let i = 0; i < rows.length; i++){
@@ -240,8 +264,7 @@ function blockTradeTable(rows){
     if (isFirst){ let j = i; while (j < rows.length && rows[j].c === r.c) j++; span = j - i; }
     body += `<tr>`
       + (isFirst ? `<td class="l bstick1" rowspan="${span}">${nameCell(r)}</td>`
-        + `<td class="bstick2" rowspan="${span}">${num((r.stock_vol||0)/1000)}</td>`
-        + `<td class="bstick3" rowspan="${span}">${yiAbs(r.stock_money)}</td>` : "")
+        + `<td class="l bstick2" rowspan="${span}"><div>${num((r.stock_vol||0)/1000)}張</div><div class="nm">${yiAbs(r.stock_money)}</div></td>` : "")
       + `<td>${esc(r.type)}</td>`
       + `<td>${r.price==null?"—":r.price.toLocaleString("en-US")}</td>`
       + `<td>${num(r.vol/1000)}</td>`

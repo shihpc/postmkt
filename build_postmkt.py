@@ -193,43 +193,63 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
 
         sys_bal_v, otc_bal_v = sb.get("bal", 0), ob.get("bal", 0)
         plat_total = sys_bal_v + otc_bal_v
+        sys_chg = round(sb.get("in", 0) - sb.get("out", 0))
+        otc_chg = round(ob.get("in", 0) - ob.get("out", 0))
+        sys_mv = round(sb.get("mv", 0))
+        otc_mv = round(ob.get("mv", 0))
         sbl_short = (s.get("SBLShortSalesCurrentDayBalance") or 0) / 1000
+        sbl_short_prev = (s.get("SBLShortSalesPreviousDayBalance") or 0) / 1000
         margin_short = (s.get("MarginShortSalesCurrentDayBalance") or 0) / 1000
+        margin_short_prev = (s.get("MarginShortSalesPreviousDayBalance") or 0) / 1000
         margin_bal = m.get("MarginPurchaseTodayBalance") or 0
         margin_limit = m.get("MarginPurchaseLimit") or 0
         short_limit = (s.get("MarginShortSalesQuota") or 0) / 1000
+        margin_chg = round(margin_bal - (m.get("MarginPurchaseYesterdayBalance") or 0))
+        # 市值（千元）＝張數×收盤價；沒收盤價就不估
+        sbl_short_mv = round(sbl_short * px) if px else None
+        margin_short_mv = round(margin_short * px) if px else None
+        margin_mv = round(margin_bal * px) if px else None
 
         row = {
             "c": c, "n": nm.get(c, ""),
             # 兩平台借券餘額（張；fetch_twse_lending()已將股轉張、元轉千元）
-            "sys_bal": round(sys_bal_v), "sys_chg": round(sb.get("in", 0) - sb.get("out", 0)),
-            "sys_mv": round(sb.get("mv", 0)),
-            "otc_bal": round(otc_bal_v), "otc_chg": round(ob.get("in", 0) - ob.get("out", 0)),
-            "otc_mv": round(ob.get("mv", 0)),
-            "plat_total": round(plat_total),
-            # Short interest（放空部位）
-            "sbl_short_bal": round(sbl_short), "margin_short_bal": round(margin_short),
+            "sys_bal": round(sys_bal_v), "sys_chg": sys_chg, "sys_mv": sys_mv,
+            "otc_bal": round(otc_bal_v), "otc_chg": otc_chg, "otc_mv": otc_mv,
+            "plat_total": round(plat_total), "plat_total_chg": sys_chg + otc_chg,
+            "plat_total_mv": sys_mv + otc_mv,
+            # Short interest（放空部位：借賣＝SBL借券賣出、融券）
+            "sbl_short_bal": round(sbl_short), "sbl_short_chg": round(sbl_short - sbl_short_prev),
+            "sbl_short_mv": sbl_short_mv,
+            "margin_short_bal": round(margin_short), "margin_short_chg": round(margin_short - margin_short_prev),
+            "margin_short_mv": margin_short_mv,
             "short_total": round(sbl_short + margin_short),
+            "short_total_chg": round((sbl_short - sbl_short_prev) + (margin_short - margin_short_prev)),
+            "short_total_mv": (sbl_short_mv + margin_short_mv) if px else None,
             "usage_ratio": round(sbl_short / plat_total * 100, 2) if plat_total > 0 else None,
             # 借券賣出SBL流量明細（千元/張）
             "sbl_sales": round((s.get("SBLShortSalesShortSales") or 0) / 1000),
             "sbl_returns": round((s.get("SBLShortSalesReturns") or 0) / 1000),
-            # 借券成交明細彙總
+            # 借券成交明細彙總（今日TSE）
             "lend_vol": la.get("vol", 0), "lend_deals": la.get("deals", 0), "lend_fee_max": la.get("fee_max"),
-            # 融資融券
+            # 融資
             "margin_buy": m.get("MarginPurchaseBuy"), "margin_bal": round(margin_bal),
-            "margin_chg": round(margin_bal - (m.get("MarginPurchaseYesterdayBalance") or 0)),
+            "margin_chg": margin_chg, "margin_mv": margin_mv,
             "margin_usage": round(margin_bal / margin_limit * 100, 2) if margin_limit > 0 else None,
             "short_usage": round(margin_short / short_limit * 100, 2) if short_limit > 0 else None,
             "credit_ratio": round(margin_short / margin_bal * 100, 2) if margin_bal > 0 else None,
             "offset": m.get("OffsetLoanAndShort"),
             # 當沖（由呼叫端合併，避免這裡重複算比重分母）
-            # 三大法人買賣超金額（千元）＝股數差×收盤價÷1000
+            # 三大法人買賣超（張數：股數差÷1000；金額千元＝股數差×收盤價÷1000）
+            "foreign_vol": round(it["foreign"] / 1000),
             "foreign_net": round(it["foreign"] * px / 1000) if px else None,
+            "trust_vol": round(it["trust"] / 1000),
             "trust_net": round(it["trust"] * px / 1000) if px else None,
+            "dealer_vol": round(it["dealer"] / 1000),
             "dealer_net": round(it["dealer"] * px / 1000) if px else None,
             # 外資持股
             "foreign_shares": hd.get("ForeignInvestmentShares"),
+            "foreign_shares_mv": round(hd.get("ForeignInvestmentShares") * px / 1000)
+                if (px and hd.get("ForeignInvestmentShares") is not None) else None,
             "foreign_ratio": hd.get("ForeignInvestmentSharesRatio"),
             "foreign_remain_ratio": hd.get("ForeignInvestmentRemainRatio"),
             "foreign_limit_ratio": hd.get("ForeignInvestmentUpperLimitRatio"),
@@ -239,7 +259,14 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
     dt_by_c = {r.get("stock_id"): r for r in dt_rows}
     for row in rows_out:
         d = dt_by_c.get(row["c"])
-        row["dt_amt"] = round(((d.get("BuyAmount") or 0) + (d.get("SellAmount") or 0)) / 2 / 1000) if d else None
+        if d:
+            buy_amt = round((d.get("BuyAmount") or 0) / 1000)
+            sell_amt = round((d.get("SellAmount") or 0) / 1000)
+            row["dt_vol"] = d.get("Volume") or 0
+            row["dt_amt"] = round((buy_amt + sell_amt) / 2)
+            row["dt_diff"] = sell_amt - buy_amt
+        else:
+            row["dt_vol"] = row["dt_amt"] = row["dt_diff"] = None
 
     rows_out.sort(key=lambda x: -x["plat_total"])
     # 不截斷到TOP_N：Table1的定位是「查任一檔股票」，前端主排行榜只顯示前TOP_N，
