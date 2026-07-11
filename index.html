@@ -35,6 +35,9 @@
   .mcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 16px;
     margin:10px 0;font-size:.9rem;line-height:1.7}
   .mcard b{color:var(--txt)}
+  .kvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 16px;font-size:.82rem}
+  .kv{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid rgba(36,53,86,.4)}
+  .kv .mut{white-space:nowrap}
   .msection{margin:18px 2px 6px;font-size:.98rem;font-weight:700}
   .msection::before{content:"▸";color:var(--accent);margin-right:6px;font-size:.85rem}
   .msection .n{color:var(--muted);font-weight:400;font-size:.74rem;margin-left:8px}
@@ -87,13 +90,13 @@ const TABS = [
 const SUBS = {
   aetf:"主動式ETF每日投組快照＋主動加減碼（資料源：taiwan-flow-live-v2，投信 16:30 揭露）。",
   margin:"個股融資餘額增減排行與融資使用率（餘額／限額），單位：張。",
-  lending:"借券成交明細依股票彙總的當日借券成交量排行，單位：張。",
+  lending:"借券系統(SLB)＋證商營業處所(NLB)兩平台餘額、Short Interest、融資融券、當沖、三大法人買賣超整合排行，依兩平台借券餘額排序。點個股展開完整明細。單位：張／千元。",
   shortbal:"融券餘額與借券賣出（SBL）餘額的當日增減排行，單位：張。",
   daytrade:"當沖成交金額排行與當沖比重（當沖量／當日總成交量）。分點推估為估算法，非逐筆交易證據。",
   block:"當日鉅額交易逐筆列表，同股票分組並附總張數/總金額；買方/賣方券商分點為盡力比對（同股同價當日多筆時可能無法唯一判定，顯示—）。類型僅「配對交易／逐筆交易」兩種，FinMind未提供單一/組合證券的區分欄位。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
-const state = { tab:"aetf", openEtf:null, openSub:null, aetf:null, pm:null, pmErr:null };
+const state = { tab:"aetf", openEtf:null, openSub:null, openLend:null, aetf:null, pm:null, pmErr:null };
 
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -143,6 +146,35 @@ document.addEventListener("click", e => {
   wrap.innerHTML = tblInner(wrap.dataset.tbl);
 });
 const sec = (t,n) => `<div class="msection">${t}${n?`<span class="n">${n}</span>`:""}</div>`;
+
+// 借券tab個股明細（對應CMoney Table1）：點主表個股展開，呈現主表放不下的細項
+// （分項異動/市值、SBL流量明細、成交明細彙總、外資持股、融資融券衍生比率）。
+function lendDetailHtml(r){
+  const kv = (label, val) => `<div class="kv"><span class="mut">${label}</span><span>${val}</span></div>`;
+  const pct = v => v==null ? '<span class="mut">—</span>' : v.toFixed(2)+"%";
+  return `<div id="lenddd" class="mcard" style="margin:8px 0">`
+    + `<div style="font-weight:700;margin-bottom:6px">${nameCell(r)} 完整明細</div>`
+    + `<div class="kvgrid">`
+    + kv("借券系統餘額", `${num(r.sys_bal)}張（異動${zh(r.sys_chg)}，市值${yiAbs(r.sys_mv*1000)}）`)
+    + kv("證商營業處所餘額", `${num(r.otc_bal)}張（異動${zh(r.otc_chg)}，市值${yiAbs(r.otc_mv*1000)}）`)
+    + kv("兩平台合計", `${num(r.plat_total)}張`)
+    + kv("借券賣出(SBL)餘額", `${num(r.sbl_short_bal)}張`)
+    + kv("借券賣出當日借出/還券", `${num(r.sbl_sales)}張／${num(r.sbl_returns)}張`)
+    + kv("融券放空餘額", `${num(r.margin_short_bal)}張`)
+    + kv("放空加總", `${num(r.short_total)}張`)
+    + kv("借券賣出使用率", pct(r.usage_ratio))
+    + kv("借券成交(明細彙總)", `${num(r.lend_vol)}張・${r.lend_deals||0}筆・最高費率${r.lend_fee_max==null?"—":r.lend_fee_max.toFixed(2)+"%"}`)
+    + kv("融資買進／餘額／增減", `${r.margin_buy==null?"—":num(r.margin_buy)}張／${num(r.margin_bal)}張／${zh(r.margin_chg)}`)
+    + kv("融資使用率／融券使用率", `${pct(r.margin_usage)}／${pct(r.short_usage)}`)
+    + kv("券資比", pct(r.credit_ratio))
+    + kv("資券相抵", r.offset==null?'<span class="mut">—</span>':num(r.offset)+"張")
+    + kv("當沖金額", r.dt_amt==null?'<span class="mut">—</span>':yiAbs(r.dt_amt*1000))
+    + kv("外資／投信／自營商買賣超", `${r.foreign_net==null?"—":yiAbs(r.foreign_net*1000)}／${r.trust_net==null?"—":yiAbs(r.trust_net*1000)}／${r.dealer_net==null?"—":yiAbs(r.dealer_net*1000)}`)
+    + kv("外資持股", r.foreign_shares==null?'<span class="mut">—</span>':`${num(r.foreign_shares/1000)}張（${pct(r.foreign_ratio)}，尚可投資${pct(r.foreign_remain_ratio)}，上限${pct(r.foreign_limit_ratio)}）`)
+    + `</div>`
+    + `<div class="mut" style="font-size:.72rem;margin-top:6px">點個股名稱收合。以下未提供（官方未公開個股層級資料）：融資融券維持率、投信／自營商持股水位、借券還券實際完成日期明細。</div>`
+    + `</div>`;
+}
 
 // 鉅額交易逐筆：個股/總張數/總金額 依股票分組合併(rowspan)，其餘欄位逐筆呈現
 // （資料已依股票分組，同股票的列必連續，不做點表頭排序——排序會打散分組）。
@@ -283,13 +315,34 @@ function renderPM(){
     html += sec("融資使用率排行","餘額／限額") + tbl(cols, m.usage||[]);
   } else if (state.tab === "lending"){
     const l = d.lending || {};
-    html += sec("借券成交量排行", `${esc(l.date||"")} · 逐筆成交依股票彙總`);
+    html += sec("借券／融資融券／當沖／三大法人 整合排行", `${esc(l.date||"")} · 依兩平台借券餘額排序 · 點個股展開明細`);
+    if (l.sys_available === false || l.otc_available === false){
+      html += `<div class="empty" style="padding:10px 14px;text-align:left">⚠ TWSE兩平台借券端點本次抓取失敗，該欄位可能缺值（不影響其他欄位）。</div>`;
+    }
+    const moneyK = v => v==null ? '<span class="mut">—</span>' : sgn(v,(v>0?"+":"")+Math.round(v).toLocaleString("en-US"));
     html += tbl([
-      {h:"個股",cls:"l",f:nameCell},
-      {h:"借券量(張)",f:r=>num(r.vol)},
-      {h:"筆數",f:r=>r.deals},
-      {h:"收盤",f:r=>r.close==null?"—":r.close.toLocaleString("en-US")},
-      {h:"最高費率",f:r=>r.fee_max==null?"—":r.fee_max.toFixed(2)+"%"}], l.top||[]);
+      {h:"個股",cls:"l",f:r=>`<span class="clk ${state.openLend===r.c?"sel":""}" data-lend="${esc(r.c)}">${nameCell(r)}</span>`},
+      {h:"借券系統(張)",f:r=>num(r.sys_bal)},
+      {h:"證商處所(張)",f:r=>num(r.otc_bal)},
+      {h:"兩平台合計(張)",f:r=>num(r.plat_total)},
+      {h:"借券賣出(張)",f:r=>num(r.sbl_short_bal)},
+      {h:"融券放空(張)",f:r=>num(r.margin_short_bal)},
+      {h:"放空合計(張)",f:r=>num(r.short_total)},
+      {h:"使用率(%)",f:r=>r.usage_ratio==null?'<span class="mut">—</span>':r.usage_ratio.toFixed(2)+"%"},
+      {h:"融資餘額(張)",f:r=>num(r.margin_bal)},
+      {h:"券資比(%)",f:r=>r.credit_ratio==null?'<span class="mut">—</span>':r.credit_ratio.toFixed(2)+"%"},
+      {h:"當沖金額(千)",f:r=>r.dt_amt==null?'<span class="mut">—</span>':num(r.dt_amt)},
+      {h:"外資買賣超(千)",f:r=>moneyK(r.foreign_net)},
+      {h:"投信買賣超(千)",f:r=>moneyK(r.trust_net)},
+      {h:"自營商買賣超(千)",f:r=>moneyK(r.dealer_net)},
+    ], l.rows||[]);
+    if (state.openLend){
+      const r = (l.rows||[]).find(x=>x.c===state.openLend);
+      if (r) html += lendDetailHtml(r);
+    }
+    html += `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px">資料源：兩平台借券餘額(TWSE公開端點，非官方保證SLA)、`
+      + `融資融券/借券賣出餘額/當沖/三大法人買賣超/外資持股(FinMind)。個股融資融券維持率、投信/自營商持股水位、`
+      + `借券還券完成日期明細為官方未公開資料，查無來源，不提供估計值。</div>`;
   } else if (state.tab === "shortbal"){
     const s = d.short_balance || {};
     const cols = [
@@ -356,7 +409,10 @@ document.addEventListener("click", e=>{
   const el2 = e.target.closest(".clk[data-asub]");
   if (el2){ const v = decodeURIComponent(el2.dataset.asub);
     state.openSub = state.openSub===v ? null : v; render();
-    if (state.openSub){ const x=document.getElementById("subdd"); if(x)x.scrollIntoView({behavior:"smooth",block:"start"}); } }
+    if (state.openSub){ const x=document.getElementById("subdd"); if(x)x.scrollIntoView({behavior:"smooth",block:"start"}); } return; }
+  const el3 = e.target.closest(".clk[data-lend]");
+  if (el3){ state.openLend = state.openLend===el3.dataset.lend ? null : el3.dataset.lend; render();
+    if (state.openLend){ const x=document.getElementById("lenddd"); if(x)x.scrollIntoView({behavior:"smooth",block:"start"}); } }
 });
 
 async function loadJSON(url){
