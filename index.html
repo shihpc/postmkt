@@ -90,9 +90,33 @@
      兩個<tr>時，光th sticky會整批跟著內容捲走、完全不會黏住，連tr本身也要
      position:sticky才正常。第二列top要等於第一列實際高度(扣padding補償)，由
      fixGroupHeaderSticky()動態量測寫入；這裡的18px只是JS還沒跑之前的預設值。 */
-  .mtable-2row thead tr{position:sticky;z-index:4}
-  .mtable-2row thead tr:first-child{top:-6px}
-  .mtable-2row thead tr:nth-child(2){top:18px}
+  /* mtable-tot(加總列在表頭下方)結構跟2row一樣是thead兩列，共用同一套tr sticky規則 */
+  .mtable-2row thead tr,.mtable-tot thead tr{position:sticky;z-index:4}
+  .mtable-2row thead tr:first-child,.mtable-tot thead tr:first-child{top:-6px}
+  .mtable-2row thead tr:nth-child(2),.mtable-tot thead tr:nth-child(2){top:18px}
+  /* 加總列：視覺上跟表頭區分（亮色粗體、上下緣分隔線），不參與點擊排序 */
+  .mtable-tot tr.tot th{color:var(--txt);font-weight:700;cursor:default;
+    box-shadow:inset 0 1px 0 var(--line), inset 0 -1px 0 var(--line)}
+  /* 凍結前兩欄（分點查詢表：代號+名稱）。固定欄寬才能算第二欄left位移；
+     left含-12px的.tblbox padding補償（穿幫根因見上方註解）。前兩欄的表頭格
+     要同時sticky上+左，z-index須高於一般表頭列(4)。 */
+  .mtable-s2 th:nth-child(-n+2),.mtable-s2 td:nth-child(-n+2){
+    position:sticky;will-change:transform;z-index:2;overflow:hidden}
+  .mtable-s2 th:nth-child(1),.mtable-s2 td:nth-child(1){left:-12px;width:62px;min-width:62px;max-width:62px}
+  .mtable-s2 th:nth-child(2),.mtable-s2 td:nth-child(2){left:50px;width:92px;min-width:92px;max-width:92px;white-space:normal}
+  .mtable-s2 thead th:nth-child(-n+2){z-index:5}
+  /* 子標籤列（零股盤中/盤後、分點單點/個股/清單）與查詢輸入列 */
+  .subtabs{display:flex;gap:6px;margin:10px 0 4px;flex-wrap:wrap}
+  .subtab{background:var(--chip);border:1px solid var(--line);border-radius:9px;padding:5px 12px;
+    font-size:.82rem;color:var(--muted);cursor:pointer;user-select:none;transition:.15s}
+  .subtab:hover{border-color:#33507e}
+  .subtab.active{color:var(--txt);border-color:var(--accent);font-weight:650}
+  .qrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .qrow input{flex:1;min-width:140px;background:var(--bg);border:1px solid var(--line);color:var(--txt);
+    border-radius:9px;padding:8px 12px;font-size:.88rem;outline:none}
+  .qbtn{background:var(--card-hover);border:1px solid var(--accent);color:var(--txt);border-radius:9px;
+    padding:7px 16px;font-size:.86rem;cursor:pointer;user-select:none;white-space:nowrap}
+  .qbtn:hover{background:#24365c}
   /* 鉅額交易表格：前兩欄(個股/張數金額合併)固定，其餘欄位可左右捲動。手機寬度有限，
      把總張數+總金額合併成一欄兩行顯示並收窄欄寬，讓固定區佔比小一點、右側可捲動
      欄位能多露出來。固定寬度才能算出正確的累加left位移，用JS動態量測較脆弱，
@@ -140,15 +164,19 @@
 "use strict";
 const TABS = [
   ["aetf","主動ETF"],["lending","融資券借券"],["daytrade","當沖"],["block","鉅額交易"],
+  ["oddlot","零股"],["broker","分點"],
 ];
 const SUBS = {
   aetf:"主動式ETF每日投組快照＋主動加減碼（資料源：taiwan-flow-live-v2，投信 16:30 揭露）。",
   lending:"借券系統(SLB)＋證商營業處所(NLB)兩平台餘額、Short Interest、融資融券、當沖、三大法人買賣超整合排行，依兩平台借券餘額排序。點個股展開完整明細。單位：張／千元／億元。",
   daytrade:"當沖成交金額排行。分點推估為估算法，非逐筆交易證據。",
   block:"當日鉅額交易逐筆列表，同股票分組並附總張數/總金額；買方/賣方券商分點為盡力比對（同股同價當日多筆時可能無法唯一判定，顯示—）。類型僅「配對交易／逐筆交易」兩種，FinMind未提供單一/組合證券的區分欄位。",
+  oddlot:"零股交易行情（TWSE公開端點）：盤中零股／盤後零股，依個股呈現成交股數、筆數、金額。單位：股／元。",
+  broker:"券商分點進出（FinMind TradingDailyReport，每交易日約21:00更新）。單點＝查一個分點當日全部進出個股；個股＝查一檔股票當日全部進出分點；清單＝全部分點代號對照。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
-const state = { tab:"aetf", openEtf:null, openSub:null, openLend:null, lendQuery:"", aetf:null, pm:null, pmErr:null };
+const state = { tab:"aetf", openEtf:null, openSub:null, openLend:null, lendQuery:"",
+  oddSub:"intraday", bkSub:"branch", bkListQuery:"", aetf:null, pm:null, pmErr:null };
 
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -175,11 +203,14 @@ const tblCellVal = t => {
 // 完整全部標的(排序/搜尋都吃完整o.rows，只有『同時掛在DOM上的列數』變少)。
 const VIRTUAL_THRESHOLD = 200;
 const VIRTUAL_BUFFER = 15;
-function tbl(cols, rows){
+// opts（可選）：totals=各欄加總列的cell HTML陣列（顯示在表頭下方、跟表頭一起
+// sticky、不參與排序）；s2=true時凍結前兩欄（代號+名稱，配合.mtable-s2固定欄寬）。
+function tbl(cols, rows, opts){
   if (!rows || !rows.length) return `<div class="empty">無資料</div>`;
   const id = "tb" + (++TBLID);
   TBLS[id] = { cols, rows: [...rows], sort: { i: null, d: 1 },
-    virtual: rows.length > VIRTUAL_THRESHOLD, rowH: 45, winStart: 0 };
+    virtual: rows.length > VIRTUAL_THRESHOLD, rowH: 45, winStart: 0,
+    totals: (opts && opts.totals) || null, s2: !!(opts && opts.s2) };
   return `<div class="tblbox" data-tbl="${id}">${tblInner(id)}</div>`;
 }
 // cols可選帶g(分組名)：有g的欄位在表頭分兩列呈現（第一列分組跨欄、第二列個別
@@ -207,7 +238,7 @@ function tblBodyHtml(id){
   return html;
 }
 function tblInner(id){
-  const { cols, rows, sort } = TBLS[id];
+  const { cols, rows, sort, totals, s2 } = TBLS[id];
   const hasGroups = cols.some(c => c.g);
   // 分組交界(含「有分組→無分組」「無分組→有分組」「不同分組相鄰」)畫一條直向格線，
   // 避免相鄰分組的欄位混在一起分不清楚。i===0不算交界(表格最左緣不用畫線)。
@@ -229,11 +260,17 @@ function tblInner(id){
     }
     head = `<tr>${row1}</tr><tr>${row2}</tr>`;
   }
+  // 加總列放thead（跟表頭一起sticky、排序重繪body時不動）。用th但不給data-i
+  // ——sort的click handler認data-i，所以加總列點了不會觸發排序。
+  if (totals){
+    head += `<tr class="tot">` + totals.map((h,i)=>`<th class="${clsOf(cols[i],i)}">${h}</th>`).join("") + `</tr>`;
+  }
+  const twoRows = hasGroups || !!totals;
   const body = tblBodyHtml(id);
-  const table = `<table class="mtable mtable-stickycol${hasGroups?" mtable-2row":""}"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  const table = `<table class="mtable mtable-stickycol${hasGroups?" mtable-2row":""}${totals?" mtable-tot":""}${s2?" mtable-s2":""}"><thead>${head}</thead><tbody>${body}</tbody></table>`;
   // 用setTimeout而非requestAnimationFrame觸發量測：rAF在部分無頭/背景分頁環境
   // 完全不會執行，這兩個量測都需要保證真的跑到，setTimeout(fn,0)沒有這個問題。
-  if (hasGroups) setTimeout(() => fixGroupHeaderSticky(id), 0);
+  if (twoRows) setTimeout(() => fixGroupHeaderSticky(id), 0);
   if (TBLS[id].virtual) setTimeout(() => initVirtualScroll(id), 0);
   return table;
 }
@@ -590,9 +627,188 @@ function renderPM(){
     const b = d.blocktrade || {};
     html += sec("鉅額交易逐筆", `${esc(b.date||"")} · 共 ${(b.rows||[]).length} 筆 · 同股票分組、組間依總金額排序`);
     html += blockTradeTable(b.rows||[]);
+  } else if (state.tab === "oddlot"){
+    const o = d.oddlot || {};
+    html += `<div class="subtabs">` + [["intraday","盤中"],["after","盤後"]].map(([k,l])=>
+      `<div class="subtab ${state.oddSub===k?"active":""}" data-oddsub="${k}">${l}</div>`).join("") + `</div>`;
+    const cur = o[state.oddSub] || {};
+    const cols = [
+      {h:"個股",cls:"l",f:nameCell},
+      {h:"成交股數",f:r=>num(r.sh)},
+      {h:"成交筆數",f:r=>num(r.deals)},
+      {h:"成交金額(元)",f:r=>num(r.amt)}];
+    html += sec(state.oddSub==="intraday"?"盤中零股":"盤後零股", `${esc(cur.date||"")} · 依成交金額排序 · 點表頭可再排序`);
+    html += tbl(cols, cur.rows||[]);
+  } else if (state.tab === "broker"){
+    html += brokerTabHtml(d);
   }
   main.innerHTML = html || `<div class="empty">無資料</div>`;
 }
+
+// ---------- 分點 tab（單點/個股/清單） ----------
+// 個股/單點是互動查詢：靜態站無法預產「所有分點×所有個股」組合（1010分點×2215檔），
+// 由前端直呼FinMind專屬endpoint（CORS開放）。token由使用者自行輸入一次、只存瀏覽器
+// localStorage，不進repo/不上傳任何第三方（只隨查詢送給FinMind本身）。
+const fmToken = () => localStorage.getItem("fm_token") || "";
+const BK_RES = { stock:null, branch:null }; // 查詢結果快取（per 子標籤）
+let BK_LOADING = null; // "stock"|"branch"|null
+const wanF = v => Math.round(v/1e4).toLocaleString("en-US");            // 元→萬（無正負色）
+const wanS = v => { const r = Math.round(v/1e4); return sgn(r,(r>0?"+":"")+r.toLocaleString("en-US")); }; // 元→萬（帶正負色，先捨入再判正負，避免浮點微塵給出假正負號）
+const zhF = v => Math.round(v).toLocaleString("en-US");                 // 張（無正負色）
+const zhS = v => { const r = Math.round(v); return sgn(r,(r>0?"+":"")+r.toLocaleString("en-US")); };      // 張（帶正負色，同上）
+function brokerTabHtml(d){
+  const bk = d.brokers || {};
+  let h = `<div class="subtabs">` + [["branch","單點"],["stock","個股"],["list","清單"]].map(([k,l])=>
+    `<div class="subtab ${state.bkSub===k?"active":""}" data-bksub="${k}">${l}</div>`).join("") + `</div>`;
+  if (state.bkSub === "list"){
+    h += sec("券商分點清單", `共 ${(bk.list||[]).length} 個分點 · 輸入名稱模糊查找 · 點列可跳到「單點」查該分點進出`);
+    h += `<div class="mcard" style="padding:10px 14px"><input id="bkListQ" type="search" `
+      + `placeholder="🔍 輸入券商或分點名稱（如：凱基台北、摩根）…" value="${esc(state.bkListQuery||"")}" `
+      + `style="width:100%;background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:8px 12px;font-size:.88rem;outline:none"></div>`;
+    h += `<div id="bkListArea">${bkListTableHtml(bk.list||[])}</div>`;
+    return h;
+  }
+  const kind = state.bkSub; // "branch" | "stock"
+  const isBranch = kind === "branch";
+  // token 輸入區（無token時顯示；有token顯示已設定+可更換）
+  if (!fmToken()){
+    h += `<div class="mcard" style="font-size:.82rem">此功能即時查詢 FinMind API，需要你自己的 FinMind token（Sponsor等級）。`
+      + `token 只儲存在你這台瀏覽器的 localStorage，不會寫入網站或傳給 FinMind 以外的任何地方。`
+      + `<div class="qrow" style="margin-top:8px"><input id="bkTok" type="password" placeholder="貼上 FinMind API token…">`
+      + `<span class="qbtn" data-bktoksave>儲存</span></div></div>`;
+  }
+  h += sec(isBranch?"單點進出":"個股分點進出",
+    `${esc(bk.date||"")} · ${isBranch?"輸入券商分點代號（見「清單」標籤），查該分點當日全部進出個股":"輸入股票代號，查該股當日全部進出分點"}`);
+  h += `<div class="mcard" style="padding:10px 14px"><div class="qrow">`
+    + `<input id="bkQ_${kind}" type="search" placeholder="${isBranch?"分點代號，如 9268、1560":"股票代號，如 2330"}" value="${esc((BK_RES[kind]&&BK_RES[kind].id)||"")}">`
+    + `<span class="qbtn" data-bkgo="${kind}">查詢</span>`
+    + (fmToken()?`<span class="mut" style="font-size:.74rem;cursor:pointer" data-bktokclear>token已設定（點此清除）</span>`:"")
+    + `</div></div>`;
+  if (BK_LOADING === kind) h += `<div class="empty">查詢中…</div>`;
+  else if (BK_RES[kind] && BK_RES[kind].error) h += `<div class="empty">查詢失敗：${esc(BK_RES[kind].error)}</div>`;
+  else if (BK_RES[kind]) h += bkResultTableHtml(BK_RES[kind]);
+  return h;
+}
+function bkListTableHtml(list){
+  // 模糊比對：先剝掉兩邊的分隔符（清單名稱是「凱基-台北」帶連字號，使用者
+  // 多半輸入「凱基台北」）。\W在JS是ASCII-only會把中文也剝掉，要用\p{L}\p{N}。
+  const norm = s => String(s||"").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  const q = norm(state.bkListQuery);
+  const rows = q ? list.filter(x => norm(x.name).includes(q) || norm(x.id).includes(q)) : list;
+  if (!rows.length) return `<div class="empty">查無符合「${esc(state.bkListQuery)}」的分點</div>`;
+  return tbl([
+    {h:"代號",cls:"l",f:r=>`<span class="clk" data-bkjump="${esc(r.id)}"><span class="code">${esc(r.id)}</span></span>`},
+    {h:"分點名稱",cls:"l",f:r=>`<span class="clk" data-bkjump="${esc(r.id)}">${esc(r.name)}</span>`},
+    {h:"地址",cls:"l",f:r=>esc(r.addr||"")}], rows);
+}
+function bkResultTableHtml(res){
+  const rows = res.rows;
+  if (!rows.length) return `<div class="empty">「${esc(res.id)}」${res.kind==="branch"?"該分點":"該股"}當日（${esc(res.date)}）查無進出資料</div>`;
+  const t = res.totals;
+  const isBranch = res.kind === "branch";
+  const cols = [
+    {h:isBranch?"代號":"券商代號",cls:"l",f:r=>`<span class="code">${esc(r.id)}</span>`},
+    {h:isBranch?"個股名稱":"分點名稱",cls:"l",f:r=>esc(r.name||"")},
+    {h:"買(張)",f:r=>zhF(r.b_sh),sortVal:r=>r.b_sh},
+    {h:"賣(張)",f:r=>zhF(r.s_sh),sortVal:r=>r.s_sh},
+    {h:"買賣超(張)",f:r=>zhS(r.b_sh-r.s_sh),sortVal:r=>r.b_sh-r.s_sh},
+    {h:"買金額(萬)",f:r=>wanF(r.b_amt),sortVal:r=>r.b_amt},
+    {h:"賣金額(萬)",f:r=>wanF(r.s_amt),sortVal:r=>r.s_amt},
+    {h:"買賣超金額(萬)",f:r=>wanS(r.b_amt-r.s_amt),sortVal:r=>r.b_amt-r.s_amt},
+    {h:"買加賣(萬)",f:r=>wanF(r.b_amt+r.s_amt),sortVal:r=>r.b_amt+r.s_amt}];
+  const totals = ["合計", `${rows.length}${isBranch?"檔":"分點"}`,
+    zhF(t.b_sh), zhF(t.s_sh), zhS(t.b_sh-t.s_sh),
+    wanF(t.b_amt), wanF(t.s_amt), wanS(t.b_amt-t.s_amt), wanF(t.b_amt+t.s_amt)];
+  let h = sec(`${esc(res.id)} ${esc(res.name||"")}`, `${esc(res.date)} · ${rows.length} ${isBranch?"檔個股":"個分點"} · 依買加賣金額排序 · 點表頭可再排序`);
+  h += tbl(cols, rows, {totals, s2:true});
+  h += `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px">金額＝Σ(各價位成交價×股數)，單位萬元；張數＝股數/1000四捨五入（零股會顯示為0張但金額仍計入）。</div>`;
+  return h;
+}
+async function bkQuery(kind){
+  const inp = document.getElementById("bkQ_"+kind);
+  const id = (inp ? inp.value : "").trim();
+  if (!id) return;
+  if (!fmToken()){ alert("請先輸入並儲存 FinMind token"); return; }
+  const bk = (state.pm && state.pm.brokers) || {};
+  const date = bk.date || "";
+  BK_LOADING = kind; render();
+  try{
+    const p = new URLSearchParams({ dataset:"TaiwanStockTradingDailyReport", date, token: fmToken() });
+    p.set(kind==="stock" ? "data_id" : "securities_trader_id", id);
+    const r = await fetch("https://api.finmindtrade.com/api/v4/taiwan_stock_trading_daily_report?"+p.toString());
+    const j = await r.json();
+    if (!r.ok || (j.status && j.status !== 200)) throw new Error(j.msg || ("HTTP "+r.status));
+    const raw = j.data || [];
+    // 原始為 分點×股票×價位 明細（buy/sell單位=股），聚合成每列一個對象：
+    // 單點查詢→依股票聚合；個股查詢→依分點聚合。金額=Σ(價×股數)，元。
+    const agg = new Map();
+    for (const x of raw){
+      const key = kind==="branch" ? x.stock_id : x.securities_trader_id;
+      let o = agg.get(key);
+      if (!o){
+        o = { id:key, name: kind==="branch" ? (BK_NM[key]||"") : (x.securities_trader||""),
+              b_sh:0, s_sh:0, b_amt:0, s_amt:0 };
+        agg.set(key, o);
+      }
+      o.b_sh += (x.buy||0)/1000; o.s_sh += (x.sell||0)/1000;
+      o.b_amt += (x.buy||0)*(x.price||0); o.s_amt += (x.sell||0)*(x.price||0);
+    }
+    // b_sh/s_sh保留原始小數（零股），顯示時才捨入。若在這裡先逐列round再加總，
+    // 合計會偏離真值（實測差52張），且個股的買賣超合計會出現假的非零值
+    // （一檔股票全市場買股數必等於賣股數，合計買賣超必為0）。
+    const rows = [...agg.values()];
+    rows.sort((a,b) => (b.b_amt+b.s_amt)-(a.b_amt+a.s_amt));
+    const totals = rows.reduce((t,o)=>({b_sh:t.b_sh+o.b_sh, s_sh:t.s_sh+o.s_sh,
+      b_amt:t.b_amt+o.b_amt, s_amt:t.s_amt+o.s_amt}), {b_sh:0,s_sh:0,b_amt:0,s_amt:0});
+    const name = kind==="branch"
+      ? ((bk.list||[]).find(x=>x.id===id)||{}).name || ""
+      : (BK_NM[id]||"");
+    BK_RES[kind] = { kind, id, name, date, rows, totals };
+  }catch(e){
+    BK_RES[kind] = { kind, id, date, error: String(e.message||e), rows:[], totals:null };
+  }
+  BK_LOADING = null; render();
+}
+// 股票代號→名稱對照：從 postmkt.json 現成資料建（零股涵蓋全上市含ETF，最完整；
+// 借券rows補洞），不用另外抓 TaiwanStockInfo
+let BK_NM = {};
+function buildBkNm(){
+  const d = state.pm; if (!d) return;
+  BK_NM = {};
+  for (const src of [((d.oddlot||{}).intraday||{}).rows, ((d.oddlot||{}).after||{}).rows, (d.lending||{}).rows])
+    for (const r of src||[]) if (r.c && !BK_NM[r.c]) BK_NM[r.c] = r.n || "";
+}
+document.addEventListener("click", e => {
+  const st = e.target.closest("[data-oddsub]");
+  if (st){ state.oddSub = st.dataset.oddsub; render(); return; }
+  const sb = e.target.closest("[data-bksub]");
+  if (sb){ state.bkSub = sb.dataset.bksub; render(); return; }
+  const go = e.target.closest("[data-bkgo]");
+  if (go){ bkQuery(go.dataset.bkgo); return; }
+  const sv = e.target.closest("[data-bktoksave]");
+  if (sv){ const i = document.getElementById("bkTok");
+    if (i && i.value.trim()){ localStorage.setItem("fm_token", i.value.trim()); render(); } return; }
+  const cl = e.target.closest("[data-bktokclear]");
+  if (cl){ localStorage.removeItem("fm_token"); render(); return; }
+  const jp = e.target.closest("[data-bkjump]");
+  if (jp){ state.bkSub = "branch"; render();
+    const i = document.getElementById("bkQ_branch"); if (i){ i.value = jp.dataset.bkjump; bkQuery("branch"); } return; }
+});
+// 清單模糊查找：跟個股查詢(lendQ)同一套路——只更新結果區塊，不整頁重render，
+// 否則每打一個字輸入框就失焦。
+document.addEventListener("input", e => {
+  if (e.target.id !== "bkListQ") return;
+  state.bkListQuery = e.target.value;
+  const area = document.getElementById("bkListArea");
+  if (area && state.pm) area.innerHTML = bkListTableHtml((state.pm.brokers||{}).list||[]);
+});
+// Enter 直接查詢
+document.addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  if (e.target.id === "bkQ_branch") bkQuery("branch");
+  else if (e.target.id === "bkQ_stock") bkQuery("stock");
+  else if (e.target.id === "bkTok"){ const b=document.querySelector("[data-bktoksave]"); if(b) b.click(); }
+});
 
 // ---------- 共用 ----------
 function renderStats(){
@@ -646,7 +862,7 @@ async function load(){
     state.aetf = o;
   })();
   const pPm = (async ()=>{
-    try{ state.pm = await loadJSON("data/postmkt.json?t="+t); }
+    try{ state.pm = await loadJSON("data/postmkt.json?t="+t); buildBkNm(); }
     catch(e){ state.pmErr = e; }
   })();
   pAetf.then(render); pPm.then(render);

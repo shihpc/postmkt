@@ -72,15 +72,25 @@ def fetch_daytrading(base_date: dt.date) -> tuple[str, list, list]:
 def fetch_twse_lending(date: str, select_type: str) -> dict:
     """TWSE公開JSON端點（免金鑰）：借券系統(SLB)/證商營業處所(NLB)借券餘額表，全市場單次查詢。
     見 docs/cmoney-sbl-mapping-research.md 2.2節，date=YYYY-MM-DD可直接傳、TWSE自動轉換。
-    此端點無正式SLA保證，失敗時回空dict，呼叫端不應讓整個管線因此中斷。"""
-    try:
-        r = requests.get("https://www.twse.com.tw/rwd/zh/lending/TWT72U",
-                          params={"date": date.replace("-", ""), "selectType": select_type, "response": "json"},
-                          timeout=30)
-        r.raise_for_status()
-        j = r.json()
-    except Exception as e:
-        print(f"  TWSE {select_type} 抓取失敗（不影響其餘欄位）：{e}", flush=True)
+    此端點無正式SLA保證，失敗時回空dict，呼叫端不應讓整個管線因此中斷。
+    重試一次（間隔5秒）：實測過暫時性失敗讓整批sys_bal歸零、排行整個變形，
+    多一次重試能擋掉大部分瞬斷。"""
+    j = None
+    for attempt in range(2):
+        try:
+            r = requests.get("https://www.twse.com.tw/rwd/zh/lending/TWT72U",
+                              params={"date": date.replace("-", ""), "selectType": select_type, "response": "json"},
+                              timeout=30)
+            r.raise_for_status()
+            j = r.json()
+            break
+        except Exception as e:
+            print(f"  TWSE {select_type} 抓取失敗（第{attempt+1}次）：{e}", flush=True)
+            if attempt == 0:
+                import time
+                time.sleep(5)
+    if j is None:
+        print(f"  TWSE {select_type} 兩次皆失敗（該欄位缺值，不影響其餘欄位）", flush=True)
         return {}
     def num(s):
         try:
@@ -100,6 +110,64 @@ def fetch_twse_lending(date: str, select_type: str) -> dict:
         out[c] = {"prev": num(row[2]) / 1000, "in": num(row[3]) / 1000, "out": num(row[4]) / 1000,
                   "bal": num(row[5]) / 1000, "mv": num(row[7]) / 1000}
     return out
+
+
+def fetch_twse_oddlot(base_date: dt.date, report: str) -> tuple[str, list]:
+    """TWSE 零股行情單公開端點（免金鑰）：TWTC7U=盤中零股、TWT53U=盤後零股。
+    兩者都在 rwd/zh/afterTrading/ 下、支援 date 參數查歷史；從 base_date 往前
+    回退找有資料的交易日（同 fetch_latest 的回退邏輯）。無正式SLA，失敗回空。"""
+    for back in range(MAX_BACK_DAYS + 1):
+        d = base_date - dt.timedelta(days=back)
+        try:
+            r = requests.get(f"https://www.twse.com.tw/rwd/zh/afterTrading/{report}",
+                             params={"date": d.strftime("%Y%m%d"), "response": "json"}, timeout=30)
+            r.raise_for_status()
+            j = r.json()
+        except Exception as e:
+            print(f"  TWSE {report} {d} 抓取失敗：{e}", flush=True)
+            continue
+        if j.get("stat") == "OK" and j.get("data"):
+            print(f"  TWSE {report}: {d} -> {len(j['data'])} 筆")
+            return d.isoformat(), j["data"]
+    print(f"  TWSE {report}: {base_date} 起回退 {MAX_BACK_DAYS} 天皆無資料")
+    return "", []
+
+
+def build_oddlot(date_intra: str, rows_intra: list, date_after: str, rows_after: list) -> dict:
+    """零股tab：盤中(TWTC7U)/盤後(TWT53U)，皆取前5欄=代號/名稱/成交股數/筆數/金額。
+    盤中版多的四個價格欄不取（規格只要股數/筆數/金額）。只留成交股數>0，
+    預設依金額排序（前端表頭仍可再排序）。單位：股／元（原始單位，不轉換）。"""
+    def parse(rows):
+        out = []
+        for row in rows:
+            c = str(row[0] or "").strip()
+            if not c.isascii() or not c.isalnum():
+                continue  # 排除「合計」市場總計列（代號欄空白/中文，同TWT72U的已知坑）
+            def num(i):
+                try:
+                    return float(str(row[i]).replace(",", ""))
+                except (TypeError, ValueError):
+                    return 0.0
+            sh = num(2)
+            if sh <= 0:
+                continue
+            out.append({"c": c, "n": str(row[1]).strip(),
+                        "sh": round(sh), "deals": round(num(3)), "amt": round(num(4))})
+        out.sort(key=lambda x: -x["amt"])
+        return out
+    return {"intraday": {"date": date_intra, "rows": parse(rows_intra)},
+            "after": {"date": date_after, "rows": parse(rows_after)}}
+
+
+def build_traders(trade_date: str) -> dict:
+    """分點tab「清單」：全部券商分點代號/名稱/地址（TaiwanSecuritiesTraderInfo，Free）。
+    date 給前端「個股/單點」互動查詢當預設查詢日（TradingDailyReport每交易日21:00更新）。"""
+    rows = api_get("TaiwanSecuritiesTraderInfo")
+    out = [{"id": r.get("securities_trader_id") or "", "name": r.get("securities_trader") or "",
+            "addr": r.get("address") or ""} for r in rows]
+    out.sort(key=lambda x: x["id"])
+    print(f"  TaiwanSecuritiesTraderInfo: {len(out)} 分點")
+    return {"date": trade_date, "list": out}
 
 
 def stock_names() -> dict:
@@ -448,6 +516,8 @@ def main() -> None:
     d_block, r_block = fetch_latest("TaiwanStockBlockTrade", today)
     d_inst, r_inst = fetch_latest("TaiwanStockInstitutionalInvestorsBuySell", today)
     d_hold, r_hold = fetch_latest("TaiwanStockShareholding", today)
+    d_oddi, r_oddi = fetch_twse_oddlot(today, "TWTC7U")
+    d_odda, r_odda = fetch_twse_oddlot(today, "TWT53U")
 
     dates = [d for d in (d_margin, d_lend, d_short, d_dt, d_block, d_inst, d_hold) if d]
     latest = max(dates) if dates else ""
@@ -470,6 +540,10 @@ def main() -> None:
         "short_balance": build_short_balance(d_short, r_short, nm),
         "daytrading": build_daytrading(d_dt, r_dt, r_price, nm),
         "blocktrade": build_blocktrade(d_block, r_block, nm),
+        "oddlot": build_oddlot(d_oddi, r_oddi, d_odda, r_odda),
+        # 分點互動查詢（個股/單點）由前端直呼FinMind（TradingDailyReport 21:00更新，
+        # 跟當沖同源），預設查詢日跟當沖對齊
+        "brokers": build_traders(d_dt or latest),
     }
 
     dst = ROOT / "data" / "postmkt.json"
