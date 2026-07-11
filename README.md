@@ -36,7 +36,7 @@
   模型 `state.insightModel`（預設 `claude-opus-4-8`）。輸出走 `mdToHtml()` 極簡 markdown 渲染。
 - 主動ETF tab 直接讀 taiwan-flow-live-v2 的 raw JSON，不搬遷該站管線。
 
-## 快速接手（2026-07-11）
+## 快速接手（2026-07-12）
 
 - 前端表格框架 `tbl(cols, rows, opts)`：表頭排序（`col.sortVal` 供複合欄位給原始值）、
   分組雙列表頭（`col.g`）、加總列（`opts.totals`，sticky 在表頭下）、凍結首二欄
@@ -49,8 +49,15 @@
   買賣超合計出現假非零）。
 - 摘要分析：LLM 洞見機制由使用者決定用「LLM 前端即時」（見 2026-07-11 對話）；
   system prompt 強制「只描述歷史統計傾向、非投資建議、非預測、每個觀察可追溯數據」，
-  符合工作區共同原則。這是四站摘要分析的**範本站**——其餘三站（即時類股動態、
-  盤後法人動態、新聞晨報）待範本確認後套用，尚未做。退版點：git tag `pre-insight-tab`。
+  符合工作區共同原則。本站是四站摘要分析的**範本站**，套用已完成（2026-07-12）：
+  即時類股動態（taiwan-flow-live-v2）與新聞晨報（taiwan-stock-news）已各自新增同框架 tab；
+  盤後法人動態（taiwan-flows）**不加 tab、該站零改動**，其法人資料改併入本站 insight——
+  `TF_BASE` 常數（`raw.githubusercontent.com/shihpc/taiwan-flows/main/data`）、`load()`
+  平行抓 `latest.json` 存 `state.tf`（失敗不擋），`insightGatherContext()` 新增
+  「三大法人買賣超」段（外資買超前10/賣超前6＋台指期未平倉、投信買超前10/賣超前6，
+  dlabel 跨日警告自動生效）。SYS prompt 未改。退版點：git tag `pre-insight-tab`。
+- 待辦（暫緩）：回測模組（nightly pipeline 累積歷史→前向報酬勝率餵 prompt），
+  使用者 2026-07-11 決定暫緩，規格未定義。
 - 未解：分點互動查詢在無 token 環境只能看到輸入提示；FinMind 個股層級維持率、
   投信/自營商持股水位等官方未公開，明細面板已註明不提供。
 - 未解：摘要分析在無 Anthropic token 環境只能看到輸入提示（無法自動化驗證真實 200 回應，

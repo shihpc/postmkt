@@ -183,7 +183,7 @@ const TABS = [
   ["oddlot","零股"],["broker","分點"],
 ];
 const SUBS = {
-  insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、只存本機瀏覽器。非投資建議、非預測，僅描述歷史統計傾向。",
+  insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、只存本機瀏覽器。非投資建議、非預測，僅描述歷史統計傾向。",
   aetf:"主動式ETF每日投組快照＋主動加減碼（資料源：taiwan-flow-live-v2，投信 16:30 揭露）。",
   lending:"借券系統(SLB)＋證商營業處所(NLB)兩平台餘額、Short Interest、融資融券、當沖、三大法人買賣超整合排行，依兩平台借券餘額排序。點個股展開完整明細。單位：張／千元／億元。",
   daytrade:"當沖成交金額排行。分點推估為估算法，非逐筆交易證據。",
@@ -192,11 +192,13 @@ const SUBS = {
   broker:"券商分點進出（FinMind TradingDailyReport，每交易日約21:00更新）。單點＝查一個分點當日全部進出個股；個股＝查一檔股票當日全部進出分點；清單＝全部分點代號對照。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
+// 盤後法人動態站（taiwan-flows）的資料：三大法人買賣超排行＋外資台指期未平倉，平日21:00更新
+const TF_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flows/main/data";
 // 摘要分析要分析的固定分點（使用者指定）：9268凱基台北、9800元大、9600富邦、9A00永豐金
 const INSIGHT_BROKERS = ["9268","9800","9600","9A00"];
 const INSIGHT_MODELS = [["claude-opus-4-8","Opus 4.8（最佳判讀，約NT$3/次）"],["claude-sonnet-5","Sonnet 5（近Opus、約半價更快）"]];
 const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQuery:"",
-  oddSub:"intraday", bkSub:"branch", bkListQuery:"", aetf:null, pm:null, pmErr:null,
+  oddSub:"intraday", bkSub:"branch", bkListQuery:"", aetf:null, pm:null, pmErr:null, tf:null,
   insight:null, insightLoading:false, insightErr:null,
   insightModel: localStorage.getItem("insight_model") || "claude-opus-4-8" };
 
@@ -934,6 +936,27 @@ function insightGatherContext(){
     const subs = (a.diff.subs||[]).slice(0,6).map(s=>`${cleanSub(s.name)} ${yiY(s.val)}億`).join("；");
     parts.push(`${dlabel("主動ETF 主動加減碼", aDate)}\n重點：${adv.map(x=>x.replace(/<[^>]+>/g,"")).join("；")||"—"}\n進出個股(前12)：${st}\n次產業流向(前6)：${subs}`);
   }
+  // 三大法人買賣超（跨repo：盤後法人動態站 taiwan-flows；資料缺漏時整段略過）
+  const tf = state.tf || {};
+  const fPg = (tf.pages && tf.pages.foreign) || null;
+  const tPg = (tf.pages && tf.pages.trust) || null;
+  if (fPg || tPg){
+    const tfYi = v => v==null ? "—" : ((v>0?"+":"")+(v/1e5).toFixed(1)); // 千元→億(帶正負號)
+    const pct = v => v==null ? "—" : (v>0?"+":"")+v.toFixed(1);
+    const row = r => `${r.code}${r.name||""} ${tfYi(r.net_amt_k)}億/${num(r.net_lots)}張 持股${r.hold_pct==null?"—":r.hold_pct.toFixed(1)}% 漲跌${pct(r.chg_pct)}%`;
+    const seg = [];
+    if (fPg){
+      seg.push(`外資買超前10：${(fPg.buy_by_amt||[]).slice(0,10).map(row).join("；")||"—"}`);
+      seg.push(`外資賣超前6：${(fPg.sell_by_amt||[]).slice(0,6).map(row).join("；")||"—"}`);
+      const fc = fPg.futures_card;
+      if (fc) seg.push(`外資台指期未平倉：淨${num(fc.oi_net_lots)}口，較上月底(${fc.prev_month_end||"—"})${fc.vs_prev_month_lots>0?"+":""}${num(fc.vs_prev_month_lots)}口`);
+    }
+    if (tPg){
+      seg.push(`投信買超前10：${(tPg.buy_by_amt||[]).slice(0,10).map(row).join("；")||"—"}`);
+      seg.push(`投信賣超前6：${(tPg.sell_by_amt||[]).slice(0,6).map(row).join("；")||"—"}`);
+    }
+    if (seg.length) parts.push(`${dlabel("三大法人買賣超（盤後法人動態站）", tf.date)}\n`+seg.join("\n"));
+  }
   // 融借券整合排行（依兩平台借券餘額；含放空/融資/當沖/三大法人）
   const lr = (d.lending && d.lending.rows) || [];
   if (lr.length){
@@ -1051,7 +1074,7 @@ function insightHtml(){
     + `<span class="qbtn" data-insight-run>${state.insight?"🔄 重新分析":"🔍 產生 AI 摘要分析"}</span>`
     + `<select id="insightModelSel" style="background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:7px 10px;font-size:.84rem;outline:none;cursor:pointer">${modelOpts}</select>`
     + (anthKey()?`<span class="mut" style="font-size:.74rem;cursor:pointer" data-anth-clear>Anthropic token已設定（點此清除）</span>`:"")
-    + `</div><div class="insight-note">分析範圍：主動ETF、融借券整合排行、當沖、鉅額、零股(盤中)、指定分點 ${INSIGHT_BROKERS.join("／")}。`
+    + `</div><div class="insight-note">分析範圍：主動ETF、三大法人買賣超(盤後法人動態站)、融借券整合排行、當沖、鉅額、零股(盤中)、指定分點 ${INSIGHT_BROKERS.join("／")}。`
     + `已開啟 adaptive thinking（模型先推理再輸出，命中率較高、略慢）；資料自動對齊最近交易日、不同日段落會標警告。每次分析約消耗數千 token（費用計入你的 Anthropic 帳戶）。</div></div>`;
   if (state.insightLoading){ h += `<div class="empty">Claude 分析中…（依資料量約需 10-30 秒）</div>`; return h; }
   if (state.insightErr){ h += `<div class="empty" style="text-align:left;padding:14px">分析失敗：${esc(state.insightErr)}</div>`; return h; }
@@ -1096,8 +1119,12 @@ async function load(){
     try{ state.pm = await loadJSON("data/postmkt.json?t="+t); buildBkNm(); }
     catch(e){ state.pmErr = e; }
   })();
-  pAetf.then(render); pPm.then(render);
-  await Promise.all([pAetf, pPm]);
+  // 三大法人買賣超（taiwan-flows 跨repo）：失敗不影響其他資料，state.tf 維持 null
+  const pTf = (async ()=>{
+    try{ state.tf = await loadJSON(TF_BASE+"/latest.json?t="+t); }catch(e){}
+  })();
+  pAetf.then(render); pPm.then(render); pTf.then(render);
+  await Promise.all([pAetf, pPm, pTf]);
   render();
 }
 load();
