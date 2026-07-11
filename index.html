@@ -118,14 +118,11 @@
 <script>
 "use strict";
 const TABS = [
-  ["aetf","主動ETF"],["margin","融資"],["lending","借券"],
-  ["shortbal","融券借券賣出餘額"],["daytrade","當沖"],["block","鉅額交易"],
+  ["aetf","主動ETF"],["lending","借券"],["daytrade","當沖"],["block","鉅額交易"],
 ];
 const SUBS = {
   aetf:"主動式ETF每日投組快照＋主動加減碼（資料源：taiwan-flow-live-v2，投信 16:30 揭露）。",
-  margin:"個股融資餘額增減排行與融資使用率（餘額／限額），單位：張。",
-  lending:"借券系統(SLB)＋證商營業處所(NLB)兩平台餘額、Short Interest、融資融券、當沖、三大法人買賣超整合排行，依兩平台借券餘額排序。點個股展開完整明細。單位：張／千元。",
-  shortbal:"融券餘額與借券賣出（SBL）餘額的當日增減排行，單位：張。",
+  lending:"借券系統(SLB)＋證商營業處所(NLB)兩平台餘額、Short Interest、融資融券、當沖、三大法人買賣超整合排行，依兩平台借券餘額排序。點個股展開完整明細。單位：張／千元／億元。",
   daytrade:"當沖成交金額排行與當沖比重（當沖量／當日總成交量）。分點推估為估算法，非逐筆交易證據。",
   block:"當日鉅額交易逐筆列表，同股票分組並附總張數/總金額；買方/賣方券商分點為盡力比對（同股同價當日多筆時可能無法唯一判定，顯示—）。類型僅「配對交易／逐筆交易」兩種，FinMind未提供單一/組合證券的區分欄位。",
 };
@@ -212,41 +209,54 @@ function lendDetailHtml(r){
   const kv = (label, val) => `<div class="kv"><span class="mut">${label}</span><span>${val}</span></div>`;
   const kvsec = t => `<div class="kvsec">${t}</div>`;
   const pct = v => v==null ? '<span class="mut">—</span>' : v.toFixed(2)+"%";
-  // 「張數（異動±X，市值Y億）」是餘額類欄位共用格式（TSE/券商/合計/借賣/融券/放空加總/融資）
-  const balFmt = (bal, chg, mv) => `${num(bal)}張（異動${zh(chg)}，市值${mv==null?'<span class="mut">—</span>':yiAbs(mv*1000)}）`;
+  // 「張數（異動，市值）」是餘額類欄位共用格式（TSE/券商/合計/借賣/融券/合計/餘額），不加文字標籤，純數值
+  const balFmt = (bal, chg, mv) => `${num(bal)}張（${zh(chg)}，${mv==null?'<span class="mut">—</span>':yiAbs(mv*1000)}）`;
   return `<div id="lenddd" class="mcard" style="margin:8px 0">`
     + `<div style="font-weight:700;margin-bottom:6px">${nameCell(r)} 完整明細</div>`
     + `<div class="kvgrid">`
-    + kvsec("借券餘額（兩平台）")
+    + kvsec("借券餘額")
     + kv("TSE餘額", balFmt(r.sys_bal, r.sys_chg, r.sys_mv))
     + kv("券商餘額", balFmt(r.otc_bal, r.otc_chg, r.otc_mv))
-    + kv("兩平台合計", balFmt(r.plat_total, r.plat_total_chg, r.plat_total_mv))
-    + kvsec("放空部位")
+    + kv("合計", balFmt(r.plat_total, r.plat_total_chg, r.plat_total_mv))
+    + kv("今日TSE", `${num(r.lend_vol)}張・${r.lend_deals||0}筆・最高費率${r.lend_fee_max==null?"—":r.lend_fee_max.toFixed(2)+"%"}`)
+    + kvsec("融券借賣")
     + kv("借賣餘額", balFmt(r.sbl_short_bal, r.sbl_short_chg, r.sbl_short_mv))
     + kv("融券餘額", balFmt(r.margin_short_bal, r.margin_short_chg, r.margin_short_mv))
-    + kv("放空加總", balFmt(r.short_total, r.short_total_chg, r.short_total_mv))
+    + kv("合計", balFmt(r.short_total, r.short_total_chg, r.short_total_mv))
     + kv("借賣使用率", pct(r.usage_ratio))
-    + kv("今日TSE", `${num(r.lend_vol)}張・${r.lend_deals||0}筆・最高費率${r.lend_fee_max==null?"—":r.lend_fee_max.toFixed(2)+"%"}`)
-    + kv("借賣當日借出/還券", `${num(r.sbl_sales)}張／${num(r.sbl_returns)}張`)
+    + kv("借券賣出/還券", `${num(r.sbl_sales)}張／${num(r.sbl_returns)}張`)
     + kvsec("融資")
-    + kv("融資餘額", balFmt(r.margin_bal, r.margin_chg, r.margin_mv))
+    + kv("餘額", balFmt(r.margin_bal, r.margin_chg, r.margin_mv))
     + kv("融資使用率／融券使用率", `${pct(r.margin_usage)}／${pct(r.short_usage)}`)
     + kv("券資比", pct(r.credit_ratio))
     + kv("資券相抵", r.offset==null?'<span class="mut">—</span>':num(r.offset)+"張")
     + kvsec("當沖")
-    + kv("當沖", r.dt_amt==null?'<span class="mut">—</span>':`${num((r.dt_vol||0)/1000)}張・金額${yiAbs(r.dt_amt*1000)}・差額${yi(r.dt_diff*1000)}`)
+    + kv("當沖", r.dt_amt==null?'<span class="mut">—</span>':`${num((r.dt_vol||0)/1000)}張・${yiAbs(r.dt_amt*1000)}・${yi(r.dt_diff*1000)}`)
     + kvsec("三大法人／外資持股")
     + kv("外資買賣超", `${r.foreign_net==null?"—":zh(r.foreign_vol)+"／"+yi(r.foreign_net*1000)}`)
     + kv("投信買賣超", `${r.trust_net==null?"—":zh(r.trust_vol)+"／"+yi(r.trust_net*1000)}`)
     + kv("自營商買賣超", `${r.dealer_net==null?"—":zh(r.dealer_vol)+"／"+yi(r.dealer_net*1000)}`)
     + kv("外資持股", r.foreign_shares==null?'<span class="mut">—</span>':`${num(r.foreign_shares/1000)}張・市值${r.foreign_shares_mv==null?"—":yiAbs(r.foreign_shares_mv*1000)}（${pct(r.foreign_ratio)}，尚可投資${pct(r.foreign_remain_ratio)}，上限${pct(r.foreign_limit_ratio)}）`)
     + `</div>`
-    + `<div class="mut" style="font-size:.72rem;margin-top:6px">點個股名稱收合。以下未提供（官方未公開個股層級資料）：融資融券維持率、投信／自營商持股水位、借券還券實際完成日期明細。</div>`
     + `</div>`;
 }
 
 // 鉅額交易逐筆：個股/總張數/總金額 依股票分組合併(rowspan)，其餘欄位逐筆呈現
-// （資料已依股票分組，同股票的列必連續，不做點表頭排序——排序會打散分組）。
+// （資料已依股票分組，同股票的列必連續，逐筆表頭不做點擊排序——排序會打散分組；
+// 但合併後的「張數/金額」欄可依總金額排序整個分組順序，見BLOCK_SORT_DIR）。
+let BLOCK_SORT_DIR = -1; // -1=金額大→小(預設，同build時的順序)，1=小→大
+function sortBlockGroups(rows, dir){
+  const by = new Map();
+  for (const r of rows){ if (!by.has(r.c)) by.set(r.c, []); by.get(r.c).push(r); }
+  return [...by.values()].sort((a,b) => dir*(a[0].stock_money - b[0].stock_money)).flat();
+}
+document.addEventListener("click", e => {
+  const bh = e.target.closest("[data-blocksort]");
+  if (!bh || !state.pm || !state.pm.blocktrade) return;
+  BLOCK_SORT_DIR *= -1;
+  state.pm.blocktrade.rows = sortBlockGroups(state.pm.blocktrade.rows, BLOCK_SORT_DIR);
+  renderPM();
+});
 function blockTradeTable(rows){
   if (!rows || !rows.length) return `<div class="empty">無資料</div>`;
   const traderCell = r => {
@@ -254,7 +264,8 @@ function blockTradeTable(rows){
     const sell = r.sell_trader ? esc(r.sell_trader) : '<span class="mut">—</span>';
     return `買：${buy}<span class="nm">賣：${sell}</span>`;
   };
-  const head = `<th class="l bstick1">個股</th><th class="l bstick2">張數/金額</th>`
+  const head = `<th class="l bstick1">個股</th>`
+    + `<th class="l bstick2" data-blocksort>張數/金額${BLOCK_SORT_DIR<0?" ▼":" ▲"}</th>`
     + `<th>類型</th><th>價格</th><th>張數</th><th>金額</th><th class="l">券商分點</th>`;
   let body = "";
   for (let i = 0; i < rows.length; i++){
@@ -372,17 +383,7 @@ function renderPM(){
   const d = state.pm;
   if (!d){ main.innerHTML = `<div class="empty">載入中…</div>`; return; }
   let html = "";
-  if (state.tab === "margin"){
-    const m = d.margin || {};
-    const cols = [
-      {h:"個股",cls:"l",f:nameCell},
-      {h:"餘額(張)",f:r=>num(r.bal)},
-      {h:"增減",f:r=>zh(r.chg)},
-      {h:"使用率",f:r=>r.usage==null?'<span class="mut">—</span>':r.usage.toFixed(1)+"%"}];
-    html += sec("融資餘額增加排行", esc(m.date||"")) + tbl(cols, m.increase||[]);
-    html += sec("融資餘額減少排行", esc(m.date||"")) + tbl(cols, m.decrease||[]);
-    html += sec("融資使用率排行","餘額／限額") + tbl(cols, m.usage||[]);
-  } else if (state.tab === "lending"){
+  if (state.tab === "lending"){
     const l = d.lending || {};
     const allRows = l.rows || [];
     LEND_ALL_ROWS = allRows; // 給 input 事件的輕量更新用，不用整頁重render
@@ -395,21 +396,36 @@ function renderPM(){
       + `</div>`;
     html += `<div id="lendSearchArea">${lendSearchAreaHtml(allRows)}</div>`;
 
-    html += sec("借券／融資融券／當沖／三大法人 整合排行", `${esc(l.date||"")} · 依兩平台借券餘額排序前50 · 點個股展開明細`);
+    html += sec("整合排行", `${esc(l.date||"")} · 依兩平台借券餘額排序前50 · 點個股展開明細 · 原「融資」「融券借券賣出餘額」兩tab欄位已併入本表`);
     if (l.sys_available === false || l.otc_available === false){
       html += `<div class="empty" style="padding:10px 14px;text-align:left">⚠ TWSE兩平台借券端點本次抓取失敗，該欄位可能缺值（不影響其他欄位）。</div>`;
     }
     const moneyK = v => v==null ? '<span class="mut">—</span>' : sgn(v,(v>0?"+":"")+Math.round(v).toLocaleString("en-US"));
+    const yiK = v => v==null ? '<span class="mut">—</span>' : yiAbs(v*1000);
+    const yiChgK = v => v==null ? '<span class="mut">—</span>' : yi(v*1000);
     html += tbl([
       {h:"個股",cls:"l",f:r=>`<span class="clk ${state.openLend===r.c?"sel":""}" data-lend="${esc(r.c)}">${nameCell(r)}</span>`},
-      {h:"借券系統(張)",f:r=>num(r.sys_bal)},
-      {h:"證商處所(張)",f:r=>num(r.otc_bal)},
-      {h:"兩平台合計(張)",f:r=>num(r.plat_total)},
-      {h:"借券賣出(張)",f:r=>num(r.sbl_short_bal)},
-      {h:"融券放空(張)",f:r=>num(r.margin_short_bal)},
-      {h:"放空合計(張)",f:r=>num(r.short_total)},
-      {h:"使用率(%)",f:r=>r.usage_ratio==null?'<span class="mut">—</span>':r.usage_ratio.toFixed(2)+"%"},
-      {h:"融資餘額(張)",f:r=>num(r.margin_bal)},
+      {h:"TSE餘額(張)",f:r=>num(r.sys_bal)},
+      {h:"券商餘額(張)",f:r=>num(r.otc_bal)},
+      {h:"合計(張)",f:r=>num(r.plat_total)},
+      {h:"借賣餘額(張)",f:r=>num(r.sbl_short_bal)},
+      {h:"借賣餘額異動(張)",f:r=>zh(r.sbl_short_chg)},
+      {h:"借賣餘額市值(億)",f:r=>yiK(r.sbl_short_mv)},
+      {h:"借賣餘額市值異動(億)",f:r=>yiChgK(r.sbl_short_mv_chg)},
+      {h:"融券餘額(張)",f:r=>num(r.margin_short_bal)},
+      {h:"融券餘額異動(張)",f:r=>zh(r.margin_short_chg)},
+      {h:"融券餘額市值(億)",f:r=>yiK(r.margin_short_mv)},
+      {h:"融券餘額市值異動(億)",f:r=>yiChgK(r.margin_short_mv_chg)},
+      {h:"合計(張)",f:r=>num(r.short_total)},
+      {h:"合計異動(張)",f:r=>zh(r.short_total_chg)},
+      {h:"合計市值(億)",f:r=>yiK(r.short_total_mv)},
+      {h:"合計市值異動(億)",f:r=>yiChgK(r.short_total_mv_chg)},
+      {h:"借賣使用率(%)",f:r=>r.usage_ratio==null?'<span class="mut">—</span>':r.usage_ratio.toFixed(2)+"%"},
+      {h:"餘額(張)",f:r=>num(r.margin_bal)},
+      {h:"餘額異動(張)",f:r=>zh(r.margin_chg)},
+      {h:"餘額市值(億)",f:r=>yiK(r.margin_mv)},
+      {h:"餘額市值異動(億)",f:r=>yiChgK(r.margin_mv_chg)},
+      {h:"融資使用率(%)",f:r=>r.margin_usage==null?'<span class="mut">—</span>':r.margin_usage.toFixed(2)+"%"},
       {h:"券資比(%)",f:r=>r.credit_ratio==null?'<span class="mut">—</span>':r.credit_ratio.toFixed(2)+"%"},
       {h:"當沖金額(千)",f:r=>r.dt_amt==null?'<span class="mut">—</span>':num(r.dt_amt)},
       {h:"外資買賣超(千)",f:r=>moneyK(r.foreign_net)},
@@ -417,16 +433,9 @@ function renderPM(){
       {h:"自營商買賣超(千)",f:r=>moneyK(r.dealer_net)},
     ], allRows.slice(0,50));
     html += `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px">資料源：兩平台借券餘額(TWSE公開端點，非官方保證SLA)、`
-      + `融資融券/借券賣出餘額/當沖/三大法人買賣超/外資持股(FinMind)。個股融資融券維持率、投信/自營商持股水位、`
+      + `融資融券/借券賣出餘額/當沖/三大法人買賣超/外資持股(FinMind)。市值異動為「張數異動×今日收盤價」估算，`
+      + `非逐日歷史價回推的精確市值差。個股融資融券維持率、投信/自營商持股水位、`
       + `借券還券完成日期明細為官方未公開資料，查無來源，不提供估計值。</div>`;
-  } else if (state.tab === "shortbal"){
-    const s = d.short_balance || {};
-    const cols = [
-      {h:"個股",cls:"l",f:nameCell},
-      {h:"餘額(張)",f:r=>num(r.bal)},
-      {h:"增減",f:r=>zh(r.chg)}];
-    html += sec("融券餘額增減排行", `${esc(s.date||"")} · 依增減幅排序`) + tbl(cols, s.margin_short||[]);
-    html += sec("借券賣出餘額增減排行","SBL 借券系統") + tbl(cols, s.sbl||[]);
   } else if (state.tab === "daytrade"){
     const t = d.daytrading || {};
     const tradersCell = r => {

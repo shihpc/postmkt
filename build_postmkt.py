@@ -209,6 +209,14 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
         sbl_short_mv = round(sbl_short * px) if px else None
         margin_short_mv = round(margin_short * px) if px else None
         margin_mv = round(margin_bal * px) if px else None
+        # 市值異動（千元）＝張數異動×今日收盤價。無逐日歷史收盤價可回推昨日市值，
+        # 用「異動張數在今日價位的等值」做估計，非「今日市值－昨日市值」的精確差。
+        sbl_short_chg_v = round(sbl_short - sbl_short_prev)
+        margin_short_chg_v = round(margin_short - margin_short_prev)
+        sbl_short_mv_chg = round(sbl_short_chg_v * px) if px else None
+        margin_short_mv_chg = round(margin_short_chg_v * px) if px else None
+        short_total_mv_chg = (sbl_short_mv_chg + margin_short_mv_chg) if px else None
+        margin_mv_chg = round(margin_chg * px) if px else None
 
         row = {
             "c": c, "n": nm.get(c, ""),
@@ -218,13 +226,14 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
             "plat_total": round(plat_total), "plat_total_chg": sys_chg + otc_chg,
             "plat_total_mv": sys_mv + otc_mv,
             # Short interest（放空部位：借賣＝SBL借券賣出、融券）
-            "sbl_short_bal": round(sbl_short), "sbl_short_chg": round(sbl_short - sbl_short_prev),
-            "sbl_short_mv": sbl_short_mv,
-            "margin_short_bal": round(margin_short), "margin_short_chg": round(margin_short - margin_short_prev),
-            "margin_short_mv": margin_short_mv,
+            "sbl_short_bal": round(sbl_short), "sbl_short_chg": sbl_short_chg_v,
+            "sbl_short_mv": sbl_short_mv, "sbl_short_mv_chg": sbl_short_mv_chg,
+            "margin_short_bal": round(margin_short), "margin_short_chg": margin_short_chg_v,
+            "margin_short_mv": margin_short_mv, "margin_short_mv_chg": margin_short_mv_chg,
             "short_total": round(sbl_short + margin_short),
-            "short_total_chg": round((sbl_short - sbl_short_prev) + (margin_short - margin_short_prev)),
+            "short_total_chg": sbl_short_chg_v + margin_short_chg_v,
             "short_total_mv": (sbl_short_mv + margin_short_mv) if px else None,
+            "short_total_mv_chg": short_total_mv_chg,
             "usage_ratio": round(sbl_short / plat_total * 100, 2) if plat_total > 0 else None,
             # 借券賣出SBL流量明細（千元/張）
             "sbl_sales": round((s.get("SBLShortSalesShortSales") or 0) / 1000),
@@ -233,7 +242,7 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
             "lend_vol": la.get("vol", 0), "lend_deals": la.get("deals", 0), "lend_fee_max": la.get("fee_max"),
             # 融資
             "margin_buy": m.get("MarginPurchaseBuy"), "margin_bal": round(margin_bal),
-            "margin_chg": margin_chg, "margin_mv": margin_mv,
+            "margin_chg": margin_chg, "margin_mv": margin_mv, "margin_mv_chg": margin_mv_chg,
             "margin_usage": round(margin_bal / margin_limit * 100, 2) if margin_limit > 0 else None,
             "short_usage": round(margin_short / short_limit * 100, 2) if short_limit > 0 else None,
             "credit_ratio": round(margin_short / margin_bal * 100, 2) if margin_bal > 0 else None,
