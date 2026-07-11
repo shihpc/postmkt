@@ -64,14 +64,32 @@
     white-space:nowrap;vertical-align:middle;background:var(--card)}
   .mtable tr:last-child td{box-shadow:none}
   .mtable th:first-child,.mtable td:first-child{text-align:left}
+  /* 真正的穿幫根因找到了：.tblbox有padding(top6px/left12px)，但overflow的裁切邊界
+     是padding box(含padding)，而position:sticky的top:0/left:0是貼齊content
+     edge(padding之內)算，兩者之間就差padding那幾px——捲動時，被捲過去的內容
+     還沒被裁切掉之前，會在這條padding縫隙裡短暫露出，就是先前多次修border-
+     collapse/box-shadow/will-change都修不掉的「穿幫」。真正的解法：sticky的
+     top/left直接設成-padding值，讓貼齊的邊界跟裁切邊界重合，縫隙歸零。 */
   .mtable th{color:var(--muted);font-weight:600;font-size:.74rem;cursor:pointer;user-select:none;
-    position:sticky;top:0;z-index:2;will-change:transform}
+    position:sticky;top:-6px;z-index:2;will-change:transform}
   .mtable th:hover{color:var(--txt)}
   /* 固定第一欄（股票名稱）：只套用在一般排行榜表格，鉅額交易的rowspan合併表格
      第一格不是每列都存在，套用會讓固定欄位跟其他欄位錯位，故排除（該表格另有
-     bstick1/2 專屬class，見blockTradeTable()） */
-  .mtable-stickycol td:first-child, .mtable-stickycol th:first-child{position:sticky;left:0;z-index:1;will-change:transform}
+     bstick1/2 專屬class，見blockTradeTable()）。分組表頭(mtable-2row)每欄兩列
+     都有獨立th(見tblInner())，所以這條規則對兩列表頭一樣成立，不用特別排除。 */
+  .mtable-stickycol td:first-child, .mtable-stickycol th:first-child{position:sticky;left:-12px;z-index:1;will-change:transform}
   .mtable-stickycol th:first-child{z-index:3}
+  /* 分組表頭：第一列是分組名稱(跨欄)或空白佔位，第二列是個別欄名+排序箭頭。
+     第二列的sticky top由fixGroupHeaderSticky()量測第一列實際高度後動態寫入
+     (同樣要扣掉6px padding補償)；這裡只給預設值防止JS還沒跑之前(極短暫)不sticky。*/
+  .mtable-2row th.grp{text-align:center;color:var(--accent);font-size:.72rem}
+  /* 兩列式表頭光靠每個th自己position:sticky不夠：實測此瀏覽器環境下thead裡有
+     兩個<tr>時，光th sticky會整批跟著內容捲走、完全不會黏住，連tr本身也要
+     position:sticky才正常。第二列top要等於第一列實際高度(扣padding補償)，由
+     fixGroupHeaderSticky()動態量測寫入；這裡的18px只是JS還沒跑之前的預設值。 */
+  .mtable-2row thead tr{position:sticky;z-index:4}
+  .mtable-2row thead tr:first-child{top:-6px}
+  .mtable-2row thead tr:nth-child(2){top:18px}
   /* 鉅額交易表格：前兩欄(個股/張數金額合併)固定，其餘欄位可左右捲動。手機寬度有限，
      把總張數+總金額合併成一欄兩行顯示並收窄欄寬，讓固定區佔比小一點、右側可捲動
      欄位能多露出來。固定寬度才能算出正確的累加left位移，用JS動態量測較脆弱，
@@ -80,8 +98,8 @@
   .mtable th.bstick1,.mtable td.bstick1,.mtable th.bstick2,.mtable td.bstick2{
     position:sticky;z-index:1;will-change:transform;text-align:left;
     white-space:normal;overflow:hidden;padding:5px 6px}
-  .bstick1{left:0;width:64px;min-width:64px;max-width:64px}
-  .bstick2{left:64px;width:72px;min-width:72px;max-width:72px}
+  .bstick1{left:-12px;width:64px;min-width:64px;max-width:64px}
+  .bstick2{left:52px;width:72px;min-width:72px;max-width:72px}
   thead .bstick1,thead .bstick2{z-index:3}
   .mtable .nm{display:block;color:var(--muted);font-size:.72rem;line-height:1.3}
   .code{font-family:"Space Mono",Consolas,monospace;font-weight:700;color:var(--accent)}
@@ -118,7 +136,7 @@
 <script>
 "use strict";
 const TABS = [
-  ["aetf","主動ETF"],["lending","借券"],["daytrade","當沖"],["block","鉅額交易"],
+  ["aetf","主動ETF"],["lending","融資券借券"],["daytrade","當沖"],["block","鉅額交易"],
 ];
 const SUBS = {
   aetf:"主動式ETF每日投組快照＋主動加減碼（資料源：taiwan-flow-live-v2，投信 16:30 揭露）。",
@@ -153,11 +171,47 @@ function tbl(cols, rows){
   TBLS[id] = { cols, rows: [...rows], sort: { i: null, d: 1 } };
   return `<div class="tblbox" data-tbl="${id}">${tblInner(id)}</div>`;
 }
+// cols可選帶g(分組名)：有g的欄位在表頭分兩列呈現（第一列分組跨欄、第二列個別
+// 欄名+排序）。沒有g的欄位第一列留空白佔位、第二列放實際欄名+排序——刻意不用
+// rowspan貫穿兩列：實測rowspan儲存格配position:sticky在部分瀏覽器捲動時會跑位
+// (sticky高度算圖跟rowspan的跨列邏輯衝突)，每欄兩列都給獨立th，sticky行為
+// 才跟原本單列表頭完全一致，只是第一列(分組列)裡沒有分組的欄位長空的。
 function tblInner(id){
   const { cols, rows, sort } = TBLS[id];
-  const head = cols.map((c,i) => `<th${c.cls?` class="${c.cls}"`:""} data-i="${i}">${c.h}${sort.i===i?(sort.d>0?" ▲":" ▼"):""}</th>`).join("");
+  const hasGroups = cols.some(c => c.g);
+  let head;
+  if (!hasGroups){
+    head = `<tr>` + cols.map((c,i) => `<th${c.cls?` class="${c.cls}"`:""} data-i="${i}">${c.h}${sort.i===i?(sort.d>0?" ▲":" ▼"):""}</th>`).join("") + `</tr>`;
+  } else {
+    let row1 = "", row2 = "";
+    for (let i = 0; i < cols.length; i++){
+      const c = cols[i];
+      if (!c.g){
+        row1 += `<th${c.cls?` class="${c.cls}"`:""}></th>`;
+      } else if (i === 0 || cols[i-1].g !== c.g){
+        let j = i; while (j < cols.length && cols[j].g === c.g) j++;
+        row1 += `<th class="grp" colspan="${j-i}">${c.g}</th>`;
+      }
+      row2 += `<th${c.cls?` class="${c.cls}"`:""} data-i="${i}">${c.h}${sort.i===i?(sort.d>0?" ▲":" ▼"):""}</th>`;
+    }
+    head = `<tr>${row1}</tr><tr>${row2}</tr>`;
+  }
   const body = rows.map(r=>`<tr>`+cols.map(c=>`<td${c.cls?` class="${c.cls}"`:""}>${c.f(r)}</td>`).join("")+`</tr>`).join("");
-  return `<table class="mtable mtable-stickycol"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  const table = `<table class="mtable mtable-stickycol${hasGroups?" mtable-2row":""}"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  if (hasGroups) requestAnimationFrame(() => fixGroupHeaderSticky(id));
+  return table;
+}
+// 分組表頭第二列的sticky top要等於第一列實際渲染高度，不同瀏覽器/字型算出來的
+// 高度會有微差，用JS量測後動態寫inline style最穩，寫死px容易跟實際高度對不齊
+// 導致第二列表頭捲動時被第一列蓋住一小條或露出縫隙。
+function fixGroupHeaderSticky(id){
+  const wrap = document.querySelector(`[data-tbl="${id}"]`);
+  if (!wrap) return;
+  const tr1 = wrap.querySelector("thead tr:first-child");
+  const tr2 = wrap.querySelector("thead tr:nth-child(2)");
+  if (!tr1 || !tr2) return;
+  const h = Math.ceil(tr1.getBoundingClientRect().height);
+  tr2.style.top = (h - 6) + "px"; // 扣.tblbox的6px padding-top補償，理由見上方CSS註解
 }
 document.addEventListener("click", e => {
   const th = e.target.closest("th[data-i]");
@@ -389,14 +443,14 @@ function renderPM(){
     LEND_ALL_ROWS = allRows; // 給 input 事件的輕量更新用，不用整頁重render
     // 個股查詢（對應CMoney Table1）：完整清單(所有有借券/融資融券活動的股票，
     // 非只限主排行榜前50)，輸入代號或名稱即可查任一檔，不用它剛好在排行榜前段班。
-    html += sec("個股查詢", "輸入代號或名稱查完整明細（不限排行榜前50）");
+    html += sec("個股查詢", "輸入代號或名稱查完整明細");
     html += `<div class="mcard" style="padding:10px 14px">`
       + `<input id="lendQ" type="search" placeholder="🔍 股票代號或名稱…" value="${esc(state.lendQuery||"")}" `
       + `style="width:100%;background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:8px 12px;font-size:.88rem;outline:none">`
       + `</div>`;
     html += `<div id="lendSearchArea">${lendSearchAreaHtml(allRows)}</div>`;
 
-    html += sec("整合排行", `${esc(l.date||"")} · 依兩平台借券餘額排序前50 · 點個股展開明細 · 原「融資」「融券借券賣出餘額」兩tab欄位已併入本表`);
+    html += sec("整合排行", esc(l.date||""));
     if (l.sys_available === false || l.otc_available === false){
       html += `<div class="empty" style="padding:10px 14px;text-align:left">⚠ TWSE兩平台借券端點本次抓取失敗，該欄位可能缺值（不影響其他欄位）。</div>`;
     }
@@ -405,33 +459,33 @@ function renderPM(){
     const yiChgK = v => v==null ? '<span class="mut">—</span>' : yi(v*1000);
     html += tbl([
       {h:"個股",cls:"l",f:r=>`<span class="clk ${state.openLend===r.c?"sel":""}" data-lend="${esc(r.c)}">${nameCell(r)}</span>`},
-      {h:"TSE餘額(張)",f:r=>num(r.sys_bal)},
-      {h:"券商餘額(張)",f:r=>num(r.otc_bal)},
-      {h:"合計(張)",f:r=>num(r.plat_total)},
-      {h:"借賣餘額(張)",f:r=>num(r.sbl_short_bal)},
-      {h:"借賣餘額異動(張)",f:r=>zh(r.sbl_short_chg)},
-      {h:"借賣餘額市值(億)",f:r=>yiK(r.sbl_short_mv)},
-      {h:"借賣餘額市值異動(億)",f:r=>yiChgK(r.sbl_short_mv_chg)},
-      {h:"融券餘額(張)",f:r=>num(r.margin_short_bal)},
-      {h:"融券餘額異動(張)",f:r=>zh(r.margin_short_chg)},
-      {h:"融券餘額市值(億)",f:r=>yiK(r.margin_short_mv)},
-      {h:"融券餘額市值異動(億)",f:r=>yiChgK(r.margin_short_mv_chg)},
-      {h:"合計(張)",f:r=>num(r.short_total)},
-      {h:"合計異動(張)",f:r=>zh(r.short_total_chg)},
-      {h:"合計市值(億)",f:r=>yiK(r.short_total_mv)},
-      {h:"合計市值異動(億)",f:r=>yiChgK(r.short_total_mv_chg)},
+      {h:"TSE(張)",g:"借券餘額",f:r=>num(r.sys_bal)},
+      {h:"券商(張)",g:"借券餘額",f:r=>num(r.otc_bal)},
+      {h:"合計(張)",g:"借券餘額",f:r=>num(r.plat_total)},
+      {h:"餘額(張)",g:"借賣",f:r=>num(r.sbl_short_bal)},
+      {h:"異動(張)",g:"借賣",f:r=>zh(r.sbl_short_chg)},
+      {h:"市值(億)",g:"借賣",f:r=>yiK(r.sbl_short_mv)},
+      {h:"異動(億)",g:"借賣",f:r=>yiChgK(r.sbl_short_mv_chg)},
+      {h:"餘額(張)",g:"融券",f:r=>num(r.margin_short_bal)},
+      {h:"異動(張)",g:"融券",f:r=>zh(r.margin_short_chg)},
+      {h:"市值(億)",g:"融券",f:r=>yiK(r.margin_short_mv)},
+      {h:"異動(億)",g:"融券",f:r=>yiChgK(r.margin_short_mv_chg)},
+      {h:"餘額(張)",g:"合計",f:r=>num(r.short_total)},
+      {h:"異動(張)",g:"合計",f:r=>zh(r.short_total_chg)},
+      {h:"市值(億)",g:"合計",f:r=>yiK(r.short_total_mv)},
+      {h:"異動(億)",g:"合計",f:r=>yiChgK(r.short_total_mv_chg)},
       {h:"借賣使用率(%)",f:r=>r.usage_ratio==null?'<span class="mut">—</span>':r.usage_ratio.toFixed(2)+"%"},
-      {h:"餘額(張)",f:r=>num(r.margin_bal)},
-      {h:"餘額異動(張)",f:r=>zh(r.margin_chg)},
-      {h:"餘額市值(億)",f:r=>yiK(r.margin_mv)},
-      {h:"餘額市值異動(億)",f:r=>yiChgK(r.margin_mv_chg)},
+      {h:"餘額(張)",g:"融資",f:r=>num(r.margin_bal)},
+      {h:"異動(張)",g:"融資",f:r=>zh(r.margin_chg)},
+      {h:"市值(億)",g:"融資",f:r=>yiK(r.margin_mv)},
+      {h:"異動(億)",g:"融資",f:r=>yiChgK(r.margin_mv_chg)},
       {h:"融資使用率(%)",f:r=>r.margin_usage==null?'<span class="mut">—</span>':r.margin_usage.toFixed(2)+"%"},
       {h:"券資比(%)",f:r=>r.credit_ratio==null?'<span class="mut">—</span>':r.credit_ratio.toFixed(2)+"%"},
       {h:"當沖金額(千)",f:r=>r.dt_amt==null?'<span class="mut">—</span>':num(r.dt_amt)},
-      {h:"外資買賣超(千)",f:r=>moneyK(r.foreign_net)},
-      {h:"投信買賣超(千)",f:r=>moneyK(r.trust_net)},
-      {h:"自營商買賣超(千)",f:r=>moneyK(r.dealer_net)},
-    ], allRows.slice(0,50));
+      {h:"外資(千)",g:"三大法人買賣超",f:r=>moneyK(r.foreign_net)},
+      {h:"投信(千)",g:"三大法人買賣超",f:r=>moneyK(r.trust_net)},
+      {h:"自營商(千)",g:"三大法人買賣超",f:r=>moneyK(r.dealer_net)},
+    ], allRows);
     html += `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px">資料源：兩平台借券餘額(TWSE公開端點，非官方保證SLA)、`
       + `融資融券/借券賣出餘額/當沖/三大法人買賣超/外資持股(FinMind)。市值異動為「張數異動×今日收盤價」估算，`
       + `非逐日歷史價回推的精確市值差。個股融資融券維持率、投信/自營商持股水位、`
