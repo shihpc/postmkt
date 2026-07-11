@@ -303,12 +303,14 @@ def build_short_balance(date: str, rows: list, nm: dict) -> dict:
     return {"date": date, "margin_short": ms[:TOP_N], "sbl": sbl[:TOP_N]}
 
 
-def daytrading_broker_estimate(date: str, codes: list, top_k: int = 3) -> dict:
+def daytrading_broker_estimate(date: str, codes: list, close_map: dict, top_k: int = 3) -> dict:
     """當沖無逐筆券商分點資料（TaiwanStockDayTrading只有個股加總）。用
     TaiwanStockTradingDailyReport（各分點逐價位買賣量）估算：同分點當日
     買量/賣量取較小值 = 該分點「有能力形成當沖」的量，是分析圈常見的
     分點當沖貢獻度估算法，非逐筆交易的直接證據（可能是不同客戶各自
-    單向交易剛好量相近）。每檔一次API call，逐檔失敗不影響其他檔。"""
+    單向交易剛好量相近）。每檔一次API call，逐檔失敗不影響其他檔。
+    金額（千元）以當日收盤價估算張數對應金額，非分點實際成交均價
+    （該dataset沒有逐價位對應的分點均價可用）。"""
     out = {}
     for c in codes:
         try:
@@ -324,7 +326,10 @@ def daytrading_broker_estimate(date: str, codes: list, top_k: int = 3) -> dict:
             a = agg.setdefault(t, [0, 0])
             a[0] += r.get("buy") or 0
             a[1] += r.get("sell") or 0
-        est = [{"trader": t, "vol": round(min(b, s) / 1000)} for t, (b, s) in agg.items() if min(b, s) > 0]
+        px = close_map.get(c)
+        est = [{"trader": t, "vol": round(min(b, s) / 1000),
+                "money": round(min(b, s) / 1000 * px) if px else None}
+               for t, (b, s) in agg.items() if min(b, s) > 0]
         est.sort(key=lambda x: -x["vol"])
         out[c] = est[:top_k]
     return out
@@ -333,6 +338,8 @@ def daytrading_broker_estimate(date: str, codes: list, top_k: int = 3) -> dict:
 def build_daytrading(date: str, rows: list, price_rows: list, nm: dict) -> dict:
     """當沖：金額排行＋當沖比重排行（分母 = 同日 TaiwanStockPrice 的 Trading_Volume）。"""
     tv = {r.get("stock_id"): (r.get("Trading_Volume") or 0) for r in price_rows}
+    close_map = {r.get("stock_id"): r.get("close") for r in price_rows if r.get("close") is not None}
+    px_map = {r.get("stock_id"): r for r in price_rows}
     recs = []
     for r in rows:
         vol = r.get("Volume") or 0
@@ -341,10 +348,17 @@ def build_daytrading(date: str, rows: list, price_rows: list, nm: dict) -> dict:
         c = r.get("stock_id", "")
         amt = ((r.get("BuyAmount") or 0) + (r.get("SellAmount") or 0)) / 2
         total = tv.get(c) or 0
+        p = px_map.get(c, {})
+        close, spread = p.get("close"), p.get("spread")
+        prev_close = (close - spread) if (close is not None and spread is not None) else None
+        chg_pct = round(spread / prev_close * 100, 2) if prev_close else None
+        amp_pct = round((p.get("max") - p.get("min")) / prev_close * 100, 2) \
+            if (prev_close and p.get("max") is not None and p.get("min") is not None) else None
         recs.append({
             "c": c, "n": nm.get(c, ""),
             "vol": vol, "amt": round(amt),
             "ratio": round(vol / total * 100, 2) if total > 0 else None,
+            "chg_pct": chg_pct, "amp_pct": amp_pct,
         })
     by_amount = sorted(recs, key=lambda x: -x["amt"])[:TOP_N]
     # 比重榜過濾極小量股（總量 < 500 張）避免失真
@@ -354,7 +368,7 @@ def build_daytrading(date: str, rows: list, price_rows: list, nm: dict) -> dict:
     codes = sorted({x["c"] for x in by_amount} | {x["c"] for x in by_ratio})
     if date and codes:
         print(f"  券商分點推估：{len(codes)} 檔逐一查詢…", flush=True)
-        brokers = daytrading_broker_estimate(date, codes)
+        brokers = daytrading_broker_estimate(date, codes, close_map)
         for x in by_amount:
             x["traders"] = brokers.get(x["c"], [])
         for x in by_ratio:

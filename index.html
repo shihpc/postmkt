@@ -83,6 +83,9 @@
      第二列的sticky top由fixGroupHeaderSticky()量測第一列實際高度後動態寫入
      (同樣要扣掉6px padding補償)；這裡只給預設值防止JS還沒跑之前(極短暫)不sticky。*/
   .mtable-2row th.grp{text-align:center;color:var(--accent);font-size:.72rem}
+  /* 分組交界格線：跟隔壁分組拉出一條直向分隔線，避免相鄰分組的欄位混淆
+     （例如「借賣」最後一欄跟「融券」第一欄看起來像同一組）。 */
+  .gb{border-left:1px solid var(--line)}
   /* 兩列式表頭光靠每個th自己position:sticky不夠：實測此瀏覽器環境下thead裡有
      兩個<tr>時，光th sticky會整批跟著內容捲走、完全不會黏住，連tr本身也要
      position:sticky才正常。第二列top要等於第一列實際高度(扣padding補償)，由
@@ -165,10 +168,18 @@ const tblCellVal = t => {
   const n = parseFloat(t.replace(/,/g,"").replace(/[^0-9.\-]/g,""));
   return isNaN(n) ? t : n;
 };
+// 虛擬捲動：標的數超過門檻的表格(目前只有整合排行，2000+檔)不會把全部rows
+// 都變成DOM——2215列×26欄≈5.7萬個<td>，光是innerHTML/layout/sticky計算就會讓
+// 切換分頁明顯延遲。改成只渲染「目前捲動視窗+緩衝」範圍的列，上下各補一個
+// 高度撐開的空白spacer列維持捲軸總高度跟一般全渲染視覺上一致，資料本身仍是
+// 完整全部標的(排序/搜尋都吃完整o.rows，只有『同時掛在DOM上的列數』變少)。
+const VIRTUAL_THRESHOLD = 200;
+const VIRTUAL_BUFFER = 15;
 function tbl(cols, rows){
   if (!rows || !rows.length) return `<div class="empty">無資料</div>`;
   const id = "tb" + (++TBLID);
-  TBLS[id] = { cols, rows: [...rows], sort: { i: null, d: 1 } };
+  TBLS[id] = { cols, rows: [...rows], sort: { i: null, d: 1 },
+    virtual: rows.length > VIRTUAL_THRESHOLD, rowH: 45, winStart: 0 };
   return `<div class="tblbox" data-tbl="${id}">${tblInner(id)}</div>`;
 }
 // cols可選帶g(分組名)：有g的欄位在表頭分兩列呈現（第一列分組跨欄、第二列個別
@@ -176,29 +187,54 @@ function tbl(cols, rows){
 // rowspan貫穿兩列：實測rowspan儲存格配position:sticky在部分瀏覽器捲動時會跑位
 // (sticky高度算圖跟rowspan的跨列邏輯衝突)，每欄兩列都給獨立th，sticky行為
 // 才跟原本單列表頭完全一致，只是第一列(分組列)裡沒有分組的欄位長空的。
+const tblBoundary = (cols, i) => cols.some(c=>c.g) && i > 0 && cols[i].g !== cols[i-1].g;
+const tblCellCls = (cols, c, i) => (c.cls||"") + (tblBoundary(cols,i) ? " gb" : "");
+const tblRowHtml = (cols, r) => `<tr>`+cols.map((c,i)=>`<td class="${tblCellCls(cols,c,i)}">${c.f(r)}</td>`).join("")+`</tr>`;
+function tblBodyHtml(id){
+  const o = TBLS[id];
+  if (!o.virtual) return o.rows.map(r=>tblRowHtml(o.cols,r)).join("");
+  const wrap = document.querySelector(`[data-tbl="${id}"]`);
+  const viewH = wrap ? wrap.clientHeight : 495;
+  const scrollTop = wrap ? wrap.scrollTop : 0;
+  const start = Math.max(0, Math.floor(scrollTop / o.rowH) - VIRTUAL_BUFFER);
+  const count = Math.ceil(viewH / o.rowH) + VIRTUAL_BUFFER * 2;
+  const end = Math.min(o.rows.length, start + count);
+  o.winStart = start;
+  const spacer = h => `<tr class="vsp"><td colspan="${o.cols.length}" style="height:${h}px;padding:0;border:0;box-shadow:none"></td></tr>`;
+  let html = spacer(start * o.rowH);
+  for (let i = start; i < end; i++) html += tblRowHtml(o.cols, o.rows[i]);
+  html += spacer((o.rows.length - end) * o.rowH);
+  return html;
+}
 function tblInner(id){
   const { cols, rows, sort } = TBLS[id];
   const hasGroups = cols.some(c => c.g);
+  // 分組交界(含「有分組→無分組」「無分組→有分組」「不同分組相鄰」)畫一條直向格線，
+  // 避免相鄰分組的欄位混在一起分不清楚。i===0不算交界(表格最左緣不用畫線)。
+  const clsOf = (c,i) => tblCellCls(cols,c,i);
   let head;
   if (!hasGroups){
-    head = `<tr>` + cols.map((c,i) => `<th${c.cls?` class="${c.cls}"`:""} data-i="${i}">${c.h}${sort.i===i?(sort.d>0?" ▲":" ▼"):""}</th>`).join("") + `</tr>`;
+    head = `<tr>` + cols.map((c,i) => `<th class="${clsOf(c,i)}" data-i="${i}">${c.h}${sort.i===i?(sort.d>0?" ▲":" ▼"):""}</th>`).join("") + `</tr>`;
   } else {
     let row1 = "", row2 = "";
     for (let i = 0; i < cols.length; i++){
       const c = cols[i];
       if (!c.g){
-        row1 += `<th${c.cls?` class="${c.cls}"`:""}></th>`;
+        row1 += `<th class="${clsOf(c,i)}"></th>`;
       } else if (i === 0 || cols[i-1].g !== c.g){
         let j = i; while (j < cols.length && cols[j].g === c.g) j++;
-        row1 += `<th class="grp" colspan="${j-i}">${c.g}</th>`;
+        row1 += `<th class="grp${tblBoundary(cols,i)?" gb":""}" colspan="${j-i}">${c.g}</th>`;
       }
-      row2 += `<th${c.cls?` class="${c.cls}"`:""} data-i="${i}">${c.h}${sort.i===i?(sort.d>0?" ▲":" ▼"):""}</th>`;
+      row2 += `<th class="${clsOf(c,i)}" data-i="${i}">${c.h}${sort.i===i?(sort.d>0?" ▲":" ▼"):""}</th>`;
     }
     head = `<tr>${row1}</tr><tr>${row2}</tr>`;
   }
-  const body = rows.map(r=>`<tr>`+cols.map(c=>`<td${c.cls?` class="${c.cls}"`:""}>${c.f(r)}</td>`).join("")+`</tr>`).join("");
+  const body = tblBodyHtml(id);
   const table = `<table class="mtable mtable-stickycol${hasGroups?" mtable-2row":""}"><thead>${head}</thead><tbody>${body}</tbody></table>`;
-  if (hasGroups) requestAnimationFrame(() => fixGroupHeaderSticky(id));
+  // 用setTimeout而非requestAnimationFrame觸發量測：rAF在部分無頭/背景分頁環境
+  // 完全不會執行，這兩個量測都需要保證真的跑到，setTimeout(fn,0)沒有這個問題。
+  if (hasGroups) setTimeout(() => fixGroupHeaderSticky(id), 0);
+  if (TBLS[id].virtual) setTimeout(() => initVirtualScroll(id), 0);
   return table;
 }
 // 分組表頭第二列的sticky top要等於第一列實際渲染高度，不同瀏覽器/字型算出來的
@@ -213,6 +249,44 @@ function fixGroupHeaderSticky(id){
   const h = Math.ceil(tr1.getBoundingClientRect().height);
   tr2.style.top = (h - 6) + "px"; // 扣.tblbox的6px padding-top補償，理由見上方CSS註解
 }
+// 首次渲染用45px猜測列高算spacer，實際列高依內容(如nameCell兩行堆疊)會有出入，
+// 量到真實高度後如果差距明顯(>2px)就用正確高度重新算一次視窗，避免捲軸總高度
+// 跟畫面實際列數對不上(捲到底前就沒列可捲，或捲到底還有大片空白)。
+function initVirtualScroll(id){
+  const wrap = document.querySelector(`[data-tbl="${id}"]`);
+  if (!wrap) return;
+  const o = TBLS[id];
+  const firstRow = wrap.querySelector("tbody tr:not(.vsp)");
+  if (firstRow){
+    const h = firstRow.getBoundingClientRect().height;
+    if (h && Math.abs(h - o.rowH) > 2){
+      o.rowH = h;
+      wrap.querySelector("tbody").innerHTML = tblBodyHtml(id);
+    }
+  }
+}
+// 直接同步更新，不透過requestAnimationFrame：實測rAF在部分無頭/背景分頁環境
+// 完全不會觸發(callback永遠不執行)，捲動視窗就卡死在初始位置。這裡的重算成本
+// 本來就很低(只算一個視窗範圍+重繪~40列)，同步做也不會卡頓，不需要rAF節流。
+function tblVirtualSync(box){
+  const id = box.dataset.tbl;
+  const o = TBLS[id];
+  if (!o || !o.virtual) return;
+  const startBefore = o.winStart;
+  const html = tblBodyHtml(id);
+  if (o.winStart !== startBefore) box.querySelector("tbody").innerHTML = html;
+}
+document.addEventListener("scroll", e => {
+  const box = e.target;
+  if (!box.classList || !box.classList.contains("tblbox")) return;
+  tblVirtualSync(box);
+}, true);
+// 保險：scroll事件理論上該即時觸發，但實測某些情境(分頁不在前景/隱藏文件)
+// 完全不會派送。定期輪詢當作backup，代價很小(只是比對winStart，真的變動才
+// 重繪)，確保就算scroll事件失靈，捲動視窗最慢200ms內還是會跟上。
+setInterval(() => {
+  document.querySelectorAll(".tblbox").forEach(tblVirtualSync);
+}, 200);
 document.addEventListener("click", e => {
   const th = e.target.closest("th[data-i]");
   if (!th) return;
@@ -228,6 +302,7 @@ document.addEventListener("click", e => {
     if (y === null) return -1;
     return typeof x==="number" && typeof y==="number" ? (x-y)*d : String(x).localeCompare(String(y),"zh-Hant")*d;
   });
+  wrap.scrollTop = 0;
   wrap.innerHTML = tblInner(wrap.dataset.tbl);
 });
 const sec = (t,n) => `<div class="msection">${t}${n?`<span class="n">${n}</span>`:""}</div>`;
@@ -492,19 +567,21 @@ function renderPM(){
       + `借券還券完成日期明細為官方未公開資料，查無來源，不提供估計值。</div>`;
   } else if (state.tab === "daytrade"){
     const t = d.daytrading || {};
+    const traderLine = x => `${esc(x.trader)} ${num(x.vol)}張${x.money==null?"":`(${yiAbs(x.money*1000)})`}`;
     const tradersCell = r => {
       const ts = r.traders || [];
       if (!ts.length) return '<span class="mut">—</span>';
       const [first, ...rest] = ts;
-      return `${esc(first.trader)} ${num(first.vol)}張`
-        + rest.map(x => `<span class="nm">${esc(x.trader)} ${num(x.vol)}張</span>`).join("");
+      return traderLine(first) + rest.map(x => `<span class="nm">${traderLine(x)}</span>`).join("");
     };
     const cols = [
       {h:"個股",cls:"l",f:nameCell},
       {h:"當沖量(張)",f:r=>num(r.vol/1000)},
       {h:"當沖金額",f:r=>yiAbs(r.amt)},
       {h:"比重",f:r=>r.ratio==null?'<span class="mut">—</span>':r.ratio.toFixed(1)+"%"},
-      {h:"分點推估(當沖貢獻)",cls:"l",f:tradersCell}];
+      {h:"漲跌幅(%)",f:r=>r.chg_pct==null?'<span class="mut">—</span>':sgn(r.chg_pct,(r.chg_pct>0?"+":"")+r.chg_pct.toFixed(2))},
+      {h:"振幅(%)",f:r=>r.amp_pct==null?'<span class="mut">—</span>':r.amp_pct.toFixed(2)},
+      {h:"分點推估",cls:"l",f:tradersCell}];
     html += sec("當沖金額排行", esc(t.date||"")) + tbl(cols, t.by_amount||[]);
     html += sec("當沖比重排行","當沖量／當日總成交量 · 已濾除總量 500 張以下") + tbl(cols, t.by_ratio||[]);
     html += `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px">分點推估：同分點當日買量／賣量取較小值視為「有能力形成當沖」的量，`
