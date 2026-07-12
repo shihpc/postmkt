@@ -693,6 +693,11 @@ def wait_gate(slot: str) -> None:
     進場先查 TWSE 休市行事曆：排定假日直接 skip——am 場必須靠這層（晨報管線假日仍會
     更新 generated_at，資料閘門擋不住）；pm 場本可由資料閘門擋住，此層省去 120 分空轉。"""
     today = taipei_now().strftime("%Y-%m-%d")
+    # 週末防護：cron 只排週一至五，但手動觸發（workflow_dispatch）在週末會空轉
+    # 整段輪詢（盤後資料日永遠不會是週末），直接 skip。
+    if taipei_now().weekday() >= 5:
+        print(f"今日 {today} 為週末非交易日，本場 skip。", flush=True)
+        sys.exit(0)
     if is_twse_holiday(today):
         print(f"TWSE 休市行事曆：{today} 為排定休市日，本場 skip。", flush=True)
         sys.exit(0)
@@ -859,6 +864,9 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true", help="只印三段 context，不呼叫 Anthropic（供驗收）")
     args = ap.parse_args()
 
+    if not args.dry_run:
+        anth_key()  # 缺 Secret 秒失敗（fail-fast），不等閘門輪詢完才發現
+
     if not args.no_wait and not args.dry_run:
         wait_gate(args.slot)
 
@@ -875,8 +883,6 @@ def main() -> None:
     if all(p["empty"] for p in pages):
         print("三個頁面 context 全部為空（資料源皆載入失敗），本場中止", flush=True)
         sys.exit(1)
-
-    anth_key()  # 先驗證金鑰存在，缺鑰直接失敗、不浪費輪詢後的時間
 
     # 6 份摘要：3 context × 2 模型，最多 3 併發、單份失敗 retry 1 次後 ok:false 佔位
     jobs = [(p, model) for p in pages for model in SUMMARY_MODELS]
