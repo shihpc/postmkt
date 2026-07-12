@@ -3,11 +3,12 @@
 台股盤後資料的靜態儀表板（單一 `index.html`，無 build 工具），
 是[股市雷達 Hub](https://shihpc.github.io/) 的子站之一。
 
-## 七個 Tab（2026-07-11 改版後）
+## 八個 Tab（2026-07-12 改版後）
 
 | Tab | 資料源 | 內容 |
 |---|---|---|
 | 摘要分析 | 前端彙整以下各 tab ＋ 即時呼叫 Anthropic Claude API | AI 生成以查找 alpha 標的為目標的洞見（首頁預設 tab） |
+| 彙總分析 | 三頁面（本站盤後/即時類股/新聞晨報）context × Opus4.8/Sonnet5 ＝ 6 份摘要 → Opus4.8 彙總 | 跨份共振精粹 alpha：方向預測＋進出建議；手動一鍵（近2次存瀏覽器）＋自動場（近3日、讀 `data/summary/`） |
 | 主動ETF | taiwan-flow-live-v2 `data/aetf/`（跨 repo 唯讀） | 每日投組快照、主動加減碼、進出個股、次產業流向 |
 | 融資券借券 | FinMind 融資/融券/借券 + TWSE TWT72U 兩平台借券餘額 | 個股查詢（點開完整明細）＋整合排行（全市場 2200+ 檔、分組雙列表頭、虛擬捲動） |
 | 當沖 | FinMind `TaiwanStockDayTrading` + `TaiwanStockPrice` + `TradingDailyReport` | 當沖排行（含漲跌幅/振幅/分點推估） |
@@ -56,6 +57,15 @@
   平行抓 `latest.json` 存 `state.tf`（失敗不擋），`insightGatherContext()` 新增
   「三大法人買賣超」段（外資買超前10/賣超前6＋台指期未平倉、投信買超前10/賣超前6，
   dlabel 跨日警告自動生效）。SYS prompt 未改。退版點：git tag `pre-insight-tab`。
+- 彙總分析 tab（2026-07-12 新增，第 8 個 tab）：一鍵 6+1 呼叫（3 頁 context×兩模型
+  ＋Opus 彙總，約 NT$12-15/次），彙總 SYS 以「跨份共振優先」（N/6 份提及）精粹 alpha、
+  給方向預測與進出建議。單份失敗不中止（≥3 份成功才彙總）。手動近 2 次存 localStorage
+  `summary_manual`；自動場由 `build_summary.py`＋`summary.yml`（cron 08:00/22:00 台北
+  觸發＋資料齊全輪詢閘門：am 等晨報最多 90 分、pm 等盤後+新聞最多 120 分，逾時=假日
+  skip），輸出 `data/summary/YYYYMMDD-{am|pm}.json` 保留近 3 日，前端列表點閱。
+  **維護重點**：三站 gather 邏輯在本 repo 有兩份移植副本（index.html 的 sumCtx* 與
+  build_summary.py 的 gather_*），三站前端 insightGatherContext/SYS 改動時需同步兩處
+  （SYS 已驗逐字一致）。自動場需 repo Secret `ANTHROPIC_API_KEY`（見部署設定）。
 - 待辦（暫緩）：回測模組（nightly pipeline 累積歷史→前向報酬勝率餵 prompt），
   使用者 2026-07-11 決定暫緩，規格未定義。
 - 未解：分點互動查詢在無 token 環境只能看到輸入提示；FinMind 個股層級維持率、
@@ -67,6 +77,9 @@
 
 1. **Secret**：repo Settings → Secrets and variables → Actions →
    New repository secret，名稱 `FINMIND_TOKEN`，值填 FinMind API token（Sponsor 方案）。
+   另加 `ANTHROPIC_API_KEY`（Anthropic API key）供彙總分析自動場（`summary.yml`）使用；
+   未設時自動場會失敗、前端顯示「尚無自動產出」，手動一鍵不受影響。
+   費用參考：自動雙場 × 約 22 交易日 ≈ NT$500-700/月，計入該 key 的 Anthropic 帳戶。
 2. **GitHub Pages**：Settings → Pages → Source 選 `Deploy from a branch`，
    Branch 選 `main` / `(root)` → Save。
 3. （可選）Actions tab 手動跑一次 `build postmkt data` 產生第一份資料。

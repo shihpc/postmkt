@@ -1,0 +1,68 @@
+name: build summary analysis
+
+on:
+  schedule:
+    # 平日 08:00 台北（00:00 UTC）→ am 場；平日 22:00 台北（14:00 UTC）→ pm 場
+    - cron: "0 0 * * 1-5"
+    - cron: "0 14 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "場次（留空依 UTC 時間自動判斷：<12 時 am，否則 pm）"
+        type: choice
+        options: ["", "am", "pm"]
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-summary
+  cancel-in-progress: false
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150  # 涵蓋 pm 最長 120 分輪詢＋API 呼叫時間
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install requests
+
+      - name: Decide slot
+        id: slot
+        run: |
+          SLOT="${{ github.event.inputs.slot }}"
+          if [ -z "$SLOT" ]; then
+            if [ "$(date -u +%H)" -lt 12 ]; then SLOT=am; else SLOT=pm; fi
+          fi
+          echo "slot=$SLOT" >> "$GITHUB_OUTPUT"
+          echo "slot=$SLOT"
+
+      - name: Build summary
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: python build_summary.py --slot ${{ steps.slot.outputs.slot }}
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/summary
+          if git diff --cached --quiet; then
+            echo "no changes"
+            exit 0
+          fi
+          git commit -m "data: summary ${{ steps.slot.outputs.slot }} $(date -u +%Y-%m-%dT%H:%MZ)"
+          pushed=0
+          for i in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push; then pushed=1; break; fi
+            sleep 4
+          done
+          if [ "$pushed" != "1" ]; then echo "::error::push failed after 5 retries"; exit 1; fi

@@ -1,0 +1,875 @@
+# build_summary.py — 「彙總分析」自動產出管線（GitHub Actions 排程用）
+#
+# ★★★ 本檔 gather 邏輯移植自三站前端 insightGatherContext()，前端改動時需同步此檔 ★★★
+#   - 頁面1 盤後分析   ：postmkt/index.html            insightGatherContext + insightFetchBrokers
+#   - 頁面2 即時類股動態：taiwan-flow-live-v2/index.html insightGatherContext（含 sval 欄位解碼）
+#   - 頁面3 新聞晨報   ：taiwan-stock-news/index.html   insightGatherContext
+# 三段 context 的段落結構、欄位語意、dlabel 跨日警告機制、千元→億換算、取前N
+# 皆與 JS 版等價；各頁 SYS prompt 原樣取自三站前端，彙總 SYS 取自規格書。
+#
+# 流程：資料齊全閘門（--slot am|pm 輪詢）→ 構建 3 段 context → 呼叫 Anthropic
+# 6 次（3 context × [Opus 4.8, Sonnet 5]，最多 3 併發）→ ≥3 份成功才做 1 次
+# Opus 4.8 彙總 → 輸出 data/summary/YYYYMMDD-{am|pm}.json ＋ 重建 index.json
+# ＋ 刪 3 日前舊檔。
+#
+# 金鑰只讀環境變數（ANTHROPIC_API_KEY / FINMIND_TOKEN），絕不落檔、絕不 print。
+# 旗標：--no-wait 跳過齊全閘門；--dry-run 只印三段 context 不呼叫 Anthropic。
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import math
+import os
+import re
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import requests
+
+ROOT = Path(__file__).resolve().parent
+OUT_DIR = ROOT / "data" / "summary"
+TAIPEI = dt.timezone(dt.timedelta(hours=8))
+
+# ---------- 資料源 ----------
+URL_POSTMKT = "https://raw.githubusercontent.com/shihpc/postmkt/main/data/postmkt.json"
+URL_AETF_LATEST = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf/latest.json"
+URL_AETF_DIFF = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf/diff.json"
+URL_TF = "https://raw.githubusercontent.com/shihpc/taiwan-flows/main/data/latest.json"
+URL_LIVE = "https://taiwan-flow-v2.shihpc.workers.dev/live"
+URL_CLASSIFY = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/classify.json"
+URL_NEWS = "https://raw.githubusercontent.com/shihpc/taiwan-stock-news/main/news.json"
+URL_MORNING = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/morning.json"
+URL_US = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/us.json"
+URL_FINMIND_TDR = "https://api.finmindtrade.com/api/v4/taiwan_stock_trading_daily_report"
+URL_ANTHROPIC = "https://api.anthropic.com/v1/messages"
+
+# 與 postmkt/index.html 的 INSIGHT_BROKERS / INSIGHT_MODELS 對齊
+INSIGHT_BROKERS = ["9268", "9800", "9600", "9A00"]
+SUMMARY_MODELS = ["claude-opus-4-8", "claude-sonnet-5"]
+SYNTH_MODEL = "claude-opus-4-8"
+MAX_WORKERS = 3          # 併發上限，防 API 限流
+MIN_OK_FOR_SYNTH = 3     # 6 份中至少幾份成功才彙總
+
+# v2/index.html 的 SC：live.stocks 陣列欄位順序（live.stock_cols 缺時的後備）
+SC = ["chg", "amt", "close", "vol", "bv", "sv", "pts", "dp", "lim", "lw",
+      "f10", "c10", "c30", "r10", "it", "fi", "y1", "y2", "ints", "nl"]
+
+
+# ---------- 小工具（對齊 JS 版格式化行為） ----------
+
+def js_round(v: float) -> int:
+    """JS Math.round：.5 一律向正無窮取（Python round 是 banker's，不同）。"""
+    return int(math.floor(v + 0.5))
+
+
+def num(v) -> str:
+    """postmkt/index.html 的 num()：千分位整數，null→—。"""
+    return "—" if v is None else f"{js_round(v):,}"
+
+
+def jsnum(v) -> str:
+    """模板字串直接內插數字時的 JS 行為：整數浮點不帶 .0。"""
+    if v is None:
+        return "null"
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
+def fixed(v, nd: int) -> str:
+    return f"{v:.{nd}f}"
+
+
+def signed(v, nd: int) -> str:
+    """(v>0?"+":"")+v.toFixed(nd)，null→—。"""
+    return "—" if v is None else ("+" if v > 0 else "") + f"{v:.{nd}f}"
+
+
+def yi_k(v) -> str:
+    """千元→億：postmkt 的 yiK。"""
+    return "—" if v is None else f"{v / 1e5:.1f}"
+
+
+def yi_y(v) -> str:
+    """元→億：postmkt 的 yiY。"""
+    return "—" if v is None else f"{v / 1e8:.1f}"
+
+
+def clean_sub_pm(s) -> str:
+    """postmkt 的 cleanSub：去掉「xxx·」前綴。"""
+    return re.sub(r"^.*?·", "", str(s or ""), count=1)
+
+
+def clean_sub_v2(s) -> str:
+    """v2 的 cleanSub：去掉尾端括號說明。"""
+    return re.sub(r"\s*[（(].*$", "", str(s or ""))
+
+
+def day10(s) -> str:
+    return str(s or "")[:10]
+
+
+def norm_date(s) -> str:
+    return str(s or "").replace("/", "-")
+
+
+def dates_json(dates: dict) -> str:
+    """對齊 JS JSON.stringify（無空白）。"""
+    return json.dumps(dates, ensure_ascii=False, separators=(",", ":"))
+
+
+def taipei_now() -> dt.datetime:
+    return dt.datetime.now(TAIPEI)
+
+
+def taipei_day_of(iso_str: str) -> str:
+    """ISO 時間字串 → 台北時區日期 YYYY-MM-DD；解析失敗退回前 10 碼。"""
+    s = str(iso_str or "")
+    try:
+        d = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=dt.timezone.utc)
+        return d.astimezone(TAIPEI).strftime("%Y-%m-%d")
+    except ValueError:
+        return day10(s)
+
+
+def http_json(url: str, timeout: int = 60, bust: bool = True):
+    """GET JSON；bust=True 加 cache-buster（raw.githubusercontent 有 ~5 分快取，輪詢要繞過）。"""
+    if bust:
+        url = url + ("&" if "?" in url else "?") + f"t={int(time.time())}"
+    r = requests.get(url, timeout=timeout)
+    r.raise_for_status()
+    return r.json()
+
+
+def try_json(url: str, label: str):
+    try:
+        return http_json(url)
+    except Exception as e:
+        print(f"  {label} 載入失敗（該資料段將略過）：{e}", flush=True)
+        return None
+
+
+class DLabel:
+    """dlabel 跨日警告機制（三站 JS 完全相同的邏輯）。"""
+
+    def __init__(self, primary: str):
+        self.primary = primary
+        self.dates: dict[str, str] = {}
+
+    def __call__(self, name: str, sec_date) -> str:
+        self.dates[name] = sec_date or "?"
+        if not sec_date:
+            return f"【{name}（資料日不明）】"
+        if norm_date(sec_date) == norm_date(self.primary):
+            return f"【{name}（資料日 {sec_date}）】"
+        return (f"【{name}（⚠資料日 {sec_date}，與主資料日 {self.primary} 不同，"
+                f"請勿與其他段落跨日直接比較）】")
+
+
+# ---------- 頁面1：盤後分析（postmkt/index.html insightGatherContext 移植） ----------
+
+def aetf_advice(diff: dict) -> list[str]:
+    """postmkt aetfAdvice() 的純文字版（JS gather 時會把 HTML 標籤剝掉，這裡直接產純文字）。"""
+    out = []
+    st = diff.get("stocks") or []
+    sb = diff.get("subs") or []
+    co = [s for s in st if sum(1 for v in (s.get("by") or {}).values() if v > 0) >= 2][:3]
+    if co:
+        out.append("多檔同買：" + "、".join(s.get("n") or s.get("c") or "" for s in co))
+    cs = [s for s in st if sum(1 for v in (s.get("by") or {}).values() if v < 0) >= 2][:2]
+    if cs:
+        out.append("多檔同賣：" + "、".join(s.get("n") or s.get("c") or "" for s in cs))
+    inn = next((s for s in sb if (s.get("val") or 0) > 0), None)
+    outv = next((s for s in sb if (s.get("val") or 0) < 0), None)
+    if inn:
+        out.append(f"次產業最大加碼：{clean_sub_pm(inn.get('name'))} +{inn['val'] / 1e8:.1f}億")
+    if outv:
+        out.append(f"最大減碼：{clean_sub_pm(outv.get('name'))} {outv['val'] / 1e8:.1f}億")
+    for k, v in (diff.get("etfs") or {}).items():
+        ef = v.get("est_flow")
+        if ef and abs(ef) >= 10e8:
+            out.append(f"{k} 淨{'申購' if ef > 0 else '贖回'}約 {abs(ef) / 1e8:.0f}億")
+    return out
+
+
+def gather_postmkt(pm: dict, aetf_latest, aetf_diff, tf) -> dict:
+    d = pm or {}
+    a = {"latest": aetf_latest, "diff": aetf_diff}
+    parts = []
+    primary = d.get("date") or ""
+    dlabel = DLabel(primary)
+
+    # 主動ETF（跨repo，投信揭露日常與盤後籌碼不同日，特別要標）
+    diff = a["diff"]
+    if diff and (diff.get("stocks") or []):
+        gd = diff.get("generated_dates") or []
+        a_date = (gd[-1] if gd else "") or ((a["latest"] or {}).get("run_date")) or ""
+        adv = aetf_advice(diff)
+        st = "；".join(
+            f"{s.get('c', '')}{s.get('n') or ''} 合計{'+' if (s.get('zh') or 0) > 0 else ''}{jsnum(s.get('zh'))}張"
+            f" 金額{yi_y(s.get('val'))}億"
+            for s in (diff.get("stocks") or [])[:12])
+        subs = "；".join(f"{clean_sub_pm(s.get('name'))} {yi_y(s.get('val'))}億"
+                         for s in (diff.get("subs") or [])[:6])
+        parts.append(f"{dlabel('主動ETF 主動加減碼', a_date)}\n重點：{'；'.join(adv) or '—'}\n"
+                     f"進出個股(前12)：{st}\n次產業流向(前6)：{subs}")
+
+    # 三大法人買賣超（跨repo：盤後法人動態站 taiwan-flows；資料缺漏時整段略過）
+    tf = tf or {}
+    f_pg = (tf.get("pages") or {}).get("foreign")
+    t_pg = (tf.get("pages") or {}).get("trust")
+    if f_pg or t_pg:
+        def tf_yi(v):
+            return "—" if v is None else ("+" if v > 0 else "") + f"{v / 1e5:.1f}"
+
+        def row(r):
+            hold = "—" if r.get("hold_pct") is None else f"{r['hold_pct']:.1f}"
+            return (f"{r.get('code', '')}{r.get('name') or ''} {tf_yi(r.get('net_amt_k'))}億/"
+                    f"{num(r.get('net_lots'))}張 持股{hold}% 漲跌{signed(r.get('chg_pct'), 1)}%")
+
+        seg = []
+        if f_pg:
+            seg.append("外資買超前10：" + ("；".join(row(r) for r in (f_pg.get("buy_by_amt") or [])[:10]) or "—"))
+            seg.append("外資賣超前6：" + ("；".join(row(r) for r in (f_pg.get("sell_by_amt") or [])[:6]) or "—"))
+            fc = f_pg.get("futures_card")
+            if fc:
+                vs = fc.get("vs_prev_month_lots")
+                seg.append(f"外資台指期未平倉：淨{num(fc.get('oi_net_lots'))}口，"
+                           f"較上月底({fc.get('prev_month_end') or '—'})"
+                           f"{'+' if (vs or 0) > 0 else ''}{num(vs)}口")
+        if t_pg:
+            seg.append("投信買超前10：" + ("；".join(row(r) for r in (t_pg.get("buy_by_amt") or [])[:10]) or "—"))
+            seg.append("投信賣超前6：" + ("；".join(row(r) for r in (t_pg.get("sell_by_amt") or [])[:6]) or "—"))
+        if seg:
+            parts.append(f"{dlabel('三大法人買賣超（盤後法人動態站）', tf.get('date'))}\n" + "\n".join(seg))
+
+    # 融借券整合排行（依兩平台借券餘額；含放空/融資/當沖/三大法人）
+    lr = (d.get("lending") or {}).get("rows") or []
+    if lr:
+        def lend_line(r):
+            usage = "—" if r.get("usage_ratio") is None else f"{r['usage_ratio']:.0f}"
+            credit = "—" if r.get("credit_ratio") is None else f"{r['credit_ratio']:.1f}"
+            return (f"{r.get('c', '')}{r.get('n') or ''}"
+                    f"|借券餘額{num(r.get('plat_total'))}張(異動{'+' if (r.get('plat_total_chg') or 0) > 0 else ''}{jsnum(r.get('plat_total_chg'))})"
+                    f"|借賣{num(r.get('sbl_short_bal'))}張(異動{'+' if (r.get('sbl_short_chg') or 0) > 0 else ''}{jsnum(r.get('sbl_short_chg'))},使用率{usage}%)"
+                    f"|融資{num(r.get('margin_bal'))}張(異動{'+' if (r.get('margin_chg') or 0) > 0 else ''}{jsnum(r.get('margin_chg'))},券資比{credit}%)"
+                    f"|外資{yi_k(r.get('foreign_net'))}億/投信{yi_k(r.get('trust_net'))}億/自營{yi_k(r.get('dealer_net'))}億"
+                    f"|當沖{yi_k(r.get('dt_amt'))}億")
+
+        parts.append(f"{dlabel('融借券整合排行 前25（依兩平台借券餘額）', (d.get('lending') or {}).get('date'))}\n"
+                     + "\n".join(lend_line(r) for r in lr[:25]))
+
+    # 當沖排行
+    dtr = (d.get("daytrading") or {}).get("by_amount") or []
+    if dtr:
+        def dt_line(r):
+            ratio = "—" if r.get("ratio") is None else f"{r['ratio']:.0f}"
+            amp = "—" if r.get("amp_pct") is None else f"{r['amp_pct']:.1f}"
+            traders = ",".join(f"{t.get('trader', '')}{num(t.get('vol'))}張"
+                               for t in (r.get("traders") or [])[:3])
+            return (f"{r.get('c', '')}{r.get('n') or ''}|當沖{yi_y(r.get('amt'))}億 量{num((r.get('vol') or 0) / 1000)}張"
+                    f" 比重{ratio}%|漲跌{signed(r.get('chg_pct'), 1)}% 振幅{amp}%|分點推估:{traders}")
+
+        parts.append(f"{dlabel('當沖排行 前15', (d.get('daytrading') or {}).get('date'))}\n"
+                     + "\n".join(dt_line(r) for r in dtr[:15]))
+
+    # 鉅額（依股票分組，取各股一筆代表＝總量/總額）
+    bt = (d.get("blocktrade") or {}).get("rows") or []
+    if bt:
+        seen, groups = set(), []
+        for r in bt:
+            if r.get("c") not in seen:
+                seen.add(r.get("c"))
+                groups.append(r)
+        parts.append(f"{dlabel('鉅額交易 依總金額前15', (d.get('blocktrade') or {}).get('date'))}\n"
+                     + "；".join(f"{r.get('c', '')}{r.get('n') or ''} 總{num((r.get('stock_vol') or 0) / 1000)}張/"
+                                 f"{yi_y(r.get('stock_money'))}億" for r in groups[:15]))
+
+    # 零股盤中
+    od = ((d.get("oddlot") or {}).get("intraday") or {}).get("rows") or []
+    if od:
+        parts.append(f"{dlabel('零股盤中 依金額前15', ((d.get('oddlot') or {}).get('intraday') or {}).get('date'))}\n"
+                     + "；".join(f"{r.get('c', '')}{r.get('n') or ''} {(r.get('amt') or 0) / 1e4:.0f}萬元"
+                                 f" {num(r.get('deals'))}筆" for r in od[:15]))
+
+    return {"text": "\n\n".join(parts), "primary": primary, "dates": dlabel.dates}
+
+
+def fetch_brokers_context(pm: dict, primary: str) -> str:
+    """postmkt insightFetchBrokers() 移植：指定分點當日進出（FinMind），
+    依股票聚合成買賣超金額，各分點取前8買/賣。無 FINMIND_TOKEN 則整段標略過。"""
+    token = os.environ.get("FINMIND_TOKEN", "").strip()
+    if not token:
+        return "【指定分點單點進出】（未設定 FinMind token，略過分點分析）"
+    brokers = (pm or {}).get("brokers") or {}
+    date = brokers.get("date") or ""
+    if date and primary and date != primary:
+        dwarn = f"（⚠資料日 {date}，與主資料日 {primary} 不同，勿跨日比較）"
+    else:
+        dwarn = f"（資料日 {date or '?'}）"
+    nm_by_id = {x.get("id"): x.get("name") for x in (brokers.get("list") or [])}
+    # 股票代號→名稱：從 postmkt.json 現成資料建（同前端 buildBkNm）
+    bk_nm: dict[str, str] = {}
+    d = pm or {}
+    for src in [((d.get("oddlot") or {}).get("intraday") or {}).get("rows"),
+                ((d.get("oddlot") or {}).get("after") or {}).get("rows"),
+                (d.get("lending") or {}).get("rows")]:
+        for r in src or []:
+            if r.get("c") and r["c"] not in bk_nm:
+                bk_nm[r["c"]] = r.get("n") or ""
+    out = []
+    for bid in INSIGHT_BROKERS:
+        try:
+            r = requests.get(URL_FINMIND_TDR,
+                             params={"dataset": "TaiwanStockTradingDailyReport", "date": date,
+                                     "securities_trader_id": bid, "token": token},
+                             timeout=60)
+            j = r.json()
+            raw = (j.get("data") or []) if (r.ok and j.get("status") in (200, None)) else []
+            bname = (raw[0].get("securities_trader") if raw else None) or nm_by_id.get(bid) or bid
+            agg: dict[str, float] = {}
+            for x in raw:
+                c = x.get("stock_id")
+                agg[c] = agg.get(c, 0) + ((x.get("buy") or 0) - (x.get("sell") or 0)) * (x.get("price") or 0)
+            rows = [{"c": c, "net": n} for c, n in agg.items()]
+            buys = sorted((o for o in rows if o["net"] > 0), key=lambda o: -o["net"])[:8]
+            sells = sorted((o for o in rows if o["net"] < 0), key=lambda o: o["net"])[:8]
+
+            def fmt(o):
+                return f"{o['c']}{bk_nm.get(o['c'], '')}{o['net'] / 1e4:.0f}萬"
+
+            out.append(f"[{bid} {bname}] 買超前8：{','.join(fmt(o) for o in buys) or '—'}"
+                       f"｜賣超前8：{','.join(fmt(o) for o in sells) or '—'}")
+        except Exception as e:
+            out.append(f"[{bid}] 查詢失敗：{e}")
+    return f"【指定分點單點進出（買賣超金額，元）{dwarn}】\n" + "\n".join(out)
+
+
+# ---------- 頁面2：即時類股動態（taiwan-flow-live-v2/index.html 移植） ----------
+
+def gather_live(live, classify) -> dict:
+    if not live:
+        return {"text": "", "primary": "", "dates": {}}
+    cl = classify or {}
+    parts = []
+    # 主資料日：ts 內含日期就用 ts，否則由 generated_at 換算台灣日期
+    tsm = re.search(r"\d{4}[-/]\d{2}[-/]\d{2}", str(live.get("ts") or ""))
+    primary = (tsm.group(0).replace("/", "-") if tsm
+               else (taipei_day_of(live["generated_at"]) if live.get("generated_at") else ""))
+    dlabel = DLabel(primary)
+
+    def f1(v):
+        return "—" if v is None else f"{v:.1f}"
+
+    # a. 大盤：加權/櫃買指數 ＋ 漲跌家數/成交值
+    ix = live.get("index") or {}
+    mk = live.get("market") or {}
+
+    def one(label, dd, m):
+        li = []
+        # chgP=漲跌點數、chg=漲跌%（worker idxOut 定義），兩者都給模型
+        if dd and dd.get("val") is not None:
+            li.append(f"{label}指數 {dd['val']:.2f}（{signed(dd.get('chgP'), 2)}點/{signed(dd.get('chg'), 2)}%）"
+                      f"成交{f1(dd.get('amt_yi'))}億")
+        if m:
+            amt = f" 分類股總額{f1(m.get('amt_yi'))}億" if m.get("amt_yi") is not None else ""
+            up = "—" if m.get("up") is None else jsnum(m["up"])
+            down = "—" if m.get("down") is None else jsnum(m["down"])
+            flat = "—" if m.get("flat") is None else jsnum(m["flat"])
+            li.append(f"漲{up}(漲停{jsnum(m.get('up_lim') or 0)})/跌{down}(跌停{jsnum(m.get('down_lim') or 0)})"
+                      f"/平{flat}{amt}")
+        return "，".join(li)
+
+    a_txt = one("加權", ix.get("tse"), mk.get("tse"))
+    b_txt = one("櫃買", ix.get("otc"), mk.get("otc"))
+    if a_txt or b_txt:
+        parts.append(f"{dlabel('大盤即時', primary)}\n" + "\n".join(x for x in (a_txt, b_txt) if x))
+
+    # b. 產業別資金：exchange 依 tse.amt_yi 前8強＋依平均漲跌跌勢前5
+    ex = [{"sector": s.get("sector"), **(s.get("tse") or {})} for s in (live.get("exchange") or [])]
+    ex = [r for r in ex if (r.get("n") or 0) > 0]
+    if ex:
+        def ex_line(r):
+            return (f"{r.get('sector', '')} 成交{f1(r.get('amt_yi'))}億 平均{signed(r.get('avg_chg'), 2)}%"
+                    f" 貢獻{signed(r.get('pts'), 2)}點 漲{jsnum(r.get('up'))}/跌{jsnum(r.get('down'))}({jsnum(r.get('n'))}檔)")
+
+        top = sorted(ex, key=lambda r: -(r.get("amt_yi") or 0))[:8]
+        weak = sorted((r for r in ex if (r.get("avg_chg") or 0) < 0),
+                      key=lambda r: r.get("avg_chg") or 0)[:5]
+        seg = ["資金前8強：\n" + "\n".join(ex_line(r) for r in top)]
+        if weak:
+            seg.append("跌勢前5：\n" + "\n".join(ex_line(r) for r in weak))
+        parts.append(f"{dlabel('產業別資金（加權市場）', primary)}\n" + "\n".join(seg))
+
+    # c. 資金湧入：flow.subs 依集中10分(c1) 前12；盤前 flow=null 明確註明
+    fl = live.get("flow")
+    if not fl or not (fl.get("subs") or []):
+        parts.append(f"{dlabel('次產業盤中資金集中', primary)}\n盤前，無盤中資金集中資料。")
+    else:
+        subs = sorted(fl["subs"],
+                      key=lambda s: -(s["c1"] if s.get("c1") is not None else (s.get("d_yi") or 0)))[:12]
+
+        def sub_line(s):
+            c1 = "—" if s.get("c1") is None else f"{s['c1']:.2f}"
+            c2 = "—" if s.get("c2") is None else f"{s['c2']:.2f}"
+            return (f"{clean_sub_v2(s.get('name'))} 近10分{f1(s.get('d_yi'))}億 集中10分{c1}×"
+                    f" 集中30分{c2}× 窗內{signed(s.get('ret'), 2)}%")
+
+        parts.append(f"{dlabel('次產業盤中資金集中（依集中10分倍數）', primary)}\n"
+                     + "\n".join(sub_line(s) for s in subs))
+
+    # d. 個股資金集中：sval 解碼，篩有盤中欄位(c10) 者，依 c10 前15；無盤中欄位則整段略過
+    stocks = live.get("stocks") or {}
+    cols = live.get("stock_cols") or SC
+
+    def sval(code):
+        arr = stocks.get(code)
+        if not arr:
+            return None
+        return {k: (arr[i] if i < len(arr) else None) for i, k in enumerate(cols)}
+
+    rows = []
+    for c in stocks:
+        v = sval(c)
+        if v and v.get("c10") is not None:
+            rows.append({"c": c, **v})
+    rows.sort(key=lambda r: -(r["c10"] if r.get("c10") is not None else (r.get("c30") or 0)))
+    rows = rows[:15]
+    if rows:
+        def stock_line(r):
+            nm = (cl.get(r["c"]) or {}).get("n") or ""
+            c10 = "—" if r.get("c10") is None else f"{r['c10']:.2f}"
+            c30 = "—" if r.get("c30") is None else f"{r['c30']:.2f}"
+            ints = "—" if r.get("ints") is None else signed(r["ints"], 2)
+            return (f"{r['c']}{nm} 集中10分{c10}×/30分{c30}× 漲跌{signed(r.get('chg'), 2)}%"
+                    f" 投信連買{jsnum(r.get('it') or 0)}日/外資連買{jsnum(r.get('fi') or 0)}日 法人強度{ints}%")
+
+        parts.append(f"{dlabel('個股盤中資金集中 前15（依集中10分倍數）', primary)}\n"
+                     + "\n".join(stock_line(r) for r in rows))
+
+    return {"text": "\n\n".join(parts), "primary": primary, "dates": dlabel.dates}
+
+
+# ---------- 頁面3：新聞晨報（taiwan-stock-news/index.html 移植） ----------
+
+TITLE_TAIL_RE = re.compile(r"^(.+?)\s+[-—–|]\s+([^-—–|]{1,20})$")
+# JS 用 \p{L}\p{N}；Python 的 \w（UNICODE 預設）≒字母+數字+底線，另把底線併入移除
+LOOSE_RE = re.compile(r"[\W_]+", re.UNICODE)
+
+
+def loose_title_key(title) -> str:
+    t = str(title or "").strip()
+    m = TITLE_TAIL_RE.match(t)
+    body = m.group(1).strip() if m else t
+    return LOOSE_RE.sub("", body).lower()
+
+
+def gather_news(data, morning, us) -> dict:
+    d = data or {}
+    tdays = sorted(d.get("trading_days") or [])
+    primary = (tdays[-1] if tdays else "") or day10(d.get("generated_at") or "")
+    dlabel = DLabel(primary)
+    parts = []
+
+    # a. 大盤與財金焦點新聞：全部 impact=market，去重（同文轉載）後依日期新→舊取前12
+    mkt, seen = [], set()
+    for s in d.get("stocks") or []:
+        for n in s.get("news") or []:
+            if n.get("impact") != "market":
+                continue
+            key = loose_title_key(n.get("title"))
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            mkt.append(n)
+    mkt.sort(key=lambda n: str(n.get("date") or ""), reverse=True)
+    if mkt:
+        parts.append(f"{dlabel('大盤與財金焦點新聞 前12（新→舊）', primary)}\n"
+                     + "\n".join(f"{day10(n.get('date'))}|{n.get('source', '')}|{n.get('title', '')}"
+                                 for n in mkt[:12]))
+
+    # b. 個股新聞熱度：依新聞則數前15，每檔附產業/權重/最新2則標題
+    tops = sorted(d.get("stocks") or [],
+                  key=lambda s: -(s.get("count") or len(s.get("news") or [])))[:15]
+    if tops:
+        def top_line(s):
+            ns = "；".join(f"{day10(n.get('date'))}《{n.get('title', '')}》"
+                           for n in sorted(s.get("news") or [],
+                                           key=lambda n: str(n.get("date") or ""), reverse=True)[:2])
+            w = f"{jsnum(s['weight_per'])}%" if s.get("weight_per") is not None else "—"
+            return (f"{s.get('stock_id', '')}{s.get('name') or ''}{'[權值]' if s.get('heavyweight') else ''}"
+                    f"|{s.get('industry') or '—'}|大盤權重{w}|新聞{jsnum(s.get('count') or len(s.get('news') or []))}則"
+                    f"|最新：{ns or '—'}")
+
+        parts.append(f"{dlabel('個股新聞熱度 前15（依新聞則數）', primary)}\n"
+                     + "\n".join(top_line(s) for s in tops))
+
+    # c. 晨報籌碼（跨repo讀v2；晨報資料日常與新聞主資料日不同，dlabel會標警告）
+    if morning:
+        m_date = day10(morning.get("generated_at") or "")
+        c = morning.get("chips") or {}
+        lines = []
+        if morning.get("gap"):
+            g, sp = morning["gap"], morning.get("spot") or {}
+            close = jsnum(g["close"]) if g.get("close") is not None else "—"
+            s_close = jsnum(sp["close"]) if sp.get("close") is not None else "—"
+            lines.append(f"期指開盤參考：台指期夜盤{close}（{'+' if (g.get('chg_pct') or 0) > 0 else ''}{jsnum(g.get('chg_pct'))}%）"
+                         f" vs 加權收盤{s_close}，價差{'+' if (g.get('gap') or 0) > 0 else ''}{jsnum(g.get('gap'))}點")
+        if c.get("inst"):
+            i = c["inst"]
+            lines.append(f"三大法人買賣超（億）：外資{'+' if (i.get('foreign') or 0) > 0 else ''}{jsnum(i.get('foreign'))}"
+                         f"｜投信{'+' if (i.get('trust') or 0) > 0 else ''}{jsnum(i.get('trust'))}"
+                         f"｜自營{'+' if (i.get('dealer') or 0) > 0 else ''}{jsnum(i.get('dealer'))}")
+        if c.get("it3"):
+            lines.append("投信3日連買：" + "、".join((x.get("c") or "") + (x.get("n") or "") for x in c["it3"]))
+        if c.get("it3_sell"):
+            lines.append("投信3日連賣：" + "、".join((x.get("c") or "") + (x.get("n") or "") for x in c["it3_sell"]))
+        if c.get("aetf"):
+            lines.append("主動ETF動向：" + "；".join(c["aetf"]))
+        if lines:
+            parts.append(f"{dlabel('晨報籌碼', m_date)}\n" + "\n".join(lines))
+        # d. 隔夜美股（與晨報同批產生，沿用晨報資料日；美股本質為隔夜資料，SYS已禁跨日串連）
+        if us:
+            u_lines = []
+            if us.get("brief"):
+                u_lines.append(us["brief"] + (f"（{us['session']}）" if us.get("session") else ""))
+            for g in us.get("groups") or []:
+                u_lines.append(f"{g.get('g', '')}：" + "、".join(
+                    f"{r.get('n', '')}{signed(r['chg'], 2) + '%' if r.get('chg') is not None else '—'}"
+                    for r in (g.get("rows") or [])[:3]))
+            if u_lines:
+                parts.append(f"{dlabel('隔夜美股', m_date)}\n" + "\n".join(u_lines))
+    else:
+        parts.append("【晨報籌碼】（晨報資料未載入，本段略過，僅分析新聞面）")
+
+    return {"text": "\n\n".join(parts), "primary": primary, "dates": dlabel.dates}
+
+
+# ---------- SYS prompts（原樣取自三站前端與規格書，勿改寫） ----------
+
+SYS_POSTMKT = (
+    "你是積極的台股盤後籌碼策略分析師。任務：彙整本頁各 tab 資料，產出以「找出 alpha 標的」為核心的洞見與可操作建議。"
+    "要求："
+    "(1) 進出建議一律以『同向共振』為基礎——多個資料源指向同一方向才算有效訊號（例：主動ETF加碼＋鉅額買盤同向＋外資買超同一檔＝法人共識偏多；或多源同步偏空）。"
+    "(2) 只聚焦『同向共振』訊號；『背離』（多源方向不一致，如借券賣出大增但外資買超）不適合作為進出參考，本分析一律略過、無須呈現與描述——不要列出背離標的、不要有背離相關段落。"
+    "(3) 依據資料呈現的歷史統計傾向做方向性判斷：對『同向共振』的標的可預測後續傾向、給偏多／偏空看法與明確進出建議。"
+    "(4) 每一條洞見／建議都必須點名個股代號＋可追溯的具體數據依據，禁止空泛或無數據支撐的臆測。"
+    "(5) 洞見與建議合計不超過 10 條，挑同向共振最強、依據最紮實的。"
+    "(6) 建議個股以 alpha 為首要考量，優先納入中小型標的；大型權值股（如台灣50成分、2330台積電、2317鴻海、2454聯發科、金控股等）合計『不得超過』清單一半——這是上限而非目標，不必硬湊到接近一半，若中小型訊號更強就多放中小型、大型股少放甚至不放。"
+    "(7) 指定分點進出僅供『輔助』參考、權重應調低：部分分點以隔日沖／當沖為主，當日大買未必代表中長期看多，容易誤導，故分點不可單獨作為進出依據，只在與其他資料源同向時才納入共振判斷。"
+    "(8) 日期對齊：各段已標注資料日，若某段標注『與主資料日不同』，該段資料只能單獨解讀，嚴禁跨不同交易日直接比較或串連成訊號。"
+    "(9) 繁體中文、markdown（## 標題、- 清單、**粗體**、可用表格）。"
+    "結構：## 核心洞見與操作建議（≤10 條，每條格式＝個股代號名稱 ｜ 共振訊號 ｜ 數據依據 ｜ 方向與進出建議；大型股≤一半）／## 訊號邏輯（簡述同向共振推論）。不要有背離段落。"
+    "最後一行附免責：以上為當日籌碼結構的模型即時研判、未經歷史回測、非保證獲利，僅供你自行參考。"
+)
+
+SYS_LIVE = (
+    "你是積極的台股盤中即時資金流分析師。任務：彙整本頁即時類股資金動態，產出以「找出盤中 alpha 標的」為核心的洞見與可操作建議。"
+    "要求：(1) 進出建議一律以『同向共振』為基礎——多個即時訊號指向同一方向才算有效（例：個股資金集中度飆升＋所屬產業資金同步湧入＋外資或投信連買＝資金共識偏多；多源同步偏空亦然）。"
+    "(2) 只聚焦同向共振訊號；背離（多源方向不一致）不適合作為進出參考，一律略過、不呈現、不描述、不列背離段落。"
+    "(3) 依即時資料呈現的資金傾向做方向性判斷，對共振標的給偏多／偏空看法與明確進出建議。"
+    "(4) 每條洞見／建議必須點名個股代號＋可追溯的具體數據依據(集中倍數/貢獻點/連買日/漲跌%等)，禁止空泛臆測。"
+    "(5) 洞見與建議合計不超過 10 條，挑共振最強、依據最紮實的。"
+    "(6) 建議個股以 alpha 為首要考量，優先納入中小型標的；大型權值股(台灣50成分、2330台積電/2317鴻海/2454聯發科、金控股等)合計不得超過清單一半——這是上限而非目標，不必硬湊，中小型訊號更強就多放中小型甚至大型不放。"
+    "(7) 資料為盤中準即時快照(約分鐘級、20秒輪詢)，僅反映當下資金分布、非全日定論，判讀須註明時效性。"
+    "(8) 繁體中文、markdown(## 標題、- 清單、**粗體**、可用表格)。"
+    "結構：## 核心洞見與操作建議(≤10 條，每條＝個股代號名稱 ｜ 共振訊號 ｜ 數據依據 ｜ 方向與進出建議；大型股≤一半)／## 訊號邏輯(簡述同向共振推論)。不要有背離段落。"
+    "最後一行附免責：以上為盤中即時資金結構的模型研判、資料為準即時快照、未經歷史回測、非投資建議、非保證獲利，僅供你自行參考。"
+)
+
+SYS_NEWS = (
+    "你是積極的台股新聞與籌碼交叉分析師。任務：彙整本頁新聞焦點與晨報籌碼資料，產出以「找出具新聞催化＋籌碼支持的 alpha 標的」為核心的洞見與可操作建議。"
+    "要求：(1) 進出建議一律以『同向共振』為基礎——新聞催化與籌碼方向一致才算有效訊號（例：個股利多新聞密集＋投信連買或主動ETF加碼＝催化與籌碼共振偏多；利空新聞＋法人賣超＝共振偏空）。"
+    "(2) 只聚焦同向共振訊號；背離（如利多新聞但法人大賣）不適合作為進出參考，一律略過、不呈現、不描述、不列背離段落。"
+    "(3) 依資料呈現的傾向做方向性判斷，對共振標的給偏多／偏空看法與明確進出建議。"
+    "(4) 每條洞見／建議必須點名個股代號＋可追溯的具體依據(新聞標題與日期、法人買賣超數字、連買天數等)，禁止空泛臆測。"
+    "(5) 洞見與建議合計不超過 10 條，挑共振最強、依據最紮實的。"
+    "(6) 建議個股以 alpha 為首要考量，優先納入中小型標的；大型權值股(台灣50成分、2330台積電/2317鴻海/2454聯發科、金控股等)合計不得超過清單一半——上限而非目標，不必硬湊。"
+    "(7) 新聞僅代表資訊面、非事實核實，判讀須註明消息面屬性；美股與晨報資料若與主資料日不同，僅可單獨解讀、嚴禁跨日串連成訊號。"
+    "(8) 繁體中文、markdown(## 標題、- 清單、**粗體**、可用表格)。"
+    "結構：## 核心洞見與操作建議(≤10 條，每條＝個股代號名稱 ｜ 共振訊號 ｜ 依據 ｜ 方向與進出建議；大型股≤一半)／## 訊號邏輯(簡述共振推論)。"
+    "不要有背離段落。最後一行附免責：以上為新聞與籌碼交叉的模型即時研判、未經歷史回測、非投資建議、非保證獲利，僅供你自行參考。"
+)
+
+SYS_SYNTH = (
+    "你是台股首席策略師。以下是同一天由三個資料面向（盤後籌碼、即時資金流、新聞×晨報）"
+    "×兩個模型（Opus/Sonnet）產出的 6 份獨立分析。任務：融會貫通、去蕪存菁，產出單一精華彙總。"
+    "要求：(1)跨份共振優先——同一標的被多份分析、多個模型同時點名且方向一致，即為最強 alpha 訊號，"
+    "優先呈現並標注被幾份提及；僅單一份提及的標的降權或捨棄。"
+    "(2)對精選標的明確給出：方向預測（偏多/偏空）、進出建議（進場條件/出場條件/停損思路）、投資建議與部位思路。"
+    "(3)每檔標的附跨份依據摘要（哪幾份、什麼數據）。"
+    "(4)大型權值股≤清單一半（上限非目標）。"
+    "(5)6 份分析若日期標注不同資料日，嚴禁跨日串連。"
+    "(6)結構：## 精華 alpha 標的（≤6 檔，每檔＝代號名稱｜共振強度(N/6份提及)｜方向預測｜進出建議｜依據摘要）"
+    "／## 盤勢綜合研判（≤5行）／## 模型分歧備註（兩模型結論明顯不同處，1-3行，無則免）。"
+    "繁體中文 markdown。最後附免責：以上為多模型彙總之即時研判、未經歷史回測、非保證獲利，投資盈虧自負，僅供你自行參考。"
+)
+
+
+# ---------- Anthropic 呼叫 ----------
+
+def anth_key() -> str:
+    k = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not k:
+        raise RuntimeError("找不到環境變數 ANTHROPIC_API_KEY")
+    return k
+
+
+def call_claude(model: str, system: str, user_msg: str) -> dict:
+    """對齊三站前端 callClaude()：adaptive thinking + effort medium + max_tokens 8000。"""
+    r = requests.post(URL_ANTHROPIC,
+                      headers={"content-type": "application/json", "x-api-key": anth_key(),
+                               "anthropic-version": "2023-06-01"},
+                      json={"model": model, "max_tokens": 8000,
+                            "thinking": {"type": "adaptive"}, "output_config": {"effort": "medium"},
+                            "system": system, "messages": [{"role": "user", "content": user_msg}]},
+                      timeout=(15, 600))
+    j = r.json()
+    if not r.ok or j.get("type") == "error":
+        raise RuntimeError((j.get("error") or {}).get("message") or f"HTTP {r.status_code}")
+    if j.get("stop_reason") == "refusal":
+        raise RuntimeError("模型基於安全政策婉拒本次請求")
+    text = "\n".join(b.get("text", "") for b in (j.get("content") or []) if b.get("type") == "text")
+    return {"text": text, "usage": j.get("usage")}
+
+
+def call_claude_retry(model: str, system: str, user_msg: str, label: str) -> dict:
+    """單份失敗 retry 1 次，仍失敗回 ok:false 佔位（不中止全場）。"""
+    last = None
+    for attempt in (1, 2):
+        try:
+            res = call_claude(model, system, user_msg)
+            print(f"  ✓ {label}（第{attempt}次）", flush=True)
+            return {"ok": True, **res}
+        except Exception as e:
+            last = e
+            print(f"  ✗ {label} 第{attempt}次失敗：{e}", flush=True)
+            if attempt == 1:
+                time.sleep(5)
+    return {"ok": False, "text": f"（該份產出失敗：{last}）", "usage": None}
+
+
+# ---------- 資料齊全閘門 ----------
+
+def wait_gate(slot: str) -> None:
+    """am：等 v2 morning.json 為今日；pm：等 postmkt.json 與 news.json 為今日。
+    每 5 分輪詢一次；逾時仍舊資料 → print 原因後 exit 0（skip，假日自然不跑）。"""
+    today = taipei_now().strftime("%Y-%m-%d")
+    max_min = 90 if slot == "am" else 120
+    deadline = time.time() + max_min * 60
+    print(f"齊全閘門（{slot}）：等待資料日 {today}，最多 {max_min} 分鐘…", flush=True)
+    while True:
+        reasons = []
+        try:
+            if slot == "am":
+                m = http_json(URL_MORNING)
+                m_day = taipei_day_of(m.get("generated_at"))
+                if m_day == today:
+                    print(f"  morning.json 已是今日（{m_day}），閘門通過", flush=True)
+                    return
+                reasons.append(f"morning.json generated_at={m.get('generated_at')}（台北日 {m_day}）")
+            else:
+                pm = http_json(URL_POSTMKT)
+                nw = http_json(URL_NEWS)
+                pm_ok = pm.get("date") == today
+                n_day = taipei_day_of(nw.get("generated_at"))
+                n_ok = n_day == today
+                if pm_ok and n_ok:
+                    print(f"  postmkt.json date={pm.get('date')}、news.json 台北日 {n_day}，閘門通過", flush=True)
+                    return
+                if not pm_ok:
+                    reasons.append(f"postmkt.json date={pm.get('date')}")
+                if not n_ok:
+                    reasons.append(f"news.json generated_at={nw.get('generated_at')}（台北日 {n_day}）")
+        except Exception as e:
+            reasons.append(f"輪詢失敗：{e}")
+        if time.time() >= deadline:
+            print(f"閘門逾時（{max_min} 分）仍非今日資料，本場 skip：{'；'.join(reasons)}", flush=True)
+            sys.exit(0)
+        print(f"  尚未齊全（{'；'.join(reasons)}），5 分鐘後重試…", flush=True)
+        time.sleep(300)
+
+
+# ---------- 輸出與清理 ----------
+
+def write_output(slot: str, six: list[dict], synthesis: dict) -> None:
+    now = taipei_now()
+    out = {
+        "generated_at": now.isoformat(timespec="seconds"),
+        "slot": slot,
+        "date": now.strftime("%Y-%m-%d"),
+        "six": six,
+        "synthesis": synthesis,
+    }
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    fname = f"{now.strftime('%Y%m%d')}-{slot}.json"
+    dst = OUT_DIR / fname
+    dst.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"輸出 {dst}（{dst.stat().st_size:,} bytes）", flush=True)
+
+    # 刪超過 3 日的舊 am/pm 檔（只動自動場的 YYYYMMDD-{am|pm}.json，手動場不歸這裡管）
+    cutoff = (now - dt.timedelta(days=3)).strftime("%Y%m%d")
+    pat = re.compile(r"^(\d{8})-(am|pm)\.json$")
+    for f in OUT_DIR.glob("*.json"):
+        m = pat.match(f.name)
+        if m and m.group(1) < cutoff:
+            f.unlink()
+            print(f"刪除舊檔 {f.name}", flush=True)
+
+    # 重建 index.json（新→舊；pm 排在同日 am 前）
+    runs = []
+    for f in OUT_DIR.glob("*.json"):
+        m = pat.match(f.name)
+        if not m:
+            continue
+        try:
+            j = json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        runs.append({"file": f.name, "date": j.get("date") or "",
+                     "slot": m.group(2), "generated_at": j.get("generated_at") or ""})
+    runs.sort(key=lambda r: (r["date"], r["slot"] == "pm", r["generated_at"]), reverse=True)
+    idx = OUT_DIR / "index.json"
+    idx.write_text(json.dumps({"runs": runs}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"重建 {idx}（{len(runs)} 筆）", flush=True)
+
+
+# ---------- 主流程 ----------
+
+def load_sources() -> dict:
+    """三個頁面的資料源全部載入；單源失敗不擋整場（該段自然略過，跟前端行為一致）。"""
+    print("載入資料源…", flush=True)
+    local_pm = ROOT / "data" / "postmkt.json"
+    pm = None
+    if local_pm.exists():  # Actions checkout 後本地讀更快，優先本地
+        try:
+            pm = json.loads(local_pm.read_text(encoding="utf-8"))
+            print(f"  postmkt.json：本地檔（date={pm.get('date')}）", flush=True)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"  本地 postmkt.json 讀取失敗，改抓遠端：{e}", flush=True)
+    if pm is None:
+        pm = try_json(URL_POSTMKT, "postmkt.json（遠端）")
+    # 閘門確認過遠端是今日、但本地 checkout 可能是舊檔 → 換抓遠端
+    today = taipei_now().strftime("%Y-%m-%d")
+    if pm is not None and pm.get("date") != today:
+        remote = try_json(URL_POSTMKT, "postmkt.json（遠端刷新）")
+        if remote is not None and remote.get("date") == today:
+            pm = remote
+            print("  postmkt.json：本地為舊檔，已改用遠端今日檔", flush=True)
+    classify = try_json(URL_CLASSIFY, "classify.json")
+    return {
+        "pm": pm,
+        "aetf_latest": try_json(URL_AETF_LATEST, "aetf latest.json"),
+        "aetf_diff": try_json(URL_AETF_DIFF, "aetf diff.json"),
+        "tf": try_json(URL_TF, "taiwan-flows latest.json"),
+        "live": try_json(URL_LIVE, "v2 /live"),
+        "classify": (classify or {}).get("map") if classify else None,
+        "news": try_json(URL_NEWS, "news.json"),
+        "morning": try_json(URL_MORNING, "morning.json"),
+        "us": try_json(URL_US, "us.json"),
+    }
+
+
+def build_contexts(src: dict) -> list[dict]:
+    """回傳三個頁面各自的 {page, sys, user, primary}；user 格式與各站前端 USER 逐字對齊。"""
+    pages = []
+
+    # 頁面1：盤後分析
+    g1 = gather_postmkt(src["pm"], src["aetf_latest"], src["aetf_diff"], src["tf"])
+    bk_text = (fetch_brokers_context(src["pm"], g1["primary"]) if g1["text"].strip()
+               else "【指定分點單點進出】（主資料未載入，略過）")
+    user1 = (f"主資料日（以此為準）：{g1['primary']}\n各段資料日：{dates_json(g1['dates'])}\n"
+             f"（凡標注「與主資料日不同」的段落，僅可單獨解讀，勿跨日比較）\n\n{g1['text']}\n\n{bk_text}")
+    pages.append({"page": "盤後分析", "sys": SYS_POSTMKT, "user": user1,
+                  "primary": g1["primary"], "empty": not g1["text"].strip()})
+
+    # 頁面2：即時類股動態（自動場 08:00/22:00 都非盤中，盤中段天然單薄屬預期）
+    g2 = gather_live(src["live"], src["classify"])
+    user2 = (f"主資料日：{g2['primary']}\n各段資料日：{dates_json(g2['dates'])}\n"
+             f"（凡標注與主資料日不同的段落僅可單獨解讀，勿跨日比較）\n\n{g2['text']}")
+    pages.append({"page": "即時類股動態", "sys": SYS_LIVE, "user": user2,
+                  "primary": g2["primary"], "empty": not g2["text"].strip()})
+
+    # 頁面3：新聞晨報
+    g3 = gather_news(src["news"], src["morning"], src["us"])
+    user3 = (f"主資料日（以此為準）：{g3['primary']}\n各段資料日：{dates_json(g3['dates'])}\n"
+             f"（凡標注「與主資料日不同」的段落，僅可單獨解讀，勿跨日比較）\n\n{g3['text']}")
+    pages.append({"page": "新聞晨報", "sys": SYS_NEWS, "user": user3,
+                  "primary": g3["primary"], "empty": not g3["text"].strip()})
+
+    return pages
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="postmkt 彙總分析自動管線")
+    ap.add_argument("--slot", choices=["am", "pm"], required=True, help="場次：am=08:00台北 / pm=22:00台北")
+    ap.add_argument("--no-wait", action="store_true", help="跳過資料齊全輪詢閘門")
+    ap.add_argument("--dry-run", action="store_true", help="只印三段 context，不呼叫 Anthropic（供驗收）")
+    args = ap.parse_args()
+
+    if not args.no_wait and not args.dry_run:
+        wait_gate(args.slot)
+
+    src = load_sources()
+    pages = build_contexts(src)
+
+    if args.dry_run:
+        for p in pages:
+            print(f"\n{'=' * 20} 【{p['page']}】context（主資料日 {p['primary'] or '—'}）{'=' * 20}")
+            print(p["user"])
+        print("\n--dry-run 完成（未呼叫 Anthropic）", flush=True)
+        return
+
+    if all(p["empty"] for p in pages):
+        print("三個頁面 context 全部為空（資料源皆載入失敗），本場中止", flush=True)
+        sys.exit(1)
+
+    anth_key()  # 先驗證金鑰存在，缺鑰直接失敗、不浪費輪詢後的時間
+
+    # 6 份摘要：3 context × 2 模型，最多 3 併發、單份失敗 retry 1 次後 ok:false 佔位
+    jobs = [(p, model) for p in pages for model in SUMMARY_MODELS]
+    print(f"呼叫 Anthropic：{len(jobs)} 份摘要（併發上限 {MAX_WORKERS}）…", flush=True)
+
+    def run_one(job):
+        p, model = job
+        label = f"{p['page']}×{model}"
+        if p["empty"]:
+            return {"page": p["page"], "model": model, "date": p["primary"],
+                    "ok": False, "text": "（該份產出失敗：資料源載入失敗，context 為空）", "usage": None}
+        res = call_claude_retry(model, p["sys"], p["user"], label)
+        return {"page": p["page"], "model": model, "date": p["primary"], **res}
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        six = list(pool.map(run_one, jobs))
+
+    ok_n = sum(1 for s in six if s["ok"])
+    print(f"摘要完成：{ok_n}/{len(six)} 份成功", flush=True)
+    if ok_n < MIN_OK_FOR_SYNTH:
+        print(f"成功份數不足 {MIN_OK_FOR_SYNTH} 份，不做彙總，本場失敗", flush=True)
+        sys.exit(1)
+
+    # 彙總：6 份全文以【頁面×模型】標頭分隔、附各份資料日
+    blocks = [f"【{s['page']}×{s['model']}】（資料日 {s['date'] or '—'}）\n{s['text']}" for s in six]
+    synth_user = "\n\n".join(blocks)
+    print(f"彙總中…（{SYNTH_MODEL}）", flush=True)
+    synth = call_claude_retry(SYNTH_MODEL, SYS_SYNTH, synth_user, f"彙總×{SYNTH_MODEL}")
+    if not synth["ok"]:
+        print("彙總失敗，本場失敗", flush=True)
+        sys.exit(1)
+
+    write_output(args.slot, six, {"text": synth["text"], "usage": synth["usage"]})
+
+
+if __name__ == "__main__":
+    try:
+        sys.stdout = __import__("io").TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    except Exception:
+        pass
+    main()
