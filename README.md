@@ -63,6 +63,11 @@
   `summary_manual`；自動場由 `build_summary.py`＋`summary.yml`（cron 08:00/22:00 台北
   觸發＋資料齊全輪詢閘門：am 等晨報最多 90 分、pm 等盤後+新聞最多 120 分，逾時=假日
   skip），輸出 `data/summary/YYYYMMDD-{am|pm}.json` 保留近 3 日，前端列表點閱。
+  **假日/颱風假**（2026-07-12 補強）：閘門進場先查 TWSE 休市行事曆 API（免金鑰）擋排定
+  假日——am 場必須靠這層（晨報管線假日仍會更新 generated_at，資料閘門擋不住）；行事曆
+  混有「開始交易日」等交易日標記，過濾規則見 `is_twse_holiday()` 註解；API 失敗
+  fail-open 續走資料閘門。颱風假等臨時停市無盤前可查來源：pm 場由 postmkt.json `date`
+  回退機制天然防住；am 場會誤跑一次（約 NT$13、每年 2-4 次），屬已評估接受的殘餘風險。
   **維護重點**：三站 gather 邏輯在本 repo 有兩份移植副本（index.html 的 sumCtx* 與
   build_summary.py 的 gather_*），三站前端 insightGatherContext/SYS 改動時需同步兩處
   （SYS 已驗逐字一致）。自動場需 repo Secret `ANTHROPIC_API_KEY`（見部署設定）。

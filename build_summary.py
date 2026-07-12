@@ -658,10 +658,44 @@ def call_claude_retry(model: str, system: str, user_msg: str, label: str) -> dic
 
 # ---------- 資料齊全閘門 ----------
 
+TWSE_HOLIDAY_URL = "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule"
+
+
+def is_twse_holiday(today: str) -> bool:
+    """查 TWSE 官方休市行事曆（免金鑰）：today（YYYY-MM-DD）是否為排定休市日。
+    - 行事曆混有「開始交易日/最後交易日」等交易日標記，須過濾：只有 Name 含「無交易」
+      或 Description 含「放假/補假」的才是休市日（2026 全年 27 筆已逐筆驗證此規則）。
+    - Date 為民國年 7 碼（1150101 = 2026-01-01）。
+    - 只涵蓋排定假日；臨時颱風停市查不到（該殘餘風險已明確接受：僅 am 場可能誤跑，
+      每次約 NT$13、每年 2-4 次；pm 場由 postmkt.json date 回退機制天然防住）。
+    - API 失敗一律 fail-open 回 False（絕不因行事曆查不到而擋掉真交易日，
+      後面還有資料齊全閘門把關）。"""
+    try:
+        y, m, d = today.split("-")
+        roc = f"{int(y) - 1911}{m}{d}"
+        rows = http_json(TWSE_HOLIDAY_URL)
+        for r in rows:
+            if str(r.get("Date", "")).strip() != roc:
+                continue
+            name = str(r.get("Name", ""))
+            desc = str(r.get("Description", ""))
+            if ("無交易" in name) or ("放假" in desc) or ("補假" in desc):
+                return True
+        return False
+    except Exception as e:
+        print(f"  休市行事曆查詢失敗（fail-open，續走資料閘門）：{e}", flush=True)
+        return False
+
+
 def wait_gate(slot: str) -> None:
     """am：等 v2 morning.json 為今日；pm：等 postmkt.json 與 news.json 為今日。
-    每 5 分輪詢一次；逾時仍舊資料 → print 原因後 exit 0（skip，假日自然不跑）。"""
+    每 5 分輪詢一次；逾時仍舊資料 → print 原因後 exit 0（skip，假日自然不跑）。
+    進場先查 TWSE 休市行事曆：排定假日直接 skip——am 場必須靠這層（晨報管線假日仍會
+    更新 generated_at，資料閘門擋不住）；pm 場本可由資料閘門擋住，此層省去 120 分空轉。"""
     today = taipei_now().strftime("%Y-%m-%d")
+    if is_twse_holiday(today):
+        print(f"TWSE 休市行事曆：{today} 為排定休市日，本場 skip。", flush=True)
+        sys.exit(0)
     max_min = 90 if slot == "am" else 120
     deadline = time.time() + max_min * 60
     print(f"齊全閘門（{slot}）：等待資料日 {today}，最多 {max_min} 分鐘…", flush=True)
