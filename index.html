@@ -202,9 +202,9 @@ const INSIGHT_BROKERS = ["9268","9800","9600","9A00"];
 const INSIGHT_MODELS = [["claude-opus-4-8","Opus 4.8（最佳判讀，約NT$3/次）"],["claude-sonnet-5","Sonnet 5（近Opus、約半價更快）"]];
 const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQuery:"",
   oddSub:"intraday", bkSub:"branch", bkListQuery:"", aetf:null, pm:null, pmErr:null, tf:null,
-  insight:null, insightLoading:false, insightErr:null,
+  insight:null, insightLoading:false, insightErr:null, insightAbort:null,
   insightModel: localStorage.getItem("insight_model") || "claude-opus-4-8",
-  summary:null, summaryLoading:false, summaryErr:null, summaryProg:"",
+  summary:null, summaryLoading:false, summaryErr:null, summaryProg:"", summaryAbort:null,
   sumAutoIdx:undefined, sumAutoOpen:null, sumManualOpen:null, cloudOpen:null };
 
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
@@ -1122,25 +1122,35 @@ async function insightFetchBrokers(primary){
 }
 // 打開 adaptive thinking：Opus 4.8 省略 thinking=不思考，故明確指定；effort medium 平衡
 // 深度與延遲；只取 text block(thinking display 預設 omitted，不渲染思考)。max_tokens 拉高
-// 給思考+輸出留空間。
-async function callClaude(key, model, system, userMsg){
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method:"POST",
-    headers:{ "content-type":"application/json", "x-api-key":key,
-      "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-    body: JSON.stringify({ model, max_tokens:8000,
-      thinking:{ type:"adaptive" }, output_config:{ effort:"medium" },
-      system, messages:[{role:"user",content:userMsg}] })
-  });
-  const j = await r.json();
-  if (!r.ok || (j.type==="error")) throw new Error((j.error && j.error.message) || ("HTTP "+r.status));
-  if (j.stop_reason === "refusal") throw new Error("模型基於安全政策婉拒本次請求");
-  const text = (j.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
-  return { text, usage: j.usage || null };
+// 給思考+輸出留空間。signal 為可選 AbortSignal（中斷用），不傳＝行為不變；
+// 中斷時把 AbortError 轉成好讀的「已手動中斷」。
+// 【三站同步】本函式在 postmkt／taiwan-flow-live-v2／taiwan-stock-news 逐字一致，改動需同步三站。
+async function callClaude(key, model, system, userMsg, signal){
+  try{
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{ "content-type":"application/json", "x-api-key":key,
+        "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+      body: JSON.stringify({ model, max_tokens:8000,
+        thinking:{ type:"adaptive" }, output_config:{ effort:"medium" },
+        system, messages:[{role:"user",content:userMsg}] }),
+      signal
+    });
+    const j = await r.json();
+    if (!r.ok || (j.type==="error")) throw new Error((j.error && j.error.message) || ("HTTP "+r.status));
+    if (j.stop_reason === "refusal") throw new Error("模型基於安全政策婉拒本次請求");
+    const text = (j.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+    return { text, usage: j.usage || null };
+  }catch(e){
+    if (e && e.name === "AbortError") throw new Error("已手動中斷");
+    throw e;
+  }
 }
 async function runInsight(){
   if (!anthKey()){ alert("請先輸入並儲存 Anthropic API token"); return; }
-  state.insightLoading = true; state.insightErr = null; render();
+  if (state.insightLoading) return;
+  state.insightLoading = true; state.insightErr = null;
+  state.insightAbort = new AbortController(); render();
   try{
     const g = insightGatherContext();
     if (!g.text.trim()) throw new Error("本頁資料尚未載入完成，請稍候再試");
@@ -1159,14 +1169,16 @@ async function runInsight(){
       + "結構：## 核心洞見與操作建議（≤10 條，每條格式＝個股代號名稱 ｜ 共振訊號 ｜ 數據依據 ｜ 方向與進出建議；大型股≤一半）／## 訊號邏輯（簡述同向共振推論）。不要有背離段落。"
       + "最後一行附免責：以上為當日籌碼結構的模型即時研判、未經歷史回測、非保證獲利，僅供你自行參考。";
     const USER = `主資料日（以此為準）：${g.primary}\n各段資料日：${JSON.stringify(g.dates)}\n（凡標注「與主資料日不同」的段落，僅可單獨解讀，勿跨日比較）\n\n${g.text}\n\n${bk.text}`;
-    const res = await callClaude(anthKey(), state.insightModel, SYS, USER);
+    const res = await callClaude(anthKey(), state.insightModel, SYS, USER, state.insightAbort.signal);
     state.insight = { text: res.text, usage: res.usage, at: twNow(), date: g.primary, model: state.insightModel };
     saveAnalysisCloud(state.insight, "insight-postmkt",
       { at: state.insight.at, model: state.insight.model, text: state.insight.text, usage: state.insight.usage, date: state.insight.date },
       () => { if (state.tab === "insight") render(); });
   }catch(e){
-    state.insightErr = String(e.message || e);
+    state.insightErr = (state.insightAbort && state.insightAbort.signal.aborted)
+      ? "已手動中斷（已送出的呼叫仍會計費）" : String(e.message || e);
   }
+  state.insightAbort = null;
   state.insightLoading = false; render();
 }
 function insightHtml(){
@@ -1194,7 +1206,11 @@ function insightHtml(){
     + (ghToken()?`<span class="mut" style="font-size:.74rem;cursor:pointer" data-gh-clear>GitHub token已設定（點此清除）</span>`:"")
     + `</div><div class="insight-note">分析範圍：主動ETF、三大法人買賣超(盤後法人動態站)、融借券整合排行、當沖、鉅額、零股(盤中)、指定分點 ${INSIGHT_BROKERS.join("／")}。`
     + `已開啟 adaptive thinking（模型先推理再輸出，命中率較高、略慢）；資料自動對齊最近交易日、不同日段落會標警告。每次分析約消耗數千 token（費用計入你的 Anthropic 帳戶）。</div></div>`;
-  if (state.insightLoading){ h += `<div class="empty">Claude 分析中…（依資料量約需 10-30 秒）</div>`; return h; }
+  if (state.insightLoading){
+    h += `<div class="empty">Claude 分析中…（依資料量約需 10-30 秒）`
+      + `<div style="margin-top:10px"><span class="qbtn" data-insight-abort>⏹ 中斷</span></div></div>`;
+    return h;
+  }
   if (state.insightErr){ h += `<div class="empty" style="text-align:left;padding:14px">分析失敗：${esc(state.insightErr)}</div>`; return h; }
   if (state.insight){
     const u = state.insight.usage;
@@ -1208,6 +1224,8 @@ function insightHtml(){
 document.addEventListener("click", e => {
   const rn = e.target.closest("[data-insight-run]");
   if (rn){ runInsight(); return; }
+  const ia = e.target.closest("[data-insight-abort]");
+  if (ia){ if (state.insightAbort) state.insightAbort.abort(); return; }
   const sv = e.target.closest("[data-anth-save]");
   if (sv){ const i=document.getElementById("anthTok"); if(i&&i.value.trim()){ localStorage.setItem("anthropic_key", i.value.trim()); render(); } return; }
   const cl = e.target.closest("[data-anth-clear]");
@@ -1463,6 +1481,8 @@ async function runSummary(){
   if (!anthKey()){ alert("請先輸入並儲存 Anthropic API token"); return; }
   if (state.summaryLoading) return;
   state.summaryLoading = true; state.summaryErr = null;
+  state.summaryAbort = new AbortController();
+  const signal = state.summaryAbort.signal;
   state.summaryProg = "準備中：並行抓取三頁資料…"; render();
   try{
     const key = anthKey();
@@ -1483,7 +1503,7 @@ async function runSummary(){
         jobs.push((async ()=>{
           try{
             if (p.g.err) throw new Error("（資料抓取失敗：" + p.g.err + "）");
-            const res = await callClaude(key, model, p.sys, p.user(p.g));
+            const res = await callClaude(key, model, p.sys, p.user(p.g), signal);
             done++; state.summaryProg = `摘要 ${done}/6：${label} 完成`; render();
             return { page:p.page, model, text:res.text, usage:res.usage, ok:true };
           }catch(e){
@@ -1494,6 +1514,8 @@ async function runSummary(){
       }
     }
     const six = await Promise.all(jobs);
+    // 手動中斷：整場停止（各份已以佔位文字標失敗），不彙總、不寫入本機/雲端
+    if (signal.aborted) throw new Error("已手動中斷");
     const okCount = six.filter(s=>s.ok).length;
     if (okCount < 3) throw new Error(`僅 ${okCount}/6 份摘要成功（需 ≥3 份才彙總），本次中止`);
     // 彙總（固定 Opus 4.8）：USER＝6 份全文，以【頁面×模型】標頭分隔＋各份資料日
@@ -1501,7 +1523,7 @@ async function runSummary(){
     const pageDate = p => p==="盤後分析" ? dates.postmkt : p==="即時類股動態" ? dates.live : dates.news;
     const USER = "以下為同一批次產出的 6 份獨立分析（各以【頁面×模型】標頭分隔，附各份資料日）：\n\n"
       + six.map(s=>`【${s.page}×${s.model}】（該份資料日：${pageDate(s.page)}）\n${s.text}`).join("\n\n────────\n\n");
-    const res = await callClaude(key, "claude-opus-4-8", SUM_SYS_SYNTH, USER);
+    const res = await callClaude(key, "claude-opus-4-8", SUM_SYS_SYNTH, USER, signal);
     const result = { at: twNow(), six, synthesis:{ text:res.text, usage:res.usage }, dates };
     state.summary = result; state.sumManualOpen = null;
     // localStorage 最多 2 筆（單筆可達 ~50-100KB；quota 滿時退而只存最新 1 筆）
@@ -1519,8 +1541,10 @@ async function runSummary(){
       { at: result.at, six: result.six, synthesis: result.synthesis, dates: result.dates },
       () => { if (state.tab === "summary") render(); });
   }catch(e){
-    state.summaryErr = String(e.message || e);
+    state.summaryErr = signal.aborted
+      ? "已手動中斷（已送出的呼叫仍會計費）" : String(e.message || e);
   }
+  state.summaryAbort = null;
   state.summaryLoading = false; state.summaryProg = ""; render();
 }
 // 結果渲染（最新結果／自動檔／手動歷史共用）：彙總全文＋meta＋折疊 6 份原文
@@ -1575,7 +1599,11 @@ function summaryHtml(){
     + `</div><div class="insight-note">流程：並行抓齊三頁資料（盤後分析＝本頁各 tab＋指定分點／即時類股動態＝v2 Worker 即時快照／新聞晨報＝新聞+晨報+美股）`
     + `→ 各頁以 Opus 4.8 與 Sonnet 5 產出 6 份摘要 → 由 Opus 4.8 融會貫通彙總。約需 1-3 分鐘、費用約每次 NT$12-15（計入你的 Anthropic 帳戶）。`
     + `盤前/盤後執行時即時頁天然單薄屬預期。</div></div>`;
-  if (state.summaryLoading){ h += `<div class="empty">${esc(state.summaryProg||"執行中…")}</div>`; return h; }
+  if (state.summaryLoading){
+    h += `<div class="empty">${esc(state.summaryProg||"執行中…")}`
+      + `<div style="margin-top:10px"><span class="qbtn" data-summary-abort>⏹ 中斷</span></div></div>`;
+    return h;
+  }
   if (state.summaryErr) h += `<div class="empty" style="text-align:left;padding:14px">彙總失敗：${esc(state.summaryErr)}</div>`;
   if (state.summary){
     const dd = state.summary.dates || {};
@@ -1680,6 +1708,8 @@ document.addEventListener("click", e => {
 document.addEventListener("click", e => {
   const rn = e.target.closest("[data-summary-run]");
   if (rn){ runSummary(); return; }
+  const ab = e.target.closest("[data-summary-abort]");
+  if (ab){ if (state.summaryAbort) state.summaryAbort.abort(); return; }
   const ao = e.target.closest("[data-sum-open]");
   if (ao){
     const f = ao.dataset.sumOpen;
