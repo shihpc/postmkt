@@ -71,6 +71,14 @@
   **維護重點**：三站 gather 邏輯在本 repo 有兩份移植副本（index.html 的 sumCtx* 與
   build_summary.py 的 gather_*），三站前端 insightGatherContext/SYS 改動時需同步兩處
   （SYS 已驗逐字一致）。自動場需 repo Secret `ANTHROPIC_API_KEY`（見部署設定）。
+- 個股外連＋雲端儲存（2026-07-12）：三站（本站/taiwan-flow-live-v2/taiwan-stock-news）insight
+  渲染＋本站彙總渲染中，個股代號自動變連結外開 Yahoo 技術分析頁。`linkifyStocks(html, knownSet)`
+  雙層防誤連：各站 `stockCodeSet()` 收集已知代號＋型態兜底（代號緊跟中文、單位黑名單、
+  「元大/元太」例外），tag 切分不破壞 HTML。分析結果自動存本 repo `data/analyses/`
+  （`insight-{postmkt|live|news}-YYYYMMDD.json`／`summary-manual-YYYYMMDD.json`，當日陣列、
+  單日上限10筆，保留近3日由 build_summary.py 清理段順手刪）。寫入靠 localStorage `gh_token`
+  （三站同 origin 共用，未設靜默跳過）；讀取免 token——彙總 tab「雲端歷史（近3日）」列 4 種檔、
+  v2/news 各列自站，raw CDN 約 5 分快取。**維護點**：`linkifyStocks`/`ghSaveAnalysis` 三站逐字一致，改動需三站同步。
 - 待辦（暫緩）：回測模組（nightly pipeline 累積歷史→前向報酬勝率餵 prompt），
   使用者 2026-07-11 決定暫緩，規格未定義。
 - 未解：分點互動查詢在無 token 環境只能看到輸入提示；FinMind 個股層級維持率、
@@ -88,6 +96,9 @@
 2. **GitHub Pages**：Settings → Pages → Source 選 `Deploy from a branch`，
    Branch 選 `main` / `(root)` → Save。
 3. （可選）Actions tab 手動跑一次 `build postmkt data` 產生第一份資料。
+4. （可選）GitHub Fine-grained PAT：Settings → Developer settings → Fine-grained tokens，
+   只勾本 repo、權限 Contents Read/Write，貼進頁面 `gh_token` 欄（三站設一次即可），
+   供分析結果雲端儲存；不設不影響其他功能。
 
 ## 本機開發
 

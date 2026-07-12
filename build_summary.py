@@ -757,6 +757,17 @@ def write_output(slot: str, six: list[dict], synthesis: dict) -> None:
             f.unlink()
             print(f"刪除舊檔 {f.name}", flush=True)
 
+    # 刪 data/analyses/ 下超過 3 日的前端分析檔（三站摘要＋彙總手動；regex 嚴格比對，
+    # 不動 data/summary/ 既有邏輯）
+    ana_dir = ROOT / "data" / "analyses"
+    if ana_dir.exists():
+        ana_pat = re.compile(r"^(insight-(postmkt|live|news)|summary-manual)-(\d{8})\.json$")
+        for f in ana_dir.glob("*.json"):
+            m = ana_pat.match(f.name)
+            if m and m.group(3) < cutoff:
+                f.unlink()
+                print(f"刪除舊分析檔 data/analyses/{f.name}", flush=True)
+
     # 重建 index.json（新→舊；pm 排在同日 am 前）
     runs = []
     for f in OUT_DIR.glob("*.json"):
