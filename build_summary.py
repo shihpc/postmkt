@@ -702,7 +702,9 @@ def wait_gate(slot: str) -> None:
     if is_twse_holiday(today):
         print(f"TWSE 休市行事曆：{today} 為排定休市日，本場 skip。", flush=True)
         sys.exit(0)
-    max_min = 90 if slot == "am" else 120
+    # cron 已提早觸發（am 06:23／pm 22:17 台北）讓閘門等資料，窗口要蓋住上游
+    # 最壞完成時間（晨報~08:30、新聞晚班~00:40 含 GitHub 延遲），統一 150 分。
+    max_min = 150
     deadline = time.time() + max_min * 60
     print(f"齊全閘門（{slot}）：等待資料日 {today}，最多 {max_min} 分鐘…", flush=True)
     while True:

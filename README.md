@@ -61,9 +61,9 @@
   ＋Opus 彙總，約 NT$8-10/次）。**2026-07-12 起 6 份摘要全改 Sonnet 5（每頁×2 次獨立分析、
   標籤 Sonnet5-A/B 去重）、彙總維持 Opus 4.8，成本考量。**彙總 SYS 以「跨份共振優先」
   （N/6 份提及）精粹 alpha、給方向預測與進出建議。單份失敗不中止（≥3 份成功才彙總）。手動近 2 次存 localStorage
-  `summary_manual`；自動場由 `build_summary.py`＋`summary.yml`（cron 08:00/22:00 台北
-  觸發＋資料齊全輪詢閘門：am 等晨報最多 90 分、pm 等盤後+新聞最多 120 分，逾時=假日
-  skip），輸出 `data/summary/YYYYMMDD-{am|pm}.json` 保留近 3 日，前端列表點閱。
+  `summary_manual`；自動場由 `build_summary.py`＋`summary.yml`（cron 06:23/22:17 台北觸發——提早＋錯開整點
+  避開 GitHub cron 壅塞（UTC 00:00 整點延遲常達 2-3 小時），由資料齊全輪詢閘門等資料
+  （am/pm 皆最多 150 分，逾時=假日 skip），輸出 `data/summary/YYYYMMDD-{am|pm}.json` 保留近 3 日，前端列表點閱。
   **假日/颱風假**（2026-07-12 補強）：閘門進場先查 TWSE 休市行事曆 API（免金鑰）擋排定
   假日——am 場必須靠這層（晨報管線假日仍會更新 generated_at，資料閘門擋不住）；行事曆
   混有「開始交易日」等交易日標記，過濾規則見 `is_twse_holiday()` 註解；API 失敗

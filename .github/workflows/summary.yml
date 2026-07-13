@@ -2,9 +2,11 @@ name: build summary analysis
 
 on:
   schedule:
-    # 平日 08:00 台北（00:00 UTC）→ am 場；平日 22:00 台北（14:00 UTC）→ pm 場
-    - cron: "0 0 * * 1-5"
-    - cron: "0 14 * * 1-5"
+    # 提早觸發＋錯開整點（GitHub cron 整點/UTC 00:00 最壅塞，週一早上尤甚），
+    # 讓資料閘門去等資料：cron 延遲不可控，閘門輪詢可控。
+    # am 場：台北 06:23（UTC 前一日 22:23，週日~四）；pm 場：台北 22:17（UTC 14:17）
+    - cron: "23 22 * * 0-4"
+    - cron: "17 14 * * 1-5"
   workflow_dispatch:
     inputs:
       slot:
@@ -23,7 +25,7 @@ concurrency:
 jobs:
   summary:
     runs-on: ubuntu-latest
-    timeout-minutes: 150  # 涵蓋 pm 最長 120 分輪詢＋API 呼叫時間
+    timeout-minutes: 180  # 涵蓋最長 150 分輪詢＋API 呼叫時間
     steps:
       - uses: actions/checkout@v4
 
@@ -38,8 +40,15 @@ jobs:
         id: slot
         run: |
           SLOT="${{ github.event.inputs.slot }}"
+          # 排程觸發依「觸發的 cron 表達式」判斷場次（am cron 在 UTC 22 時，
+          # 不能再用「UTC 時 <12 → am」判斷）；手動觸發無 schedule 值時退回時刻判斷
+          # （台北 12:00 前 = UTC 4 前視為 am）。
           if [ -z "$SLOT" ]; then
-            if [ "$(date -u +%H)" -lt 12 ]; then SLOT=am; else SLOT=pm; fi
+            case "${{ github.event.schedule }}" in
+              "23 22 * * 0-4") SLOT=am ;;
+              "17 14 * * 1-5") SLOT=pm ;;
+              *) if [ "$(date -u +%H)" -lt 4 ]; then SLOT=am; else SLOT=pm; fi ;;
+            esac
           fi
           echo "slot=$SLOT" >> "$GITHUB_OUTPUT"
           echo "slot=$SLOT"
