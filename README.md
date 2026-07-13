@@ -8,7 +8,7 @@
 | Tab | 資料源 | 內容 |
 |---|---|---|
 | 摘要分析 | 前端彙整以下各 tab ＋ 即時呼叫 Anthropic Claude API | AI 生成以查找 alpha 標的為目標的洞見（首頁預設 tab） |
-| 彙總分析 | 三頁面（本站盤後/即時類股/新聞晨報）context × Opus4.8/Sonnet5 ＝ 6 份摘要 → Opus4.8 彙總 | 跨份共振精粹 alpha：方向預測＋進出建議；手動一鍵（近2次存瀏覽器）＋自動場（近3日、讀 `data/summary/`） |
+| 彙總分析 | 三頁面（本站盤後/即時類股/新聞晨報）context × Sonnet5 各 2 次 ＝ 6 份摘要 → Opus4.8 彙總 | 跨份共振精粹 alpha：方向預測＋進出建議；手動一鍵（近2次存瀏覽器）＋自動場（近3日、讀 `data/summary/`） |
 | 主動ETF | taiwan-flow-live-v2 `data/aetf/`（跨 repo 唯讀） | 每日投組快照、主動加減碼、進出個股、次產業流向 |
 | 融資券借券 | FinMind 融資/融券/借券 + TWSE TWT72U 兩平台借券餘額 | 個股查詢（點開完整明細）＋整合排行（全市場 2200+ 檔、分組雙列表頭、虛擬捲動） |
 | 當沖 | FinMind `TaiwanStockDayTrading` + `TaiwanStockPrice` + `TradingDailyReport` | 當沖排行（含漲跌幅/振幅/分點推估） |
@@ -57,9 +57,10 @@
   平行抓 `latest.json` 存 `state.tf`（失敗不擋），`insightGatherContext()` 新增
   「三大法人買賣超」段（外資買超前10/賣超前6＋台指期未平倉、投信買超前10/賣超前6，
   dlabel 跨日警告自動生效）。SYS prompt 未改。退版點：git tag `pre-insight-tab`。
-- 彙總分析 tab（2026-07-12 新增，第 8 個 tab）：一鍵 6+1 呼叫（3 頁 context×兩模型
-  ＋Opus 彙總，約 NT$12-15/次），彙總 SYS 以「跨份共振優先」（N/6 份提及）精粹 alpha、
-  給方向預測與進出建議。單份失敗不中止（≥3 份成功才彙總）。手動近 2 次存 localStorage
+- 彙總分析 tab（2026-07-12 新增，第 8 個 tab）：一鍵 6+1 呼叫（3 頁 context×每頁 2 次
+  ＋Opus 彙總，約 NT$8-10/次）。**2026-07-12 起 6 份摘要全改 Sonnet 5（每頁×2 次獨立分析、
+  標籤 Sonnet5-A/B 去重）、彙總維持 Opus 4.8，成本考量。**彙總 SYS 以「跨份共振優先」
+  （N/6 份提及）精粹 alpha、給方向預測與進出建議。單份失敗不中止（≥3 份成功才彙總）。手動近 2 次存 localStorage
   `summary_manual`；自動場由 `build_summary.py`＋`summary.yml`（cron 08:00/22:00 台北
   觸發＋資料齊全輪詢閘門：am 等晨報最多 90 分、pm 等盤後+新聞最多 120 分，逾時=假日
   skip），輸出 `data/summary/YYYYMMDD-{am|pm}.json` 保留近 3 日，前端列表點閱。
@@ -67,7 +68,7 @@
   假日——am 場必須靠這層（晨報管線假日仍會更新 generated_at，資料閘門擋不住）；行事曆
   混有「開始交易日」等交易日標記，過濾規則見 `is_twse_holiday()` 註解；API 失敗
   fail-open 續走資料閘門。颱風假等臨時停市無盤前可查來源：pm 場由 postmkt.json `date`
-  回退機制天然防住；am 場會誤跑一次（約 NT$13、每年 2-4 次），屬已評估接受的殘餘風險。
+  回退機制天然防住；am 場會誤跑一次（約 NT$9、每年 2-4 次），屬已評估接受的殘餘風險。
   **維護重點**：三站 gather 邏輯在本 repo 有兩份移植副本（index.html 的 sumCtx* 與
   build_summary.py 的 gather_*），三站前端 insightGatherContext/SYS 改動時需同步兩處
   （SYS 已驗逐字一致）。自動場需 repo Secret `ANTHROPIC_API_KEY`（見部署設定）。
@@ -92,7 +93,9 @@
    New repository secret，名稱 `FINMIND_TOKEN`，值填 FinMind API token（Sponsor 方案）。
    另加 `ANTHROPIC_API_KEY`（Anthropic API key）供彙總分析自動場（`summary.yml`）使用；
    未設時自動場會失敗、前端顯示「尚無自動產出」，手動一鍵不受影響。
-   費用參考：自動雙場 × 約 22 交易日 ≈ NT$500-700/月，計入該 key 的 Anthropic 帳戶。
+   費用參考：自動雙場 × 約 22 交易日 ≈ NT$350-450/月（摘要用 Sonnet 5、彙總用 Opus 4.8；
+   Sonnet 5 介紹價 input $2/output $10 per MTok 至 2026-08-31，之後恢復 $3/$15、月費略升），
+   計入該 key 的 Anthropic 帳戶。
 2. **GitHub Pages**：Settings → Pages → Source 選 `Deploy from a branch`，
    Branch 選 `main` / `(root)` → Save。
 3. （可選）Actions tab 手動跑一次 `build postmkt data` 產生第一份資料。

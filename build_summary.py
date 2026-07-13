@@ -8,7 +8,7 @@
 # 皆與 JS 版等價；各頁 SYS prompt 原樣取自三站前端，彙總 SYS 取自規格書。
 #
 # 流程：資料齊全閘門（--slot am|pm 輪詢）→ 構建 3 段 context → 呼叫 Anthropic
-# 6 次（3 context × [Opus 4.8, Sonnet 5]，最多 3 併發）→ ≥3 份成功才做 1 次
+# 6 次（3 context × Sonnet 5 各 2 次獨立分析，最多 3 併發）→ ≥3 份成功才做 1 次
 # Opus 4.8 彙總 → 輸出 data/summary/YYYYMMDD-{am|pm}.json ＋ 重建 index.json
 # ＋ 刪 3 日前舊檔。
 #
@@ -47,9 +47,10 @@ URL_US = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data
 URL_FINMIND_TDR = "https://api.finmindtrade.com/api/v4/taiwan_stock_trading_daily_report"
 URL_ANTHROPIC = "https://api.anthropic.com/v1/messages"
 
-# 與 postmkt/index.html 的 INSIGHT_BROKERS / INSIGHT_MODELS 對齊
+# 與 postmkt/index.html 的 INSIGHT_BROKERS / SUM_MODELS 對齊
 INSIGHT_BROKERS = ["9268", "9800", "9600", "9A00"]
-SUMMARY_MODELS = ["claude-opus-4-8", "claude-sonnet-5"]
+# 同頁跑 2 次 Sonnet 5 獨立分析（非確定性輸出仍提供多樣性），成本考量（2026-07-12 起）；彙總維持 Opus 4.8
+SUMMARY_MODELS = ["claude-sonnet-5", "claude-sonnet-5"]
 SYNTH_MODEL = "claude-opus-4-8"
 MAX_WORKERS = 3          # 併發上限，防 API 限流
 MIN_OK_FOR_SYNTH = 3     # 6 份中至少幾份成功才彙總
@@ -600,15 +601,15 @@ SYS_NEWS = (
 
 SYS_SYNTH = (
     "你是台股首席策略師。以下是同一天由三個資料面向（盤後籌碼、即時資金流、新聞×晨報）"
-    "×兩個模型（Opus/Sonnet）產出的 6 份獨立分析。任務：融會貫通、去蕪存菁，產出單一精華彙總。"
-    "要求：(1)跨份共振優先——同一標的被多份分析、多個模型同時點名且方向一致，即為最強 alpha 訊號，"
+    "×每面向兩次獨立分析產出的 6 份獨立分析。任務：融會貫通、去蕪存菁，產出單一精華彙總。"
+    "要求：(1)跨份共振優先——同一標的被多份分析同時點名且方向一致，即為最強 alpha 訊號，"
     "優先呈現並標注被幾份提及；僅單一份提及的標的降權或捨棄。"
     "(2)對精選標的明確給出：方向預測（偏多/偏空）、進出建議（進場條件/出場條件/停損思路）、投資建議與部位思路。"
     "(3)每檔標的附跨份依據摘要（哪幾份、什麼數據）。"
     "(4)大型權值股≤清單一半（上限非目標）。"
     "(5)6 份分析若日期標注不同資料日，嚴禁跨日串連。"
     "(6)結構：## 精華 alpha 標的（≤6 檔，每檔＝代號名稱｜共振強度(N/6份提及)｜方向預測｜進出建議｜依據摘要）"
-    "／## 盤勢綜合研判（≤5行）／## 模型分歧備註（兩模型結論明顯不同處，1-3行，無則免）。"
+    "／## 盤勢綜合研判（≤5行）／## 分析分歧備註（兩次獨立分析結論明顯不同處，1-3行，無則免）。"
     "繁體中文 markdown。最後附免責：以上為多模型彙總之即時研判、未經歷史回測、非保證獲利，投資盈虧自負，僅供你自行參考。"
 )
 
@@ -667,7 +668,7 @@ def is_twse_holiday(today: str) -> bool:
       或 Description 含「放假/補假」的才是休市日（2026 全年 27 筆已逐筆驗證此規則）。
     - Date 為民國年 7 碼（1150101 = 2026-01-01）。
     - 只涵蓋排定假日；臨時颱風停市查不到（該殘餘風險已明確接受：僅 am 場可能誤跑，
-      每次約 NT$13、每年 2-4 次；pm 場由 postmkt.json date 回退機制天然防住）。
+      每次約 NT$9、每年 2-4 次；pm 場由 postmkt.json date 回退機制天然防住）。
     - API 失敗一律 fail-open 回 False（絕不因行事曆查不到而擋掉真交易日，
       後面還有資料齊全閘門把關）。"""
     try:
@@ -884,18 +885,20 @@ def main() -> None:
         print("三個頁面 context 全部為空（資料源皆載入失敗），本場中止", flush=True)
         sys.exit(1)
 
-    # 6 份摘要：3 context × 2 模型，最多 3 併發、單份失敗 retry 1 次後 ok:false 佔位
-    jobs = [(p, model) for p in pages for model in SUMMARY_MODELS]
+    # 6 份摘要：3 context × Sonnet 5 各 2 次，最多 3 併發、單份失敗 retry 1 次後 ok:false 佔位
+    # 同頁兩份以 A/B 標籤去重（six[] 與彙總 USER 標頭共用；與前端 index.html 同規則）
+    jobs = [(p, model, f"Sonnet5-{'A' if mi == 0 else 'B'}")
+            for p in pages for mi, model in enumerate(SUMMARY_MODELS)]
     print(f"呼叫 Anthropic：{len(jobs)} 份摘要（併發上限 {MAX_WORKERS}）…", flush=True)
 
     def run_one(job):
-        p, model = job
-        label = f"{p['page']}×{model}"
+        p, model, tag = job
+        label = f"{p['page']}×{tag}"
         if p["empty"]:
-            return {"page": p["page"], "model": model, "date": p["primary"],
+            return {"page": p["page"], "model": model, "tag": tag, "date": p["primary"],
                     "ok": False, "text": "（該份產出失敗：資料源載入失敗，context 為空）", "usage": None}
         res = call_claude_retry(model, p["sys"], p["user"], label)
-        return {"page": p["page"], "model": model, "date": p["primary"], **res}
+        return {"page": p["page"], "model": model, "tag": tag, "date": p["primary"], **res}
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         six = list(pool.map(run_one, jobs))
@@ -906,8 +909,8 @@ def main() -> None:
         print(f"成功份數不足 {MIN_OK_FOR_SYNTH} 份，不做彙總，本場失敗", flush=True)
         sys.exit(1)
 
-    # 彙總：6 份全文以【頁面×模型】標頭分隔、附各份資料日
-    blocks = [f"【{s['page']}×{s['model']}】（資料日 {s['date'] or '—'}）\n{s['text']}" for s in six]
+    # 彙總：6 份全文以【頁面×標籤】標頭分隔（同頁兩份 A/B 去重）、附各份資料日
+    blocks = [f"【{s['page']}×{s.get('tag') or s['model']}】（資料日 {s['date'] or '—'}）\n{s['text']}" for s in six]
     synth_user = "\n\n".join(blocks)
     print(f"彙總中…（{SYNTH_MODEL}）", flush=True)
     synth = call_claude_retry(SYNTH_MODEL, SYS_SYNTH, synth_user, f"彙總×{SYNTH_MODEL}")
