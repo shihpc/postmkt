@@ -205,8 +205,8 @@ def build_margin(date: str, rows: list, nm: dict) -> dict:
 
 
 def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: list,
-                   dt_rows: list, price_rows: list, inst_rows: list, hold_rows: list,
-                   nm: dict) -> dict:
+                   dt_rows: list, dt_date: str, price_rows: list, inst_rows: list,
+                   hold_rows: list, nm: dict) -> dict:
     """借券 tab：取代CMoney SBL.xlsx的Table1(單股詳細)+Table2(多股排行)。
     見 docs/cmoney-sbl-mapping-research.md——整合8個FinMind dataset+TWSE兩平台
     借券餘額端點，唯一缺的3類官方未公開資料（TSE還券完成明細、投信/自營商
@@ -333,7 +333,15 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
         }
         rows_out.append(row)
 
-    dt_by_c = {r.get("stock_id"): r for r in dt_rows}
+    # 當沖欄位只在資料日與借券基準日一致時合併（寧缺勿混，2026-07-14 S1 修正）：
+    # fetch_daytrading 有自己的回退邏輯，可能退到比基準日更早的交易日，直接合併
+    # 會把不同天的當沖量錯配進今日借券列且無任何警告。日期不一致時 dt_* 一律留
+    # None；當沖 tab 本身不受影響（它有自己的 date 欄與下游 dlabel 保護）。
+    if dt_date and date and dt_date != date:
+        print(f"  ⚠ 借券tab：當沖資料日 {dt_date} ≠ 基準日 {date}，dt_* 欄一律留空（寧缺勿混）", flush=True)
+        dt_by_c = {}
+    else:
+        dt_by_c = {r.get("stock_id"): r for r in dt_rows}
     for row in rows_out:
         d = dt_by_c.get(row["c"])
         if d:
@@ -529,14 +537,14 @@ def main() -> None:
     # 借券tab混合多個dataset，若日期沒對齊會把不同天的資料錯配在同一列——只記警告不中斷，
     # 因為單日落後在同一批交易日內通常仍可用（比完全不出資料好），但要能被發現排查。
     mismatch = [n for n, d in (("融資", d_margin), ("借券成交", d_lend), ("三大法人", d_inst),
-                                ("外資持股", d_hold)) if d and lend_date and d != lend_date]
+                                ("外資持股", d_hold), ("當沖", d_dt)) if d and lend_date and d != lend_date]
     if mismatch:
         print(f"  ⚠ 借券tab日期不對齊（基準{lend_date}）：{mismatch} 使用了不同日期的資料", flush=True)
     out = {
         "date": latest,
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "margin": build_margin(d_margin, r_margin, nm),
-        "lending": build_lending(lend_date, r_lend, r_margin, r_short, r_dt, r_price_lend, r_inst, r_hold, nm),
+        "lending": build_lending(lend_date, r_lend, r_margin, r_short, r_dt, d_dt, r_price_lend, r_inst, r_hold, nm),
         "short_balance": build_short_balance(d_short, r_short, nm),
         "daytrading": build_daytrading(d_dt, r_dt, r_price, nm),
         "blocktrade": build_blocktrade(d_block, r_block, nm),

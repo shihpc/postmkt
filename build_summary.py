@@ -7,10 +7,11 @@
 # 三段 context 的段落結構、欄位語意、dlabel 跨日警告機制、千元→億換算、取前N
 # 皆與 JS 版等價；各頁 SYS prompt 原樣取自三站前端，彙總 SYS 取自規格書。
 #
-# 流程：資料齊全閘門（--slot am|pm 輪詢）→ 構建 3 段 context → 呼叫 Anthropic
-# 6 次（3 context × Sonnet 5 各 2 次獨立分析，最多 3 併發）→ ≥3 份成功才做 1 次
-# Opus 4.8 彙總 → 輸出 data/summary/YYYYMMDD-{am|pm}.json ＋ 重建 index.json
-# ＋ 刪 3 日前舊檔。
+# 流程：資料齊全閘門（--slot am|pm 輪詢；pm 硬等 postmkt/news晚班/taiwan-flows
+# 三源皆今日，am 硬等 morning.json 後再軟等 us.json＋news早班，詳 wait_gate docstring）
+# → 構建 3 段 context → 呼叫 Anthropic 6 次（3 context × Sonnet 5 各 2 次獨立分析，
+# 最多 3 併發）→ ≥3 份成功才做 1 次 Opus 4.8 彙總 → 輸出
+# data/summary/YYYYMMDD-{am|pm}.json ＋ 重建 index.json ＋ 刪 3 日前舊檔。
 #
 # 金鑰只讀環境變數（ANTHROPIC_API_KEY / FINMIND_TOKEN），絕不落檔、絕不 print。
 # 旗標：--no-wait 跳過齊全閘門；--dry-run 只印三段 context 不呼叫 Anthropic。
@@ -137,6 +138,36 @@ def taipei_day_of(iso_str: str) -> str:
         return d.astimezone(TAIPEI).strftime("%Y-%m-%d")
     except ValueError:
         return day10(s)
+
+
+def taipei_dt_of(iso_str: str):
+    """ISO 時間字串 → 台北時區 datetime；解析失敗回 None（閘門判斷用）。"""
+    s = str(iso_str or "")
+    try:
+        d = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=dt.timezone.utc)
+        return d.astimezone(TAIPEI)
+    except ValueError:
+        return None
+
+
+def news_fresh(generated_at, today: str, min_hour: int) -> bool:
+    """news.json 是否為「今日、且台北時刻 >= min_hour 點」的班次產出。
+    新聞管線每天三班（06:30/15:00/22:37 台北）都會更新 generated_at，
+    只看日期會被較早的班次誤滿足：
+    - pm 場 min_hour=21：要的是 22:37 晚班全天新聞，不能被 15:00 午班放行；
+    - am 場 min_hour=6 ：要的是 06:30 早班（清晨新聞餵晨報時段）。"""
+    d = taipei_dt_of(generated_at)
+    return d is not None and d.strftime("%Y-%m-%d") == today and d.hour >= min_hour
+
+
+def us_is_today(us, today: str) -> bool:
+    """us.json 是否為今日產出。實查（2026-07-14）us.json 有兩個日期欄：
+    date=美股交易日（美國休市/週末時不推進，拿來判「今日檔」會誤擋）、
+    generated_at=產出時間（us.yml 每交易日台北清晨重跑必更新）——故用
+    generated_at 的台北日判斷。"""
+    return taipei_day_of((us or {}).get("generated_at")) == today
 
 
 def http_json(url: str, timeout: int = 60, bust: bool = True):
@@ -689,10 +720,19 @@ def is_twse_holiday(today: str) -> bool:
 
 
 def wait_gate(slot: str) -> None:
-    """am：等 v2 morning.json 為今日；pm：等 postmkt.json 與 news.json 為今日。
-    每 5 分輪詢一次；逾時仍舊資料 → print 原因後 exit 0（skip，假日自然不跑）。
+    """資料齊全閘門（2026-07-14 依審計改造）。每 5 分輪詢一次。
+    pm：硬等三源皆為今日——postmkt.json date、news.json 晚班（台北日==今日且
+        時刻>=21:00，避免被 15:00 午班滿足）、taiwan-flows latest.json date；
+        最多 170 分（cron 22:47 台北起算，蓋住新聞晚班 22:37 起跑＋GitHub 延遲
+        最壞 ~00:40 完成），逾時仍非今日 → print 原因後 exit 0（skip）。
+    am：兩階段——
+        第一階段硬等 morning.json generated_at 台北日==今日（最多 150 分，
+        逾時 skip，沿用原邏輯）；
+        第二階段軟等 us.json 為今日檔（generated_at 台北日，見 us_is_today）
+        AND news.json 早班（台北日==今日且時刻>=06:00）；兩者皆備即放行，
+        最多 60 分，逾時照跑（print 哪些源用舊檔，dlabel 機制會標資料日）。
     進場先查 TWSE 休市行事曆：排定假日直接 skip——am 場必須靠這層（晨報管線假日仍會
-    更新 generated_at，資料閘門擋不住）；pm 場本可由資料閘門擋住，此層省去 120 分空轉。"""
+    更新 generated_at，資料閘門擋不住）；pm 場本可由資料閘門擋住，此層省去長時空轉。"""
     today = taipei_now().strftime("%Y-%m-%d")
     # 週末防護：cron 只排週一至五，但手動觸發（workflow_dispatch）在週末會空轉
     # 整段輪詢（盤後資料日永遠不會是週末），直接 skip。
@@ -702,40 +742,90 @@ def wait_gate(slot: str) -> None:
     if is_twse_holiday(today):
         print(f"TWSE 休市行事曆：{today} 為排定休市日，本場 skip。", flush=True)
         sys.exit(0)
-    # cron 已提早觸發（am 06:23／pm 22:17 台北）讓閘門等資料，窗口要蓋住上游
-    # 最壞完成時間（晨報~08:30、新聞晚班~00:40 含 GitHub 延遲），統一 150 分。
-    max_min = 150
-    deadline = time.time() + max_min * 60
-    print(f"齊全閘門（{slot}）：等待資料日 {today}，最多 {max_min} 分鐘…", flush=True)
-    while True:
-        reasons = []
-        try:
-            if slot == "am":
-                m = http_json(URL_MORNING)
-                m_day = taipei_day_of(m.get("generated_at"))
-                if m_day == today:
-                    print(f"  morning.json 已是今日（{m_day}），閘門通過", flush=True)
-                    return
-                reasons.append(f"morning.json generated_at={m.get('generated_at')}（台北日 {m_day}）")
-            else:
+
+    if slot == "pm":
+        max_min = 170
+        deadline = time.time() + max_min * 60
+        print(f"齊全閘門（pm）：等待 postmkt／news晚班／taiwan-flows 皆為今日 {today}，"
+              f"最多 {max_min} 分鐘…", flush=True)
+        while True:
+            reasons = []
+            try:
                 pm = http_json(URL_POSTMKT)
                 nw = http_json(URL_NEWS)
+                tf = http_json(URL_TF)
                 pm_ok = pm.get("date") == today
-                n_day = taipei_day_of(nw.get("generated_at"))
-                n_ok = n_day == today
-                if pm_ok and n_ok:
-                    print(f"  postmkt.json date={pm.get('date')}、news.json 台北日 {n_day}，閘門通過", flush=True)
+                n_ok = news_fresh(nw.get("generated_at"), today, 21)
+                tf_ok = tf.get("date") == today
+                if pm_ok and n_ok and tf_ok:
+                    print(f"  postmkt.json date={pm.get('date')}、news.json 晚班"
+                          f"（generated_at={nw.get('generated_at')}）、taiwan-flows "
+                          f"date={tf.get('date')}，閘門通過", flush=True)
                     return
                 if not pm_ok:
                     reasons.append(f"postmkt.json date={pm.get('date')}")
                 if not n_ok:
-                    reasons.append(f"news.json generated_at={nw.get('generated_at')}（台北日 {n_day}）")
+                    reasons.append(f"news.json generated_at={nw.get('generated_at')}"
+                                   f"（需今日且台北 21:00 後的晚班）")
+                if not tf_ok:
+                    reasons.append(f"taiwan-flows latest.json date={tf.get('date')}")
+            except Exception as e:
+                reasons.append(f"輪詢失敗：{e}")
+            if time.time() >= deadline:
+                print(f"閘門逾時（{max_min} 分）仍非今日資料，本場 skip：{'；'.join(reasons)}", flush=True)
+                sys.exit(0)
+            print(f"  尚未齊全（{'；'.join(reasons)}），5 分鐘後重試…", flush=True)
+            time.sleep(300)
+
+    # ---- am 場：第一階段硬等 morning.json（逾時 skip） ----
+    max_min = 150
+    deadline = time.time() + max_min * 60
+    print(f"齊全閘門（am 第一階段）：等待 morning.json 為今日 {today}，最多 {max_min} 分鐘…", flush=True)
+    while True:
+        reasons = []
+        try:
+            m = http_json(URL_MORNING)
+            m_day = taipei_day_of(m.get("generated_at"))
+            if m_day == today:
+                print(f"  morning.json 已是今日（{m_day}），第一階段通過", flush=True)
+                break
+            reasons.append(f"morning.json generated_at={m.get('generated_at')}（台北日 {m_day}）")
         except Exception as e:
             reasons.append(f"輪詢失敗：{e}")
         if time.time() >= deadline:
             print(f"閘門逾時（{max_min} 分）仍非今日資料，本場 skip：{'；'.join(reasons)}", flush=True)
             sys.exit(0)
         print(f"  尚未齊全（{'；'.join(reasons)}），5 分鐘後重試…", flush=True)
+        time.sleep(300)
+
+    # ---- am 場：第二階段軟等 us.json＋news 早班（逾時照跑，不 skip） ----
+    soft_min = 60
+    soft_deadline = time.time() + soft_min * 60
+    print(f"齊全閘門（am 第二階段·軟等）：等待 us.json 今日檔＋news.json 早班（>=06:00），"
+          f"最多 {soft_min} 分鐘，逾時照跑…", flush=True)
+    while True:
+        stale = []
+        try:
+            us = http_json(URL_US)
+            nw = http_json(URL_NEWS)
+            us_ok = us_is_today(us, today)
+            n_ok = news_fresh(nw.get("generated_at"), today, 6)
+            if us_ok and n_ok:
+                print(f"  us.json generated_at={us.get('generated_at')}、"
+                      f"news.json generated_at={nw.get('generated_at')} 皆今日，軟等通過", flush=True)
+                return
+            if not us_ok:
+                stale.append(f"us.json generated_at={(us or {}).get('generated_at')}")
+            if not n_ok:
+                stale.append(f"news.json generated_at={nw.get('generated_at')}"
+                             f"（需今日且台北 06:00 後的早班）")
+        except Exception as e:
+            stale.append(f"輪詢失敗：{e}")
+        if time.time() >= soft_deadline:
+            print(f"軟等逾時（{soft_min} 分），以下資料源將用舊檔照跑"
+                  f"（dlabel 機制會標資料日）：{'；'.join(stale)}", flush=True)
+            return
+        print(f"  軟等中（{'；'.join(stale)}），5 分鐘後重試…", flush=True)
         time.sleep(300)
 
 
@@ -862,7 +952,8 @@ def build_contexts(src: dict) -> list[dict]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="postmkt 彙總分析自動管線")
-    ap.add_argument("--slot", choices=["am", "pm"], required=True, help="場次：am=08:00台北 / pm=22:00台北")
+    ap.add_argument("--slot", choices=["am", "pm"], required=True,
+                    help="場次：am=清晨場（cron 06:23 台北）/ pm=晚場（cron 22:47 台北）")
     ap.add_argument("--no-wait", action="store_true", help="跳過資料齊全輪詢閘門")
     ap.add_argument("--dry-run", action="store_true", help="只印三段 context，不呼叫 Anthropic（供驗收）")
     args = ap.parse_args()

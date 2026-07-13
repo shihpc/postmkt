@@ -23,8 +23,9 @@
 - `build_postmkt.py`：抓 FinMind dataset＋TWSE 公開端點的最新交易日全市場資料，
   各 tab 預先聚合排序，輸出 `data/postmkt.json`（~2.4MB）。
   找不到最新交易日資料時自動往前回退最多 5 天；TWSE 端點失敗重試一次後降級（缺欄警示）。
-- `.github/workflows/build.yml`：平日 21:30 台北（13:30 UTC）排程＋手動觸發，
-  跑完自動 commit `data/postmkt.json`。
+- `.github/workflows/build.yml`：平日 21:53 台北（13:53 UTC）排程＋手動觸發
+  （2026-07-14 起由 21:30 延後：FinMind 當沖量值約 21:30 後才更新，留緩衝＋
+  冷門分鐘避開壅塞），跑完自動 commit `data/postmkt.json`。
 - 預產資料的 tab 前端不直連 FinMind（token 走 Actions secret）。
 - **例外：分點 tab 的「單點/個股」是互動查詢**（無法預產 1010 分點×2215 檔組合），
   前端直呼 FinMind `/api/v4/taiwan_stock_trading_daily_report`（CORS 開放）。
@@ -61,9 +62,11 @@
   ＋Opus 彙總，約 NT$8-10/次）。**2026-07-12 起 6 份摘要全改 Sonnet 5（每頁×2 次獨立分析、
   標籤 Sonnet5-A/B 去重）、彙總維持 Opus 4.8，成本考量。**彙總 SYS 以「跨份共振優先」
   （N/6 份提及）精粹 alpha、給方向預測與進出建議。單份失敗不中止（≥3 份成功才彙總）。手動近 2 次存 localStorage
-  `summary_manual`；自動場由 `build_summary.py`＋`summary.yml`（cron 06:23/22:17 台北觸發——提早＋錯開整點
+  `summary_manual`；自動場由 `build_summary.py`＋`summary.yml`（cron 06:23/22:47 台北觸發——提早＋錯開整點
   避開 GitHub cron 壅塞（UTC 00:00 整點延遲常達 2-3 小時），由資料齊全輪詢閘門等資料
-  （am/pm 皆最多 150 分，逾時=假日 skip），輸出 `data/summary/YYYYMMDD-{am|pm}.json` 保留近 3 日，前端列表點閱。
+  （2026-07-14 依審計改造：pm 硬等 postmkt/news晚班(>=21:00)/taiwan-flows 三源皆今日、最多 170 分，
+  逾時=假日 skip；am 先硬等 morning.json 最多 150 分，通過後軟等 us.json＋news早班(>=06:00)
+  最多 60 分、逾時照跑），輸出 `data/summary/YYYYMMDD-{am|pm}.json` 保留近 3 日，前端列表點閱。
   **假日/颱風假**（2026-07-12 補強）：閘門進場先查 TWSE 休市行事曆 API（免金鑰）擋排定
   假日——am 場必須靠這層（晨報管線假日仍會更新 generated_at，資料閘門擋不住）；行事曆
   混有「開始交易日」等交易日標記，過濾規則見 `is_twse_holiday()` 註解；API 失敗
