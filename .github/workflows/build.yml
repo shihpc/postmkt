@@ -5,8 +5,12 @@ on:
     # 平日 21:53 台北（13:53 UTC）：FinMind TaiwanStockDayTrading 的量值約 21:30 後
     # 才更新，21:30 起跑會抓到空 Volume 而回退到前一日；延後留緩衝，並取冷門分鐘
     # 避開 GitHub cron 整點/半點壅塞（2026-07-14 依審計調整，原 21:30）
+    #（雙觸發機制：taiwan-flow-live-v2 的 Cloudflare Worker「FinMind 哨兵」會在台北
+    # 19:00-23:00 每 5 分探測融資券/當沖量值落地，一落地即 workflow_dispatch 本
+    # workflow，通常比這條 cron 早跑；cron 保留當備援，管線冪等、多跑無害。
+    # 哨兵程式：taiwan-flow-live-v2/worker/src/index.js 的 runSentinel）
     - cron: "53 13 * * 1-5"
-  workflow_dispatch:
+  workflow_dispatch:   # 手動觸發＋FinMind 哨兵自動觸發
 
 permissions:
   contents: write
