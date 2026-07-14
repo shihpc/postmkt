@@ -536,13 +536,17 @@ def main() -> None:
     r_price_lend = api_get("TaiwanStockPrice", start_date=lend_date, end_date=lend_date) if lend_date else []
     # 借券tab混合多個dataset，若日期沒對齊會把不同天的資料錯配在同一列——只記警告不中斷，
     # 因為單日落後在同一批交易日內通常仍可用（比完全不出資料好），但要能被發現排查。
-    mismatch = [n for n, d in (("融資", d_margin), ("借券成交", d_lend), ("三大法人", d_inst),
-                                ("外資持股", d_hold), ("當沖", d_dt)) if d and lend_date and d != lend_date]
+    mismatch = [{"name": n, "date": d} for n, d in (
+        ("融資", d_margin), ("借券成交", d_lend), ("三大法人", d_inst),
+        ("外資持股", d_hold), ("當沖", d_dt)) if d and lend_date and d != lend_date]
     if mismatch:
-        print(f"  ⚠ 借券tab日期不對齊（基準{lend_date}）：{mismatch} 使用了不同日期的資料", flush=True)
+        print(f"  ⚠ 借券tab日期不對齊（基準{lend_date}）："
+              f"{[m['name'] for m in mismatch]} 使用了不同日期的資料", flush=True)
     out = {
         "date": latest,
-        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).isoformat(timespec="seconds"),
+        # 借券tab多dataset日期落後偵測（P5）：非空＝有dataset落後於基準lend_date，前端頁首顯示徽章
+        "date_mismatch": mismatch,
         "margin": build_margin(d_margin, r_margin, nm),
         "lending": build_lending(lend_date, r_lend, r_margin, r_short, r_dt, d_dt, r_price_lend, r_inst, r_hold, nm),
         "short_balance": build_short_balance(d_short, r_short, nm),

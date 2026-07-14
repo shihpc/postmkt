@@ -32,6 +32,7 @@
   .stat{background:var(--card);border:1px solid var(--line);border-radius:11px;
     padding:6px 11px;font-size:.76rem;color:var(--muted)}
   .stat b{color:var(--txt);font-weight:700;margin-right:4px}
+  .stat.lag{color:#e0b341;border-color:#3a3318}
   .mcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 16px;
     margin:10px 0;font-size:.9rem;line-height:1.7}
   .mcard b{color:var(--txt)}
@@ -850,8 +851,15 @@ function renderStats(){
       + `<div class="stat">快照 ${esc(l.run_date||"—")}</div>` : "";
   } else {
     const d = state.pm;
-    el.innerHTML = d ? `<div class="stat">資料日 <b>${esc(d.date||"—")}</b></div>`
-      + `<div class="stat">更新 ${esc(String(d.generated_at||"").slice(0,16).replace("T"," "))} UTC</div>` : "";
+    if (!d){ el.innerHTML = ""; return; }
+    // 借券tab日期落後徽章（P5）：postmkt.json date_mismatch 非空時顯示，title 列出落後段落與其資料日
+    const dm = d.date_mismatch || [];
+    const badge = dm.length
+      ? `<div class="stat lag" title="${esc(dm.map(m=>`${m.name} ${m.date||"?"}`).join("、"))}（借券tab基準資料日 ${esc(d.date||"?")}）">`
+        + `⚠ ${dm.length} 段資料落後</div>`
+      : "";
+    el.innerHTML = `<div class="stat">資料日 <b>${esc(d.date||"—")}</b></div>`
+      + `<div class="stat">更新 ${esc(fmtGenTaipei(d.generated_at))}（台灣）</div>` + badge;
   }
 }
 function render(){
@@ -883,6 +891,12 @@ document.addEventListener("click", e=>{
 const anthKey = () => localStorage.getItem("anthropic_key") || "";
 // 台灣時間 "YYYY-MM-DD HH:MM:SS"（sv-SE locale 給 ISO 樣式，指定 Asia/Taipei 時區）
 const twNow = () => new Date().toLocaleString("sv-SE", { timeZone:"Asia/Taipei" });
+// generated_at 顯示：解析 ISO（相容舊 UTC 尾綴 Z／+00:00 與新台北 +08:00）後一律轉台北時間到分
+const fmtGenTaipei = s => {
+  const t = Date.parse(s);
+  return isNaN(t) ? String(s || "").slice(0, 16).replace("T", " ")
+    : new Date(t).toLocaleString("sv-SE", { timeZone:"Asia/Taipei" }).slice(0, 16);
+};
 // ---------- 雲端儲存共用（GitHub Contents API；三站逐字相同：postmkt /
 // taiwan-flow-live-v2 / taiwan-stock-news，修改請三站同步）----------
 // PAT 只存本機 localStorage（gh_token），只隨請求送給 GitHub API 本身，不進 repo、不傳第三方。
@@ -1434,8 +1448,10 @@ function sumCtxNews(newsData, morning, us){
     if ((c.it3||[]).length) lines.push(`投信3日連買：${c.it3.map(x=>(x.c||"")+(x.n||"")).join("、")}`);
     if ((c.it3_sell||[]).length) lines.push(`投信3日連賣：${c.it3_sell.map(x=>(x.c||"")+(x.n||"")).join("、")}`);
     if ((c.aetf||[]).length) lines.push(`主動ETF動向：${c.aetf.join("；")}`);
-    if (lines.length) parts.push(`${dlabel("晨報籌碼", mDate)}\n`+lines.join("\n"));
-    // d. 隔夜美股（與晨報同批產生，沿用晨報資料日；美股本質為隔夜資料，SYS已禁跨日串連）
+    // 晨報籌碼資料日：法人買賣超日優先，無則現貨收盤日，再無則產出日（generated_at 台北日）
+    const chipDate = (c.inst && c.inst.date) || (morning.spot && morning.spot.date) || mDate;
+    if (lines.length) parts.push(`${dlabel("晨報籌碼", chipDate)}\n`+lines.join("\n"));
+    // d. 隔夜美股（美股本質為隔夜資料，資料日以 us.date=美股交易日為準，SYS已禁跨日串連）
     if (us){
       const uLines = [];
       if (us.brief) uLines.push(us.brief + (us.session ? `（${us.session}）` : ""));
@@ -1443,7 +1459,7 @@ function sumCtxNews(newsData, morning, us){
         uLines.push(`${g.g}：${(g.rows||[]).slice(0,3)
           .map(r=>`${r.n}${r.chg!=null?(r.chg>0?"+":"")+r.chg.toFixed(2)+"%":"—"}`).join("、")}`);
       }
-      if (uLines.length) parts.push(`${dlabel("隔夜美股", mDate)}\n`+uLines.join("\n"));
+      if (uLines.length) parts.push(`${dlabel("隔夜美股", us.date)}\n`+uLines.join("\n"));
     }
   } else {
     parts.push("【晨報籌碼】（晨報資料未載入，本段略過，僅分析新聞面）");
@@ -1565,11 +1581,20 @@ function sumResultHtml(res, metaPrefix){
   h += `<div class="insight-card insight-md">${linkifyStocks(mdToHtml(sy.text||""), codeSet)}</div>`;
   h += `<details style="margin:8px 0 14px"><summary style="cursor:pointer;color:var(--muted);font-size:.84rem;padding:4px 2px">▸ 展開 6 份原始分析</summary>`;
   for (const s of six){
-    h += `<div class="insight-meta" style="margin-top:12px">${esc(s.page)} × ${esc(s.tag||s.model)}${s.ok?"":"（失敗）"} · ${sumTok(s.usage)} token</div>`;
+    h += `<div class="insight-meta" style="margin-top:12px">${esc(s.page)} × ${esc(s.tag||s.model)}${s.ok?"":"（失敗）"}${s.date?` · 資料日 ${esc(s.date)}`:""} · ${sumTok(s.usage)} token</div>`;
     h += `<div class="insight-card insight-md">${linkifyStocks(mdToHtml(s.text||""), codeSet)}</div>`;
   }
   h += `</details>`;
   return h;
+}
+// 三頁資料日：優先讀自動檔頂層 dates（build_summary write_output 產，鍵為中文頁名），
+// 舊檔缺此欄位則由 six[] 的 page/date 回退重建（現有自動檔的 six 皆帶 date，fallback 不壞）。
+function sumPageDates(res){
+  const d = (res && res.dates) || {};
+  const from6 = {};
+  ((res && res.six)||[]).forEach(s=>{ if (s.page && s.date && !(s.page in from6)) from6[s.page]=s.date; });
+  const get = p => d[p] || from6[p] || "?";
+  return { postmkt:get("盤後分析"), live:get("即時類股動態"), news:get("新聞晨報") };
 }
 // 自動產出 index.json（GitHub Actions 產，相對路徑；404/尚未設 Secret → 顯示說明）
 let SUM_AUTO_FETCHING = false;
@@ -1635,7 +1660,8 @@ function summaryHtml(){
       const c = SUM_AUTO_CACHE[state.sumAutoOpen];
       if (!c || c === "loading") h += `<div class="empty">載入 ${esc(state.sumAutoOpen)}…</div>`;
       else if (c.err) h += `<div class="empty">讀取失敗：${esc(c.err)}</div>`;
-      else h += sumResultHtml(c, `自動產出 ${esc(c.date||"")} ${c.slot==="am"?"早場":c.slot==="pm"?"晚場":esc(String(c.slot||""))} · 生成 ${esc(String(c.generated_at||"").slice(0,19).replace("T"," "))}`);
+      else { const pd = sumPageDates(c);
+        h += sumResultHtml(c, `自動產出 ${esc(c.date||"")} ${c.slot==="am"?"早場":c.slot==="pm"?"晚場":esc(String(c.slot||""))} · 生成 ${esc(String(c.generated_at||"").slice(0,19).replace("T"," "))} · 資料日 盤後 ${esc(pd.postmkt)}／即時 ${esc(pd.live)}／新聞 ${esc(pd.news)}`); }
     }
   } else {
     h += `<div class="empty" style="font-size:.84rem">尚無自動產出（需在 repo Settings→Secrets 設 ANTHROPIC_API_KEY，詳 README）</div>`;

@@ -566,9 +566,12 @@ def gather_news(data, morning, us) -> dict:
             lines.append("投信3日連賣：" + "、".join((x.get("c") or "") + (x.get("n") or "") for x in c["it3_sell"]))
         if c.get("aetf"):
             lines.append("主動ETF動向：" + "；".join(c["aetf"]))
+        # 晨報籌碼資料日：法人買賣超日優先，無則現貨收盤日，再無則產出日（generated_at 台北日）
+        chip_date = ((c.get("inst") or {}).get("date")
+                     or (morning.get("spot") or {}).get("date") or m_date)
         if lines:
-            parts.append(f"{dlabel('晨報籌碼', m_date)}\n" + "\n".join(lines))
-        # d. 隔夜美股（與晨報同批產生，沿用晨報資料日；美股本質為隔夜資料，SYS已禁跨日串連）
+            parts.append(f"{dlabel('晨報籌碼', chip_date)}\n" + "\n".join(lines))
+        # d. 隔夜美股（美股本質為隔夜資料，資料日以 us.date=美股交易日為準，SYS已禁跨日串連）
         if us:
             u_lines = []
             if us.get("brief"):
@@ -578,7 +581,7 @@ def gather_news(data, morning, us) -> dict:
                     f"{r.get('n', '')}{signed(r['chg'], 2) + '%' if r.get('chg') is not None else '—'}"
                     for r in (g.get("rows") or [])[:3]))
             if u_lines:
-                parts.append(f"{dlabel('隔夜美股', m_date)}\n" + "\n".join(u_lines))
+                parts.append(f"{dlabel('隔夜美股', us.get('date'))}\n" + "\n".join(u_lines))
     else:
         parts.append("【晨報籌碼】（晨報資料未載入，本段略過，僅分析新聞面）")
 
@@ -837,10 +840,17 @@ def wait_gate(slot: str) -> None:
 
 def write_output(slot: str, six: list[dict], synthesis: dict) -> None:
     now = taipei_now()
+    # 頂層 dates：三頁各自的主資料日（page→primary），由 six[] 彙整（同頁兩份 date 相同，後蓋前不影響）。
+    # 供前端自動檔展開時顯示三頁資料日，與生成日（date/generated_at）區分。
+    page_dates: dict[str, str] = {}
+    for s in six:
+        if s.get("page"):
+            page_dates[s["page"]] = s.get("date") or ""
     out = {
         "generated_at": now.isoformat(timespec="seconds"),
         "slot": slot,
         "date": now.strftime("%Y-%m-%d"),
+        "dates": page_dates,
         "six": six,
         "synthesis": synthesis,
     }
