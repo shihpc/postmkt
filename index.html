@@ -33,6 +33,11 @@
     padding:6px 11px;font-size:.76rem;color:var(--muted)}
   .stat b{color:var(--txt);font-weight:700;margin-right:4px}
   .stat.lag{color:#e0b341;border-color:#3a3318}
+  /* 日期 tab：狀態欄配色（最新=綠、落後=琥珀、缺值/不同市場=灰），欄位一律左對齊 */
+  .dt-ok{color:#2fbf71;font-weight:650}
+  .dt-lag{color:#e0b341;font-weight:650}
+  .dt-mut{color:var(--muted)}
+  .dtbl th,.dtbl td{text-align:left !important;white-space:nowrap}
   .mcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 16px;
     margin:10px 0;font-size:.9rem;line-height:1.7}
   .mcard b{color:var(--txt)}
@@ -183,7 +188,7 @@ const TABS = [
   ["insight","摘要分析"],
   ["summary","彙總分析"],
   ["aetf","主動ETF"],["lending","融借券"],["daytrade","當沖"],["block","鉅額"],
-  ["oddlot","零股"],["broker","分點"],
+  ["oddlot","零股"],["broker","分點"],["dates","日期"],
 ];
 const SUBS = {
   insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、只存本機瀏覽器。非投資建議、非預測，僅描述歷史統計傾向。",
@@ -194,6 +199,7 @@ const SUBS = {
   block:"當日鉅額交易逐筆列表，同股票分組並附總張數/總金額；買方/賣方券商分點為盡力比對（同股同價當日多筆時可能無法唯一判定，顯示—）。類型僅「配對交易／逐筆交易」兩種，FinMind未提供單一/組合證券的區分欄位。",
   oddlot:"零股交易行情（TWSE公開端點）：盤中零股／盤後零股，依個股呈現成交股數、筆數、金額。單位：股／元。",
   broker:"券商分點進出（FinMind TradingDailyReport，每交易日約21:00更新）。單點＝查一個分點當日全部進出個股；個股＝查一檔股票當日全部進出分點；清單＝全部分點代號對照。",
+  dates:"各資料源目前的資料日與產出時間；判斷哪些已是最新交易日、哪些尚未更新。資料為排程產出，當日盤後資料通常於當晚 21:00 後才更新，故白天多半看到前一交易日。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
 // 盤後法人動態站（taiwan-flows）的資料：三大法人買賣超排行＋外資台指期未平倉，平日21:00更新
@@ -206,7 +212,8 @@ const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQu
   insight:null, insightLoading:false, insightErr:null, insightAbort:null,
   insightModel: localStorage.getItem("insight_model") || "claude-opus-4-8",
   summary:null, summaryLoading:false, summaryErr:null, summaryProg:"", summaryAbort:null,
-  sumAutoIdx:undefined, sumAutoOpen:null, sumManualOpen:null, cloudOpen:null };
+  sumAutoIdx:undefined, sumAutoOpen:null, sumManualOpen:null, cloudOpen:null,
+  datesData:null, datesLoading:false };
 
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -866,12 +873,99 @@ function render(){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===state.tab));
   document.getElementById("pageSub").textContent = SUBS[state.tab] || "";
   renderStats();
-  if (state.tab === "aetf") renderAETF(); else renderPM();
+  if (state.tab === "dates") renderDates();
+  else if (state.tab === "aetf") renderAETF();
+  else renderPM();
 }
 function renderTabs(){
   document.getElementById("tabs").innerHTML = TABS.map(([k,label])=>
     `<div class="tab ${state.tab===k?"active":""}" data-tab="${k}">${label}</div>`).join("");
   document.querySelectorAll(".tab").forEach(t=>t.onclick = ()=>{ state.tab = t.dataset.tab; render(); });
+}
+
+// ---------- 日期 tab（即時彙整各資料源的資料日與產出時間） ----------
+// 日期正規化：斜線→連字號、取前10碼，非 YYYY-MM-DD 一律回空字串（比較前統一格式，見 date-semantics.md）
+const dateNorm = s => { const t = String(s||"").replace(/\//g,"-").slice(0,10); return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : ""; };
+// 顯示用：帶時刻的來源(如即時類股 ts)顯示到 HH:MM(台北)，純交易日的維持日期
+const dateDisplay = raw => { const m = String(raw||"").replace(/\//g,"-").trim().match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?/); return m ? (m[2] ? `${m[1]} ${m[2]}` : m[1]) : ""; };
+// baseline 早於 date 幾個日曆日（正值＝該源落後 baseline N 日）
+const dayDiff = (b,d) => Math.round((Date.parse(b+"T00:00:00Z") - Date.parse(d+"T00:00:00Z")) / 86400000);
+// 狀態判定：以最新台股交易日(baseline)為基準。美股/新聞屬不同市場/含當日，標註避免誤判落後。
+function dateStatus(dateStr, baseline, kind, err){
+  if (err) return { txt:"讀取失敗", cls:"dt-mut" };
+  const nd = dateNorm(dateStr), nb = dateNorm(baseline);
+  if (!nd) return { txt:"—", cls:"dt-mut" };
+  if (kind === "us") return { txt:"美股（不同市場）", cls:"dt-mut" };
+  if (!nb) return { txt:"—", cls:"dt-mut" };
+  const diff = dayDiff(nb, nd);
+  if (diff <= 0) return { txt: kind === "live" ? "最新（即時）" : "最新", cls:"dt-ok" };
+  return { txt: `落後 ${diff} 日${kind === "news" ? "（含當日）" : ""}`, cls:"dt-lag" };
+}
+// 併發抓所有資料源的日期，單一源失敗只標該列「讀取失敗」不中斷其他（Promise.allSettled）
+async function fetchDates(){
+  state.datesLoading = true;
+  const t = Date.now();
+  const V2 = SUM_V2_RAW; // taiwan-flow-live-v2 的 data/ 根
+  const srcs = [
+    { name:"盤後分析（本站）", kind:"tw", base:true, local:()=> state.pm ? { date:state.pm.date, gen:state.pm.generated_at } : null },
+    { name:"三大法人", kind:"tw", url: TF_BASE+"/latest.json", pick:j=>({ date:j.date, gen:j.generated_at }) },
+    // diff.json 無 generated_at，產出時間補抓同目錄 latest.json 的 generated_at
+    { name:"主動ETF", kind:"tw", url: V2+"/aetf/diff.json", pick:j=>({ date: j.primary_date || (j.generated_dates||[]).slice(-1)[0] || null, gen:j.generated_at }),
+      aux: V2+"/aetf/latest.json", auxPick:(v,j)=>({ ...v, gen: v.gen || (j&&j.generated_at) || null }) },
+    { name:"晨報", kind:"tw", url: V2+"/morning.json", pick:j=>({ date:j.date, gen:j.generated_at }) },
+    { name:"隔夜美股", kind:"us", url: V2+"/us.json", pick:j=>({ date:j.date, gen:j.generated_at }) },
+    { name:"即時類股", kind:"live", url: SUM_V2_LIVE, fb: V2+"/live.json", pick:j=>({ date: j.ts || j.generated_at || null, gen:j.generated_at }) },
+    { name:"新聞", kind:"news", url: SUM_NEWS_URL, pick:j=>({ date:(j.trading_days||[]).slice(-1)[0] || null, gen:j.generated_at }) },
+    { name:"自動彙總（近一筆）", kind:"tw", url:"data/summary/index.json", pick:j=>{ const r=(j.runs||[])[0]||{}; return { date:r.date, gen:r.generated_at }; } },
+  ];
+  const results = await Promise.allSettled(srcs.map(async s => {
+    if (s.local){ const v = s.local(); if (!v) throw new Error("本站資料未載入"); return v; }
+    let v;
+    try { v = s.pick(await loadJSON(s.url+"?t="+t)); }
+    catch(e){ if (s.fb) v = s.pick(await loadJSON(s.fb+"?t="+t)); else throw e; }
+    if (s.aux && s.auxPick){ try { v = s.auxPick(v, await loadJSON(s.aux+"?t="+t)); } catch(e){ /* aux 失敗不影響主資料 */ } }
+    return v;
+  }));
+  const rows = srcs.map((s,i) => {
+    const r = results[i];
+    return r.status === "fulfilled"
+      ? { name:s.name, kind:s.kind, base:s.base, date:r.value.date, gen:r.value.gen, err:false }
+      : { name:s.name, kind:s.kind, base:s.base, date:null, gen:null, err:true };
+  });
+  // 基準：優先用本站盤後 date（最新台股交易日）；本站失敗則取所有台股源中最大的資料日
+  let baseline = "";
+  const pmRow = rows.find(r => r.base && !r.err);
+  if (pmRow) baseline = dateNorm(pmRow.date);
+  if (!baseline){
+    const tw = rows.filter(r => r.kind === "tw" && !r.err).map(r => dateNorm(r.date)).filter(Boolean);
+    if (tw.length) baseline = tw.sort().slice(-1)[0];
+  }
+  state.datesData = { rows, baseline };
+  state.datesLoading = false;
+  if (state.tab === "dates") render();
+}
+function renderDates(){
+  const main = document.getElementById("main");
+  const intro = `<div class="mcard" style="font-size:.82rem;color:var(--muted);line-height:1.7">`
+    + `各資料源目前的<b style="color:var(--txt)">資料日</b>與<b style="color:var(--txt)">產出時間</b>，用以判斷哪些已是最新交易日、哪些尚未更新。`
+    + `資料為排程產出，<b style="color:var(--txt)">當日盤後資料通常於當晚 21:00 後才更新</b>，故白天多半看到的是前一交易日。`
+    + `「即時類股」為盤中即時、「隔夜美股」屬不同市場、「新聞」含當日，狀態欄另作標註以免誤判落後。</div>`;
+  const dd = state.datesData;
+  if (!dd){
+    if (!state.datesLoading) fetchDates();
+    main.innerHTML = intro + `<div class="empty">載入各資料源日期中…</div>`;
+    return;
+  }
+  const body = dd.rows.map(r => {
+    const st = dateStatus(r.date, dd.baseline, r.kind, r.err);
+    const dCell = r.err ? '<span class="dt-mut">讀取失敗</span>' : (dateDisplay(r.date) ? esc(dateDisplay(r.date)) : '<span class="dt-mut">—</span>');
+    const gCell = (r.err || !r.gen) ? '<span class="dt-mut">—</span>' : esc(fmtGenTaipei(r.gen));
+    return `<tr><td>${esc(r.name)}</td><td>${dCell}</td><td>${gCell}</td><td><span class="${st.cls}">${st.txt}</span></td></tr>`;
+  }).join("");
+  const table = `<div class="tblbox"><table class="mtable dtbl"><thead><tr>`
+    + `<th>資料源</th><th>資料日</th><th>產出時間(台北)</th><th>狀態</th></tr></thead>`
+    + `<tbody>${body}</tbody></table></div>`;
+  main.innerHTML = intro + sec("各資料源日期", `基準交易日 ${esc(dd.baseline || "—")} · 綠＝最新／琥珀＝落後 · 時間均為台北時間`) + table;
 }
 document.addEventListener("click", e=>{
   const el1 = e.target.closest(".clk[data-etf]");
