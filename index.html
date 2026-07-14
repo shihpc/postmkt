@@ -582,12 +582,12 @@ function renderAETF(){
   main.innerHTML = html;
 }
 
-// ---------- 盤後五 tab（data/postmkt.json，GitHub Actions 每交易日 21:30 產） ----------
+// ---------- 盤後五 tab（data/postmkt.json，GitHub Actions 每交易日 21:53 排程產，含延遲約 22:10-23:50 完成） ----------
 function renderPM(){
   const main = document.getElementById("main");
   if (state.tab === "insight"){ main.innerHTML = insightHtml(); return; }
   if (state.tab === "summary"){ main.innerHTML = summaryHtml(); return; }
-  if (state.pmErr){ main.innerHTML = `<div class="empty">尚無盤後資料（data/postmkt.json 未產生或載入失敗）。<br>每交易日 21:30 由 GitHub Actions 更新。</div>`; return; }
+  if (state.pmErr){ main.innerHTML = `<div class="empty">尚無盤後資料（data/postmkt.json 未產生或載入失敗）。<br>每交易日 21:53 排程更新（含延遲約 22:10–23:50 完成）。</div>`; return; }
   const d = state.pm;
   if (!d){ main.innerHTML = `<div class="empty">載入中…</div>`; return; }
   let html = "";
