@@ -152,14 +152,29 @@ def taipei_dt_of(iso_str: str):
         return None
 
 
-def news_fresh(generated_at, today: str, min_hour: int) -> bool:
+def news_fresh(generated_at, today: str, min_hour: int, next_day_before=None) -> bool:
     """news.json 是否為「今日、且台北時刻 >= min_hour 點」的班次產出。
     新聞管線每天三班（06:30/15:00/22:37 台北）都會更新 generated_at，
     只看日期會被較早的班次誤滿足：
     - pm 場 min_hour=21：要的是 22:37 晚班全天新聞，不能被 15:00 午班放行；
-    - am 場 min_hour=6 ：要的是 06:30 早班（清晨新聞餵晨報時段）。"""
+    - am 場 min_hour=6 ：要的是 06:30 早班（清晨新聞餵晨報時段）。
+
+    next_day_before：pm 晚班常因 GitHub Actions schedule 觸發延遲而跨過台北午夜
+    才落地（實測 00:1x），此時 generated_at 台北日滾成隔日、時刻變 0，只認同日會
+    永久誤擋（缺 pm 存檔的根因）。給定此值（pm 傳 5）時額外接受「隔日 00:00～
+    next_day_before 點前」的晚班——該時窗內不會有別班次（次日早班 06:30 才跑），
+    可安全視為前一交易日的晚班。am 場不傳（None），行為與原本完全一致。"""
     d = taipei_dt_of(generated_at)
-    return d is not None and d.strftime("%Y-%m-%d") == today and d.hour >= min_hour
+    if d is None:
+        return False
+    ds = d.strftime("%Y-%m-%d")
+    if ds == today and d.hour >= min_hour:
+        return True
+    if next_day_before is not None:
+        tmr = (dt.datetime.strptime(today, "%Y-%m-%d") + dt.timedelta(days=1)).strftime("%Y-%m-%d")
+        if ds == tmr and d.hour < next_day_before:
+            return True
+    return False
 
 
 def us_is_today(us, today: str) -> bool:
@@ -762,7 +777,7 @@ def wait_gate(slot: str) -> None:
                 nw = http_json(URL_NEWS)
                 tf = http_json(URL_TF)
                 pm_ok = pm.get("date") == today
-                n_ok = news_fresh(nw.get("generated_at"), today, 21)
+                n_ok = news_fresh(nw.get("generated_at"), today, 21, next_day_before=5)
                 tf_ok = tf.get("date") == today
                 if pm_ok and n_ok and tf_ok:
                     print(f"  postmkt.json date={pm.get('date')}、news.json 晚班"
@@ -773,7 +788,7 @@ def wait_gate(slot: str) -> None:
                     reasons.append(f"postmkt.json date={pm.get('date')}")
                 if not n_ok:
                     reasons.append(f"news.json generated_at={nw.get('generated_at')}"
-                                   f"（需今日且台北 21:00 後的晚班）")
+                                   f"（需今日台北 21:00 後、或隔日凌晨 05:00 前的晚班）")
                 if not tf_ok:
                     reasons.append(f"taiwan-flows latest.json date={tf.get('date')}")
             except Exception as e:
