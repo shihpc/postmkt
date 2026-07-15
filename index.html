@@ -691,8 +691,8 @@ function renderPM(){
 const fmToken = () => localStorage.getItem("fm_token") || "";
 const BK_RES = { stock:null, branch:null }; // 查詢結果快取（per 子標籤）
 let BK_LOADING = null; // "stock"|"branch"|null
-const wanF = v => Math.round(v/1e4).toLocaleString("en-US");            // 元→萬（無正負色）
-const wanS = v => { const r = Math.round(v/1e4); return sgn(r,(r>0?"+":"")+r.toLocaleString("en-US")); }; // 元→萬（帶正負色，先捨入再判正負，避免浮點微塵給出假正負號）
+const milF = v => (Math.round(v/1e5)/10).toLocaleString("en-US",{minimumFractionDigits:1,maximumFractionDigits:1});            // 元→百萬（1位小數，無正負色）
+const milS = v => { const r = Math.round(v/1e5)/10; return sgn(r,(r>0?"+":"")+r.toLocaleString("en-US",{minimumFractionDigits:1,maximumFractionDigits:1})); }; // 元→百萬（1位小數，帶正負色，先捨入再判正負，避免浮點微塵給出假正負號）
 const zhF = v => Math.round(v).toLocaleString("en-US");                 // 張（無正負色）
 const zhS = v => { const r = Math.round(v); return sgn(r,(r>0?"+":"")+r.toLocaleString("en-US")); };      // 張（帶正負色，同上）
 function brokerTabHtml(d){
@@ -751,16 +751,16 @@ function bkResultTableHtml(res){
     {h:"買(張)",f:r=>zhF(r.b_sh),sortVal:r=>r.b_sh},
     {h:"賣(張)",f:r=>zhF(r.s_sh),sortVal:r=>r.s_sh},
     {h:"買賣超(張)",f:r=>zhS(r.b_sh-r.s_sh),sortVal:r=>r.b_sh-r.s_sh},
-    {h:"買金額(萬)",f:r=>wanF(r.b_amt),sortVal:r=>r.b_amt},
-    {h:"賣金額(萬)",f:r=>wanF(r.s_amt),sortVal:r=>r.s_amt},
-    {h:"買賣超金額(萬)",f:r=>wanS(r.b_amt-r.s_amt),sortVal:r=>r.b_amt-r.s_amt},
-    {h:"買加賣(萬)",f:r=>wanF(r.b_amt+r.s_amt),sortVal:r=>r.b_amt+r.s_amt}];
+    {h:"買金額(百萬)",f:r=>milF(r.b_amt),sortVal:r=>r.b_amt},
+    {h:"賣金額(百萬)",f:r=>milF(r.s_amt),sortVal:r=>r.s_amt},
+    {h:"買賣超金額(百萬)",f:r=>milS(r.b_amt-r.s_amt),sortVal:r=>r.b_amt-r.s_amt},
+    {h:"買加賣(百萬)",f:r=>milF(r.b_amt+r.s_amt),sortVal:r=>r.b_amt+r.s_amt}];
   const totals = ["合計", `${rows.length}${isBranch?"檔":"分點"}`,
     zhF(t.b_sh), zhF(t.s_sh), zhS(t.b_sh-t.s_sh),
-    wanF(t.b_amt), wanF(t.s_amt), wanS(t.b_amt-t.s_amt), wanF(t.b_amt+t.s_amt)];
+    milF(t.b_amt), milF(t.s_amt), milS(t.b_amt-t.s_amt), milF(t.b_amt+t.s_amt)];
   let h = sec(`${esc(res.id)} ${esc(res.name||"")}`, `${esc(res.date)} · ${rows.length} ${isBranch?"檔個股":"個分點"} · 依買加賣金額排序 · 點表頭可再排序`);
   h += tbl(cols, rows, {totals, s2:true});
-  h += `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px">金額＝Σ(各價位成交價×股數)，單位萬元；張數＝股數/1000四捨五入（零股會顯示為0張但金額仍計入）。</div>`;
+  h += `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px">金額＝Σ(各價位成交價×股數)，單位百萬元（1位小數）；張數＝股數/1000四捨五入（零股會顯示為0張但金額仍計入）。</div>`;
   return h;
 }
 async function bkQuery(kind){
