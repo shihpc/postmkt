@@ -51,7 +51,8 @@
   虛擬捲動有 200ms 輪詢保險）。
 - TWSE 端點的「合計」市場總計列要濾掉（代號欄非 ASCII 英數），TWT72U/TWTC7U/TWT53U 都有。
 - 分點查詢聚合：張數保留小數、只在顯示時捨入（先逐列 round 再加總會偏差且讓個股
-  買賣超合計出現假非零）。
+  買賣超合計出現假非零）。金額顯示單位＝百萬元 1 位小數（`milF/milS`，÷1e6，僅此表用；
+  2026-07-16 由原「萬元」改；排序仍用原始 `b_amt/s_amt` 未除）。
 - 摘要分析：LLM 洞見機制由使用者決定用「LLM 前端即時」（見 2026-07-11 對話）；
   system prompt 強制「只描述歷史統計傾向、非投資建議、非預測、每個觀察可追溯數據」，
   符合工作區共同原則。本站是四站摘要分析的**範本站**，套用已完成（2026-07-12）：
@@ -78,6 +79,17 @@
   **維護重點**：三站 gather 邏輯在本 repo 有兩份移植副本（index.html 的 sumCtx* 與
   build_summary.py 的 gather_*），三站前端 insightGatherContext/SYS 改動時需同步兩處
   （SYS 已驗逐字一致）。自動場需 repo Secret `ANTHROPIC_API_KEY`（見部署設定）。
+  **2026-07-16 修（pm 晚場永久缺存檔根因）**：pm 閘門的 `news_fresh` 原硬性要求新聞
+  `generated_at` 為「同日且台北 ≥21:00」，但新聞晚班常因觸發延遲跨過台北午夜才落地
+  （generated_at 滾成隔日 00:1x、hour=0），兩條件同破且跨日後永久失敗 → pm 場天天 skip、
+  `data/summary/*-pm.json` 從未產出。修法＝`news_fresh` 加 `next_day_before` 參數，pm 呼叫
+  傳 `5`：額外接受「隔日 00:00~05:00 前」的晚班（該時窗無別班次，可安全視為前一交易日晚班）；
+  am 場未帶新參數、行為不變。**跨 repo 依賴**：真正讓新聞跨午夜的是 `taiwan-stock-news`
+  的備援 schedule（原台北 22:37，被 GitHub cron 延遲到 00:17 覆蓋掉 Worker 22:07 已寫好的
+  22:18 好資料）——已同步把該備援前挪到 21:37（`build-news.yml`，2026-07-16），使延遲也不跨
+  午夜、不覆蓋。新聞晚班主觸發是 taiwan-flow-live-v2 Worker 每小時 :07 的 workflow_dispatch
+  （準點、最後一班台北 22:07），schedule 僅備援。兩處互補：Worker 保正常、閘門放寬當最終防線。
+  注意此修只影響未來場次，歷史缺的 pm 場不回填（要補需手動 workflow_dispatch）。
 - 個股外連＋雲端儲存（2026-07-12）：三站（本站/taiwan-flow-live-v2/taiwan-stock-news）insight
   渲染＋本站彙總渲染中，個股代號自動變連結外開 Yahoo 技術分析頁。`linkifyStocks(html, knownSet)`
   雙層防誤連：各站 `stockCodeSet()` 收集已知代號＋型態兜底（代號緊跟中文、單位黑名單、
