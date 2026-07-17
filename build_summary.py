@@ -128,6 +128,19 @@ def taipei_now() -> dt.datetime:
     return dt.datetime.now(TAIPEI)
 
 
+def slot_trading_day(slot: str) -> str:
+    """該場次對應的目標交易日（台北 YYYY-MM-DD）。
+    pm 場 cron 排 22:47 台北，但 GitHub Actions 常延遲 1~2h（實測延到隔日 00:0x 才
+    啟動）；此時直接用 taipei_now() 會把 today 滾成「隔天」——閘門於是去硬等一個還沒
+    開盤的新交易日的 postmkt/news/taiwan-flows，170 分全落空、永久 skip（缺 pm 存檔
+    的真因）。故 pm 場在凌晨啟動（hour<12）時，把目標交易日回推一天＝觸發當晚的交易日；
+    22:47 準點或小延遲（hour>=12）則就是當日。am 場 cron 06:23、不跨中午，直接用今日。"""
+    now = taipei_now()
+    if slot == "pm" and now.hour < 12:
+        return (now - dt.timedelta(days=1)).strftime("%Y-%m-%d")
+    return now.strftime("%Y-%m-%d")
+
+
 def taipei_day_of(iso_str: str) -> str:
     """ISO 時間字串 → 台北時區日期 YYYY-MM-DD；解析失敗退回前 10 碼。"""
     s = str(iso_str or "")
@@ -741,8 +754,10 @@ def is_twse_holiday(today: str) -> bool:
         return False
 
 
-def wait_gate(slot: str) -> None:
+def wait_gate(slot: str, today: str) -> None:
     """資料齊全閘門（2026-07-14 依審計改造）。每 5 分輪詢一次。
+    today＝該場次的目標交易日（slot_trading_day 算，pm 延遲跨午夜也釘在觸發當晚），
+    不可用 taipei_now()——pm 被延到隔日凌晨啟動時會把 today 滾成隔天而永久 skip。
     pm：硬等三源皆為今日——postmkt.json date、news.json 晚班（台北日==今日且
         時刻>=21:00，避免被 15:00 午班滿足）、taiwan-flows latest.json date；
         最多 170 分（cron 22:47 台北起算，蓋住新聞晚班 22:37 起跑＋GitHub 延遲
@@ -755,11 +770,11 @@ def wait_gate(slot: str) -> None:
         最多 60 分，逾時照跑（print 哪些源用舊檔，dlabel 機制會標資料日）。
     進場先查 TWSE 休市行事曆：排定假日直接 skip——am 場必須靠這層（晨報管線假日仍會
     更新 generated_at，資料閘門擋不住）；pm 場本可由資料閘門擋住，此層省去長時空轉。"""
-    today = taipei_now().strftime("%Y-%m-%d")
     # 週末防護：cron 只排週一至五，但手動觸發（workflow_dispatch）在週末會空轉
-    # 整段輪詢（盤後資料日永遠不會是週末），直接 skip。
-    if taipei_now().weekday() >= 5:
-        print(f"今日 {today} 為週末非交易日，本場 skip。", flush=True)
+    # 整段輪詢（盤後資料日永遠不會是週末），直接 skip。以「目標交易日」判週末，
+    # pm 場延到週六凌晨啟動時目標日仍是週五交易日，不可誤判成週末。
+    if dt.datetime.strptime(today, "%Y-%m-%d").weekday() >= 5:
+        print(f"目標交易日 {today} 為週末非交易日，本場 skip。", flush=True)
         sys.exit(0)
     if is_twse_holiday(today):
         print(f"TWSE 休市行事曆：{today} 為排定休市日，本場 skip。", flush=True)
@@ -853,8 +868,8 @@ def wait_gate(slot: str) -> None:
 
 # ---------- 輸出與清理 ----------
 
-def write_output(slot: str, six: list[dict], synthesis: dict) -> None:
-    now = taipei_now()
+def write_output(slot: str, trading_day: str, six: list[dict], synthesis: dict) -> None:
+    now = taipei_now()  # 實際產生時刻（generated_at 用）；檔名與資料日改用 trading_day
     # 頂層 dates：三頁各自的主資料日（page→primary），由 six[] 彙整（同頁兩份 date 相同，後蓋前不影響）。
     # 供前端自動檔展開時顯示三頁資料日，與生成日（date/generated_at）區分。
     page_dates: dict[str, str] = {}
@@ -864,13 +879,13 @@ def write_output(slot: str, six: list[dict], synthesis: dict) -> None:
     out = {
         "generated_at": now.isoformat(timespec="seconds"),
         "slot": slot,
-        "date": now.strftime("%Y-%m-%d"),
+        "date": trading_day,
         "dates": page_dates,
         "six": six,
         "synthesis": synthesis,
     }
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    fname = f"{now.strftime('%Y%m%d')}-{slot}.json"
+    fname = f"{trading_day.replace('-', '')}-{slot}.json"
     dst = OUT_DIR / fname
     dst.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"輸出 {dst}（{dst.stat().st_size:,} bytes）", flush=True)
@@ -990,8 +1005,9 @@ def main() -> None:
     if not args.dry_run:
         anth_key()  # 缺 Secret 秒失敗（fail-fast），不等閘門輪詢完才發現
 
+    trading_day = slot_trading_day(args.slot)
     if not args.no_wait and not args.dry_run:
-        wait_gate(args.slot)
+        wait_gate(args.slot, trading_day)
 
     src = load_sources()
     pages = build_contexts(src)
@@ -1040,7 +1056,7 @@ def main() -> None:
         print("彙總失敗，本場失敗", flush=True)
         sys.exit(1)
 
-    write_output(args.slot, six, {"text": synth["text"], "usage": synth["usage"]})
+    write_output(args.slot, trading_day, six, {"text": synth["text"], "usage": synth["usage"]})
 
 
 if __name__ == "__main__":
