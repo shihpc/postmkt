@@ -1983,7 +1983,8 @@ function diagLights(s, m){
   let hits = DIAG_RULES.map(r => ({ r, on: r.test(s, m) === true }));
   // 疊加條件（addon，如 C3 土洋同買）：回測顯示獨立無效，僅當另有其他綠燈規則
   // 成立時才計入（加分項）；否則視為未觸發，不亮綠也不列入命中清單。
-  const otherGreen = hits.some(h => h.on && h.r.col === "green" && !h.r.addon);
+  // 「其他綠燈」排除系統面——系統面規則在多頭市近乎恆亮，計入會讓 addon 實質退回單獨亮綠。
+  const otherGreen = hits.some(h => h.on && h.r.col === "green" && !h.r.addon && h.r.dim !== "系統");
   if (!otherGreen) hits = hits.map(h => h.r.addon ? { r: h.r, on: false } : h);
   const dims = {};
   for (const d of DIAG_DIMS){
