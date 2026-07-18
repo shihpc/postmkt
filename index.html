@@ -1955,14 +1955,14 @@ const DIAG_RULES = [
     cond:"大盤距60日高回撤 >10%（修正regime，回測：修正月「退出被買回」失效）且 次產業在昨日退湧清單",
     test:(s,m) => (!m||m.regime==null||s.ds==null) ? null : (m.regime==="correction" && s.ds===1),
     why:(s,m) => `大盤修正regime（距60日高 ${DIAG_PCT(m.dd60)}）且次產業退湧` },
-  { id:"C3", dim:"籌碼", col:"green", ver:true, name:"土洋同買",
-    ref:"站內回測：外資投信同日買超之歷史統計傾向（工作區回測紀錄）",
-    cond:"今日外資買超 且 投信買超",
-    test:s => s.bb==null ? null : s.bb===1,
-    why:() => "今日外資、投信同步買超" },
-  { id:"T1", dim:"題材", col:"green", ver:true, name:"次產業連湧且未爆量急漲",
-    ref:"站內回測：v2 晨報「連湧次產業」訊號（已回測）",
-    cond:"次產業在連湧清單 且 非（爆量且當日漲幅>3%）",
+  { id:"C3", dim:"籌碼", col:"green", ver:true, tag:"已驗證（疊加條件）", addon:true, name:"土洋同買",
+    ref:"站內回測（v2 report_indicators.md）：近3日投信≥2買且外資≥2買僅作疊加條件有效，獨立超額約+0.15%",
+    cond:"外資連買 ≥2日 且 投信連買 ≥2日；僅作疊加條件——需另有其他綠燈規則成立才計入，不單獨亮綠",
+    test:s => (s.fd==null||s.td==null) ? null : (s.fd>=2 && s.td>=2),
+    why:s => `外資連買${s.fd}日、投信連買${s.td}日（疊加）` },
+  { id:"T1", dim:"題材", col:"green", ver:false, tag:"描述性（次產業訊號外推）", name:"次產業連湧且未爆量急漲",
+    ref:"回測驗證於次產業層級（v2 晨報連湧訊號）；個股層級為外推，未經回測",
+    cond:"次產業在連湧清單 且 非（爆量且當日漲幅>3%）。連湧訊號回測於次產業層級，個股為層級外推",
     test:s => s.cs==null ? null : (s.cs===1 && !(s.vs===1 && (s.d1||0)>3)),
     why:s => `次產業在連湧清單（${(s.sub||[]).join("、")}）` },
   { id:"C4", dim:"籌碼", col:"green", ver:false, name:"法人連買≥3日且RS>0",
@@ -1980,7 +1980,11 @@ const DIAG_RULES = [
 ];
 const DIAG_DIMS = ["籌碼","價量","題材","系統"];
 function diagLights(s, m){
-  const hits = DIAG_RULES.map(r => ({ r, on: r.test(s, m) === true }));
+  let hits = DIAG_RULES.map(r => ({ r, on: r.test(s, m) === true }));
+  // 疊加條件（addon，如 C3 土洋同買）：回測顯示獨立無效，僅當另有其他綠燈規則
+  // 成立時才計入（加分項）；否則視為未觸發，不亮綠也不列入命中清單。
+  const otherGreen = hits.some(h => h.on && h.r.col === "green" && !h.r.addon);
+  if (!otherGreen) hits = hits.map(h => h.r.addon ? { r: h.r, on: false } : h);
   const dims = {};
   for (const d of DIAG_DIMS){
     const rs = hits.filter(h => h.r.dim === d);
@@ -2007,15 +2011,15 @@ function diagFacts(s){
     { dim:"價量", label:"20日日均成交值", val:s.av20==null?"—":(s.av20/1e5).toFixed(1)+"億" },
     { dim:"籌碼", label:"外資 連買賣／近5日合計", val:`${s.fd==null?"—":(s.fd>0?`連買${s.fd}日`:s.fd<0?`連賣${-s.fd}日`:"中性")}／${zh5(s.f5)}` },
     { dim:"籌碼", label:"投信 連買賣／近5日合計", val:`${s.td==null?"—":(s.td>0?`連買${s.td}日`:s.td<0?`連賣${-s.td}日`:"中性")}／${zh5(s.t5)}` },
-    { dim:"籌碼", label:"土洋同買（今日）", val:flag(s.bb), ver:true },
+    { dim:"籌碼", label:"土洋同買（今日單日觀察；已驗證訊號為連買疊加條件，見規則說明）", val:flag(s.bb) },
     { dim:"籌碼", label:"融資餘額5日增減", val:DIAG_PCT(s.mg5) },
     { dim:"籌碼", label:"券資比", val:s.cr==null?"—":s.cr.toFixed(2)+"%" },
     { dim:"籌碼", label:"借券賣出餘額5日變化", val:zh5(s.lb5) },
     { dim:"籌碼", label:"當沖比", val:s.dt==null?"—":s.dt.toFixed(2)+"%" },
-    { dim:"籌碼", label:`千張大戶持股比週變化${s.hdd?`（${esc(s.hdd)}）`:""}`, val:s.hdw==null?"—":`${(s.hdw>0?"+":"")+s.hdw.toFixed(2)}pp（${(s.hd||[]).map(x=>x==null?"—":x+"%").join(" ← ")}）` },
+    { dim:"籌碼", label:`千張大戶持股比週變化${s.hdd?`（${esc(s.hdd)}，T-1週資料）`:"（T-1週資料）"}`, val:s.hdw==null?"—":`${(s.hdw>0?"+":"")+s.hdw.toFixed(2)}pp（${(s.hd||[]).map(x=>x==null?"—":x+"%").join(" ← ")}）` },
     { dim:"題材", label:"產業／次產業", val:`${esc(s.ind||"—")}／${esc((s.sub||[]).slice(0,4).join("、")||"—")}${(s.sub||[]).length>4?"…":""}` },
     { dim:"題材", label:"產業鏈", val:esc((s.ch||[]).join("、")||"—") },
-    { dim:"題材", label:"次產業在連湧清單（已回測訊號）", val:flag(s.cs), ver:true },
+    { dim:"題材", label:"次產業在連湧清單", val:flag(s.cs), tag:"描述性（次產業訊號外推）" },
     { dim:"題材", label:"次產業在昨日退湧清單", val:flag(s.ds) },
   ];
 }
@@ -2144,7 +2148,7 @@ function diagCardHtml(hd){
     if (L.hits.length){
       h += `<div style="margin-top:9px;font-size:.82rem">` + L.hits.map(r =>
         `<div class="dfact"><span><span class="dlt dlt-${r.col}" style="margin-right:6px"></span>${esc(r.name)}`
-        + `<span class="dtag ${r.ver?"dtag-v":"dtag-d"}" title="${esc(r.ver?(r.ref||""):"描述性統計，未經回測驗證")}">${r.ver?"已驗證":"描述性"}</span></span>`
+        + `<span class="dtag ${r.ver?"dtag-v":"dtag-d"}" title="${esc(r.ref||(r.ver?"":"描述性統計，未經回測驗證"))}">${esc(r.tag||(r.ver?"已驗證":"描述性"))}</span></span>`
         + `<span class="mut">${typeof r.why==="function"?r.why(s,m):""}</span></div>`).join("") + `</div>`;
     } else {
       h += `<div class="mut" style="margin-top:9px;font-size:.8rem">未觸發任何紅/綠燈規則（黃＝中性/證據不足）。</div>`;
@@ -2153,7 +2157,7 @@ function diagCardHtml(hd){
     h += `<div class="kvgrid" style="margin-top:9px">`;
     for (const f of diagFacts(s)){
       if (f.dim !== cur){ cur = f.dim; h += `<div class="kvsec">${cur}</div>`; }
-      h += `<div class="kv"><span class="mut">${f.label}<span class="dtag ${f.ver?"dtag-v":"dtag-d"}">${f.ver?"已驗證":"描述性"}</span></span><span style="text-align:right">${f.val}</span></div>`;
+      h += `<div class="kv"><span class="mut">${f.label}<span class="dtag ${f.ver?"dtag-v":"dtag-d"}">${esc(f.tag||(f.ver?"已驗證":"描述性"))}</span></span><span style="text-align:right">${f.val}</span></div>`;
     }
     h += `</div>`;
   }
@@ -2167,6 +2171,7 @@ function diagRulesHtml(){
   if (state.diagRulesOpen){
     h += `<div class="mut" style="font-size:.78rem;margin:8px 0 6px;line-height:1.6">`
       + `判定：任一紅燈規則成立 → 總燈紅；無紅且個股層（籌碼/價量/題材）有綠 → 總燈綠；其餘黃（系統面綠燈只影響子燈）。`
+      + `標註「疊加條件」的規則（如土洋同買）回測顯示獨立無效，僅在另有其他綠燈規則成立時作加分項計入，不單獨亮綠。`
       + `「已驗證」＝曾以歷史資料回測並記錄於工作區文件的訊號，僅代表歷史統計傾向；其餘為描述性統計、未經回測。規則權重為先驗設定，將隨回測校準調整。</div>`;
     h += `<table style="border-collapse:collapse;width:100%;font-size:.8rem">`
       + `<tr>${["面向","燈","規則","條件","性質"].map(x=>`<th style="text-align:left;padding:3px 8px;color:var(--muted);font-weight:400">${x}</th>`).join("")}</tr>`
@@ -2175,7 +2180,7 @@ function diagRulesHtml(){
         + `<td style="padding:3px 8px"><span class="dlt dlt-${r.col}"></span></td>`
         + `<td style="padding:3px 8px;white-space:nowrap">${esc(r.name)}</td>`
         + `<td style="padding:3px 8px">${esc(r.cond)}</td>`
-        + `<td style="padding:3px 8px;white-space:nowrap"><span class="dtag ${r.ver?"dtag-v":"dtag-d"}" title="${esc(r.ver?(r.ref||""):"")}">${r.ver?"已驗證":"描述性"}</span></td>`
+        + `<td style="padding:3px 8px"><span class="dtag ${r.ver?"dtag-v":"dtag-d"}" title="${esc(r.ref||"")}">${esc(r.tag||(r.ver?"已驗證":"描述性"))}</span></td>`
         + `</tr>`).join("") + `</table>`;
   }
   return h + `</div>`;
