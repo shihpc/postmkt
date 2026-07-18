@@ -2091,11 +2091,11 @@ const DIAG_RULES = [
   { id:"F3", dim:"基本面", col:"green", ver:false, name:"營收連3月YoY成長",
     cond:"月營收連續 ≥3 個月 YoY 成長",
     test:s => s.rvs==null ? null : s.rvs>=3,
-    why:s => `連續${s.rvs}月YoY成長（最新 ${s.rym||"—"} YoY ${DIAG_PCT(s.yoy)}）` },
+    why:s => `連續${s.rvs>=14?"≥14":s.rvs}月YoY成長（最新 ${s.rym||"—"} YoY ${DIAG_PCT(s.yoy)}）` },
   { id:"F4", dim:"基本面", col:"red", ver:false, name:"營收連3月YoY衰退",
     cond:"月營收連續 ≥3 個月 YoY 衰退",
     test:s => s.rvs==null ? null : s.rvs<=-3,
-    why:s => `連續${-s.rvs}月YoY衰退（最新 ${s.rym||"—"} YoY ${DIAG_PCT(s.yoy)}）` },
+    why:s => `連續${-s.rvs>=14?"≥14":-s.rvs}月YoY衰退（最新 ${s.rym||"—"} YoY ${DIAG_PCT(s.yoy)}）` },
 ];
 const DIAG_DIMS = ["籌碼","價量","題材","基本面","系統"];
 function diagLights(s, m){
@@ -2142,7 +2142,7 @@ function diagFacts(s){
     { dim:"題材", label:"次產業在連湧清單", val:flag(s.cs), tag:"描述性（次產業訊號外推）" },
     { dim:"題材", label:"次產業在昨日退湧清單", val:flag(s.ds) },
     { dim:"基本面", label:`月營收 YoY／MoM${s.rym?`（${esc(s.rym)}）`:""}`, val:`${DIAG_PCT(s.yoy)}／${DIAG_PCT(s.mom)}` },
-    { dim:"基本面", label:"營收連續 YoY 成長/衰退", val:s.rvs==null?"—":s.rvs>0?`連${s.rvs}月成長`:s.rvs<0?`連${-s.rvs}月衰退`:"持平/轉折" },
+    { dim:"基本面", label:"營收連續 YoY 成長/衰退", val:s.rvs==null?"—":s.rvs>0?`連${s.rvs>=14?"≥14":s.rvs}月成長`:s.rvs<0?`連${-s.rvs>=14?"≥14":-s.rvs}月衰退`:"持平/轉折" },
     { dim:"基本面", label:`PER（3年百分位${s.vch?`，${esc(s.vch)}刷新`:""}）`, val:`${s.pe==null?"—":s.pe}（${s.pep==null?"—":s.pep+"%"}）` },
     { dim:"基本面", label:"PBR（3年百分位）", val:`${s.pb==null?"—":s.pb}（${s.pbp==null?"—":s.pbp+"%"}）` },
     { dim:"基本面", label:"殖利率", val:s.dy==null?"—":s.dy.toFixed(2)+"%" },
