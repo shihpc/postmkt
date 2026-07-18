@@ -161,6 +161,25 @@
   .insight-md th{background:var(--chip);color:var(--muted)}
   .insight-note{color:var(--muted);font-size:.74rem;margin:8px 4px;line-height:1.6}
   .insight-meta{color:var(--muted);font-size:.76rem;margin:2px 4px 10px}
+  /* 持股診斷 tab（子期1）：免責框、燈號點、已驗證/描述性標籤、輸入欄、事實列 */
+  .diag-disc{background:#2a2410;border:1px solid #5a4a20;color:#e0b341;border-radius:11px;
+    padding:8px 12px;font-size:.78rem;margin:8px 0;line-height:1.6}
+  .dlt{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle}
+  .dlt-red{background:#ef5b5b}.dlt-yellow{background:#e0b341}.dlt-green{background:#2fbf71}
+  .dtag{display:inline-block;font-size:.68rem;border-radius:7px;padding:1px 7px;margin-left:6px;
+    vertical-align:middle;white-space:nowrap}
+  .dtag-v{background:#173a2a;color:#2fbf71;border:1px solid #1e5c40}
+  .dtag-d{background:#232c42;color:var(--muted);border:1px solid var(--line)}
+  .diag-in{background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:8px;
+    padding:5px 9px;font-size:.85rem;outline:none;width:104px}
+  .diag-in:focus{border-color:var(--accent)}
+  .dfact{display:flex;justify-content:space-between;gap:10px;padding:3px 0;
+    border-bottom:1px solid rgba(36,53,86,.4);font-size:.82rem}
+  .dfact:last-child{border-bottom:none}
+  .dwarn{color:#e0b341}.dok{color:#2fbf71}
+  .dbtn{background:var(--chip);border:1px solid var(--line);color:var(--txt);border-radius:8px;
+    padding:5px 12px;font-size:.84rem;cursor:pointer}
+  .dbtn:hover{border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -189,6 +208,7 @@ const TABS = [
   ["summary","彙總分析"],
   ["aetf","主動ETF"],["dates","日期"],["lending","融借券"],["daytrade","當沖"],
   ["block","鉅額"],["oddlot","零股"],["broker","分點"],
+  ["diag","持股診斷"],
 ];
 const SUBS = {
   insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、只存本機瀏覽器。非投資建議、非預測，僅描述歷史統計傾向。",
@@ -200,6 +220,7 @@ const SUBS = {
   oddlot:"零股交易行情（TWSE公開端點）：盤中零股／盤後零股，依個股呈現成交股數、筆數、金額。單位：股／元。",
   broker:"券商分點進出（FinMind TradingDailyReport，每交易日約21:00更新）。單點＝查一個分點當日全部進出個股；個股＝查一檔股票當日全部進出分點；清單＝全部分點代號對照。",
   dates:"各資料源目前的資料日與產出時間；判斷哪些已是最新交易日、哪些尚未更新。資料為排程產出，當日盤後資料通常於當晚 21:00 後才更新，故白天多半看到前一交易日。",
+  diag:"持股診斷：輸入持股後逐檔彙整籌碼／價量／題材／系統面事實與紅黃綠風險燈號。證據彙整工具、非投資建議，不輸出買賣指令；持股資料僅存於本機瀏覽器（localStorage），不上傳任何伺服器。素材庫每交易日約 22:10 更新（全市場通用資料）。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
 // 盤後法人動態站（taiwan-flows）的資料：三大法人買賣超排行＋外資台指期未平倉，平日21:00更新
@@ -213,7 +234,8 @@ const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQu
   insightModel: localStorage.getItem("insight_model") || "claude-opus-4-8",
   summary:null, summaryLoading:false, summaryErr:null, summaryProg:"", summaryAbort:null,
   sumAutoIdx:undefined, sumAutoOpen:null, sumManualOpen:null, cloudOpen:null,
-  datesData:null, datesLoading:false };
+  datesData:null, datesLoading:false,
+  diag:null, diagErr:null, diagLive:undefined, diagOpen:null, diagRulesOpen:false, diagMsg:"" };
 
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -587,6 +609,7 @@ function renderPM(){
   const main = document.getElementById("main");
   if (state.tab === "insight"){ main.innerHTML = insightHtml(); return; }
   if (state.tab === "summary"){ main.innerHTML = summaryHtml(); return; }
+  if (state.tab === "diag"){ if (state.diagLive === undefined) fetchDiagLive(); main.innerHTML = diagHtml(); return; }
   if (state.pmErr){ main.innerHTML = `<div class="empty">尚無盤後資料（data/postmkt.json 未產生或載入失敗）。<br>每交易日 21:53 排程更新（含延遲約 22:10–23:50 完成）。</div>`; return; }
   const d = state.pm;
   if (!d){ main.innerHTML = `<div class="empty">載入中…</div>`; return; }
@@ -1867,6 +1890,348 @@ document.addEventListener("click", e => {
     state.sumManualOpen = state.sumManualOpen===i ? null : i; render(); return; }
 });
 
+// ---------- 持股診斷 tab（子期1）：素材庫 data/diag/diag.json ＋ 燈號規則引擎 ----------
+// 隱私鐵則：持股清單（代號/股數/成本）只存 localStorage("pm_holdings")，
+// 絕不放進任何網路請求 payload、絕不走 gh_token 雲端儲存（repo 是 public）。
+// 本 tab 的對外請求只有兩個唯讀 GET：data/diag/diag.json（全市場通用素材庫）
+// 與 v2 /live（全市場即時快照），URL 皆不含任何持股參數。
+const HOLD_KEY = "pm_holdings";
+function diagHoldings(){
+  try{
+    const v = JSON.parse(localStorage.getItem(HOLD_KEY) || "[]");
+    return Array.isArray(v) ? v.filter(h => h && h.c) : [];
+  }catch(e){ return []; }
+}
+function diagSaveHoldings(hs){ localStorage.setItem(HOLD_KEY, JSON.stringify(hs)); }
+
+// 即時現價（v2 /live，全市場快照）：失敗降級 raw live.json，再失敗只顯示前收
+async function fetchDiagLive(){
+  state.diagLive = "loading";
+  const t = Date.now();
+  try{ state.diagLive = await loadJSON(SUM_V2_LIVE+"?t="+t); }
+  catch(e){
+    try{ state.diagLive = await loadJSON(SUM_V2_RAW+"/live.json?t="+t); }
+    catch(e2){ state.diagLive = { err:1 }; }
+  }
+  if (state.tab === "diag") render();
+}
+// 現價解析：live 有此檔就用即時價（dp=漲跌價差），否則退回素材庫盤後收盤（前收）
+function diagPrice(c){
+  const lv = state.diagLive;
+  if (lv && typeof lv === "object" && !lv.err && lv.stocks && lv.stocks[c] && Array.isArray(lv.stock_cols)){
+    const g = k => { const i = lv.stock_cols.indexOf(k); return i >= 0 ? lv.stocks[c][i] : null; };
+    const px = g("close");
+    if (px != null) return { px, chg:g("chg"), dp:g("dp"), live:true, ts:lv.ts };
+  }
+  const s = state.diag && state.diag.stocks ? state.diag.stocks[c] : null;
+  if (s && s.c != null) return { px:s.c, chg:s.d1, dp:(s.pc!=null ? +(s.c - s.pc).toFixed(2) : null), live:false };
+  return null;
+}
+
+// 燈號規則表（資料驅動、單一定義處；未來回測校準只改這張表）。
+// col:red/green；ver:true=已驗證（附回測出處 ref），false=描述性未驗證。
+// test 回傳 true/false/null（null=資料不足，不觸發也不列入判定）。
+// 先驗權重：任一紅 -> 總燈紅；無紅且個股層（籌碼/價量/題材）有綠 -> 總燈綠；其餘黃。
+const DIAG_PCT = v => v==null ? "—" : (v>0?"+":"")+v.toFixed(2)+"%";
+const DIAG_RULES = [
+  { id:"P1", dim:"價量", col:"red", ver:true, name:"破20日新低",
+    ref:"站內回測：跌破20日低後短期續弱傾向（v2 訊號回測紀錄）",
+    cond:"收盤 < 前20交易日最低收盤",
+    test:s => s.lo20==null ? null : s.lo20===1,
+    why:s => `收盤 ${s.c} 創20日新低` },
+  { id:"P2", dim:"價量", col:"red", ver:false, name:"爆量長黑",
+    cond:"量 > 20日均量2倍 且 當日跌幅 ≥ 3%",
+    test:s => s.vb==null ? null : s.vb===1,
+    why:s => `爆量且當日 ${DIAG_PCT(s.d1)}` },
+  { id:"C1", dim:"籌碼", col:"red", ver:false, name:"外資投信同賣≥3日",
+    cond:"外資連賣天數 ≥ 3 且 投信連賣天數 ≥ 3",
+    test:s => (s.fd==null||s.td==null) ? null : (s.fd<=-3 && s.td<=-3),
+    why:s => `外資連賣${-s.fd}日、投信連賣${-s.td}日` },
+  { id:"C2", dim:"籌碼", col:"red", ver:false, name:"融資5日大增且價跌",
+    cond:"融資餘額5日增幅 > 5% 且 5日報酬 < 0",
+    test:s => (s.mg5==null||s.r5==null) ? null : (s.mg5>5 && s.r5<0),
+    why:s => `融資5日 ${DIAG_PCT(s.mg5)}、5日報酬 ${DIAG_PCT(s.r5)}` },
+  { id:"S1", dim:"系統", col:"red", ver:false, name:"修正regime且題材連退",
+    cond:"大盤距60日高回撤 >10%（修正regime，回測：修正月「退出被買回」失效）且 次產業在昨日退湧清單",
+    test:(s,m) => (!m||m.regime==null||s.ds==null) ? null : (m.regime==="correction" && s.ds===1),
+    why:(s,m) => `大盤修正regime（距60日高 ${DIAG_PCT(m.dd60)}）且次產業退湧` },
+  { id:"C3", dim:"籌碼", col:"green", ver:true, name:"土洋同買",
+    ref:"站內回測：外資投信同日買超之歷史統計傾向（工作區回測紀錄）",
+    cond:"今日外資買超 且 投信買超",
+    test:s => s.bb==null ? null : s.bb===1,
+    why:() => "今日外資、投信同步買超" },
+  { id:"T1", dim:"題材", col:"green", ver:true, name:"次產業連湧且未爆量急漲",
+    ref:"站內回測：v2 晨報「連湧次產業」訊號（已回測）",
+    cond:"次產業在連湧清單 且 非（爆量且當日漲幅>3%）",
+    test:s => s.cs==null ? null : (s.cs===1 && !(s.vs===1 && (s.d1||0)>3)),
+    why:s => `次產業在連湧清單（${(s.sub||[]).join("、")}）` },
+  { id:"C4", dim:"籌碼", col:"green", ver:false, name:"法人連買≥3日且RS>0",
+    cond:"外資或投信連買天數 ≥ 3 且 20日相對大盤報酬 RS > 0",
+    test:s => (s.fd==null&&s.td==null) ? null : (Math.max(s.fd||0, s.td||0)>=3 && (s.rs||0)>0),
+    why:s => `外資${(s.fd||0)>0?`連買${s.fd}日`:"—"}／投信${(s.td||0)>0?`連買${s.td}日`:"—"}，RS ${DIAG_PCT(s.rs)}` },
+  { id:"P3", dim:"價量", col:"green", ver:false, name:"站上MA20且RS>0",
+    cond:"現價 > MA20 且 RS > 0",
+    test:s => (s.ma20==null||s.rs==null) ? null : (s.ma20>0 && s.rs>0),
+    why:s => `距MA20 ${DIAG_PCT(s.ma20)}、RS ${DIAG_PCT(s.rs)}` },
+  { id:"S2", dim:"系統", col:"green", ver:false, name:"大盤站上MA20與MA60",
+    cond:"大盤收盤 > MA20 且 > MA60（僅影響系統面子燈，不拉升總燈）",
+    test:(s,m) => (!m||m.ma20==null||m.ma60==null) ? null : (m.ma20>0 && m.ma60>0),
+    why:(s,m) => `大盤距MA20 ${DIAG_PCT(m.ma20)}、距MA60 ${DIAG_PCT(m.ma60)}` },
+];
+const DIAG_DIMS = ["籌碼","價量","題材","系統"];
+function diagLights(s, m){
+  const hits = DIAG_RULES.map(r => ({ r, on: r.test(s, m) === true }));
+  const dims = {};
+  for (const d of DIAG_DIMS){
+    const rs = hits.filter(h => h.r.dim === d);
+    dims[d] = rs.some(h => h.on && h.r.col==="red") ? "red"
+            : rs.some(h => h.on && h.r.col==="green") ? "green" : "yellow";
+  }
+  const anyRed = hits.some(h => h.on && h.r.col==="red");
+  const stockGreen = hits.some(h => h.on && h.r.col==="green" && h.r.dim !== "系統");
+  const total = anyRed ? "red" : stockGreen ? "green" : "yellow";
+  return { dims, total, hits: hits.filter(h => h.on).map(h => h.r) };
+}
+
+// 事實清單（逐檔展開）：每項附數值＋「已驗證/描述性」tag（已驗證僅限有回測出處的訊號）
+function diagFacts(s){
+  const zh5 = v => v==null ? "—" : (v>0?"+":"")+Math.round(v).toLocaleString("en-US")+"張";
+  const flag = v => v==null ? "—" : (v ? "是" : "否");
+  return [
+    { dim:"價量", label:"現價距 MA5／MA20／MA60", val:`${DIAG_PCT(s.ma5)}／${DIAG_PCT(s.ma20)}／${DIAG_PCT(s.ma60)}` },
+    { dim:"價量", label:"60日高點回撤", val:DIAG_PCT(s.dd60) },
+    { dim:"價量", label:"20日報酬（RS vs 大盤）", val:`${DIAG_PCT(s.r20)}（RS ${DIAG_PCT(s.rs)}）` },
+    { dim:"價量", label:"5日報酬／今日漲跌", val:`${DIAG_PCT(s.r5)}／${DIAG_PCT(s.d1)}` },
+    { dim:"價量", label:"破20日新低", val:flag(s.lo20), ver:true },
+    { dim:"價量", label:"爆量長黑（量>20日均2倍且跌>3%）", val:flag(s.vb) },
+    { dim:"價量", label:"20日日均成交值", val:s.av20==null?"—":(s.av20/1e5).toFixed(1)+"億" },
+    { dim:"籌碼", label:"外資 連買賣／近5日合計", val:`${s.fd==null?"—":(s.fd>0?`連買${s.fd}日`:s.fd<0?`連賣${-s.fd}日`:"中性")}／${zh5(s.f5)}` },
+    { dim:"籌碼", label:"投信 連買賣／近5日合計", val:`${s.td==null?"—":(s.td>0?`連買${s.td}日`:s.td<0?`連賣${-s.td}日`:"中性")}／${zh5(s.t5)}` },
+    { dim:"籌碼", label:"土洋同買（今日）", val:flag(s.bb), ver:true },
+    { dim:"籌碼", label:"融資餘額5日增減", val:DIAG_PCT(s.mg5) },
+    { dim:"籌碼", label:"券資比", val:s.cr==null?"—":s.cr.toFixed(2)+"%" },
+    { dim:"籌碼", label:"借券賣出餘額5日變化", val:zh5(s.lb5) },
+    { dim:"籌碼", label:"當沖比", val:s.dt==null?"—":s.dt.toFixed(2)+"%" },
+    { dim:"籌碼", label:`千張大戶持股比週變化${s.hdd?`（${esc(s.hdd)}）`:""}`, val:s.hdw==null?"—":`${(s.hdw>0?"+":"")+s.hdw.toFixed(2)}pp（${(s.hd||[]).map(x=>x==null?"—":x+"%").join(" ← ")}）` },
+    { dim:"題材", label:"產業／次產業", val:`${esc(s.ind||"—")}／${esc((s.sub||[]).slice(0,4).join("、")||"—")}${(s.sub||[]).length>4?"…":""}` },
+    { dim:"題材", label:"產業鏈", val:esc((s.ch||[]).join("、")||"—") },
+    { dim:"題材", label:"次產業在連湧清單（已回測訊號）", val:flag(s.cs), ver:true },
+    { dim:"題材", label:"次產業在昨日退湧清單", val:flag(s.ds) },
+  ];
+}
+
+function diagStockName(c){
+  const s = state.diag && state.diag.stocks ? state.diag.stocks[c] : null;
+  return (s && s.n) || "";
+}
+// 代號驗證：存在於素材庫或本頁其他資料（stockCodeSet）或 live 快照即可
+function diagCodeValid(c){
+  if (state.diag && state.diag.stocks && state.diag.stocks[c]) return true;
+  if (stockCodeSet().has(c)) return true;
+  const lv = state.diagLive;
+  return !!(lv && typeof lv === "object" && lv.stocks && lv.stocks[c]);
+}
+
+function diagInputHtml(hs){
+  let h = sec("我的持股", "僅存於本機瀏覽器 localStorage，不上傳任何伺服器");
+  h += `<div class="mcard" style="padding:10px 14px">`;
+  if (hs.length){
+    h += `<table style="border-collapse:collapse;width:100%;font-size:.85rem"><tr>`
+      + ["代號","名稱","股數","成本價(可空)",""].map(x=>`<th style="text-align:left;padding:4px 8px 6px;color:var(--muted);font-weight:400">${x}</th>`).join("") + `</tr>`;
+    hs.forEach((hd, i) => {
+      h += `<tr>`
+        + `<td style="padding:3px 8px"><span class="code">${esc(hd.c)}</span></td>`
+        + `<td style="padding:3px 8px">${esc(diagStockName(hd.c) || "—")}</td>`
+        + `<td style="padding:3px 8px"><input class="diag-in" data-diag-f="sh" data-diag-i="${i}" type="number" min="0" step="1" value="${esc(hd.sh==null?"":hd.sh)}"></td>`
+        + `<td style="padding:3px 8px"><input class="diag-in" data-diag-f="cost" data-diag-i="${i}" type="number" min="0" step="0.01" value="${esc(hd.cost==null?"":hd.cost)}"></td>`
+        + `<td style="padding:3px 8px"><span class="clk" data-diag-del="${i}" title="刪除" style="color:var(--muted)">✕</span></td>`
+        + `</tr>`;
+    });
+    h += `</table>`;
+  } else {
+    h += `<div class="mut" style="font-size:.84rem;padding:2px 0 8px">尚未輸入持股。下方新增：代號＋股數（成本價可空）。</div>`;
+  }
+  h += `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">`
+    + `<input id="diagNewC" class="diag-in" placeholder="代號 如2330" maxlength="8">`
+    + `<input id="diagNewSh" class="diag-in" type="number" min="0" step="1" placeholder="股數 如1000">`
+    + `<input id="diagNewCost" class="diag-in" type="number" min="0" step="0.01" placeholder="成本價(可空)">`
+    + `<button class="dbtn" data-diag-add="1">＋ 新增</button>`
+    + (state.diagMsg ? `<span class="dwarn" style="font-size:.8rem">${esc(state.diagMsg)}</span>` : "")
+    + `</div></div>`;
+  return h;
+}
+
+// 組合層檢查（清單頂部）：產業鏈集中度 / 單檔占比 / 流動性 / beta 粗估
+function diagPortfolioHtml(hs){
+  const dg = state.diag, m = dg.market || {};
+  const rows = [];
+  let total = 0;
+  for (const hd of hs){
+    const s = dg.stocks[hd.c];
+    const p = diagPrice(hd.c);
+    const mv = (p && hd.sh) ? p.px * hd.sh : null;
+    if (mv != null) total += mv;
+    rows.push({ hd, s, mv });
+  }
+  let h = sec("組合層檢查", "產業鏈集中度／單檔占比／流動性／beta 粗估");
+  h += `<div class="mcard">`;
+  // 市場區塊摘要（素材庫 market：TAIEX＋v2 晨報/美股）
+  h += `<div class="mut" style="font-size:.8rem;margin-bottom:8px">大盤 ${m.close==null?"—":esc(String(m.close))}`
+    + `（距MA20 ${DIAG_PCT(m.ma20)}／MA60 ${DIAG_PCT(m.ma60)}／60日高 ${DIAG_PCT(m.dd60)}）`
+    + ` · regime：${m.regime==null?"—":m.regime==="correction"?`<span class="dwarn">修正</span>`:"正常"}`
+    + ` · 近5日寬度 ${m.breadth5==null?"—":m.breadth5.toFixed(0)+"%上漲"}`
+    + (m.fut&&m.fut.close!=null?` · 台指期夜盤 ${esc(String(m.fut.close))}（${DIAG_PCT(m.fut.chg_pct)}）`:"")
+    + `</div>`
+    + (m.us&&m.us.brief?`<div class="mut" style="font-size:.8rem;margin-bottom:8px">美股：${esc(m.us.brief)}</div>`:"");
+  if (!total){ return h + `<div class="mut" style="font-size:.84rem">輸入股數後才能計算組合層指標。</div></div>`; }
+  const w = r => r.mv != null ? r.mv / total : 0;
+  // 1) 產業鏈集中度：同一產業鏈市值占比 >50% 警示（鏈取素材庫 ch 第一條；缺=未分類）
+  const chains = {};
+  for (const r of rows){
+    const ch = (r.s && r.s.ch && r.s.ch[0]) || "未分類";
+    chains[ch] = (chains[ch] || 0) + w(r);
+  }
+  const topCh = Object.entries(chains).sort((a,b)=>b[1]-a[1])[0];
+  // 2) 單檔占比 >30% 警示
+  const topStk = rows.slice().sort((a,b)=>w(b)-w(a))[0];
+  // 3) 流動性：持股市值 ÷ 該股20日日均成交值 >0.5 天警示
+  const illiq = rows.filter(r => r.s && r.s.av20 && r.mv != null && (r.mv/1000)/r.s.av20 > 0.5);
+  // 4) beta 粗估（RS 加權）：Σ w × (個股20日報酬 ÷ 大盤20日報酬)，|大盤|<1% 不估
+  let beta = null;
+  if (m.ret20 != null && Math.abs(m.ret20) >= 1){
+    let bw = 0, cov = 0;
+    for (const r of rows){ if (r.s && r.s.r20 != null && r.mv != null){ bw += w(r); cov += w(r) * (r.s.r20 / m.ret20); } }
+    if (bw > 0.5) beta = cov / bw;
+  }
+  const line = (ok, txt) => `<div class="dfact"><span>${txt}</span><span class="${ok?"dok":"dwarn"}">${ok?"✓ 通過":"⚠ 警示"}</span></div>`;
+  h += `<div style="font-size:.84rem;margin-bottom:6px">組合市值約 <b>${(total/1e8).toFixed(2)}億</b>（${rows.length} 檔；未填股數者不計）</div>`;
+  h += line(!(topCh && topCh[1] > 0.5), `產業鏈集中度：最大「${esc(topCh?topCh[0]:"—")}」占 ${topCh?(topCh[1]*100).toFixed(0):"—"}%（>50% 警示）`);
+  h += line(!(topStk && w(topStk) > 0.3), `單檔占比：最大 ${esc(topStk?topStk.hd.c:"—")} 占 ${topStk?(w(topStk)*100).toFixed(0):"—"}%（>30% 警示）`);
+  h += line(!illiq.length, `流動性：持股市值 ÷ 20日日均成交值 >0.5天 者 ${illiq.length} 檔${illiq.length?`（${illiq.map(r=>esc(r.hd.c)).join("、")}）`:""}`);
+  h += `<div class="dfact"><span>組合對大盤 beta 粗估（RS 加權）<span class="dtag dtag-d">描述性</span></span><span>${beta==null?"—（大盤20日變動<1%或資料不足）":beta.toFixed(2)}</span></div>`;
+  return h + `</div>`;
+}
+
+function diagCardHtml(hd){
+  const c = hd.c, dg = state.diag;
+  const s = dg && dg.stocks ? dg.stocks[c] : null;
+  const m = dg ? dg.market : null;
+  const p = diagPrice(c);
+  const open = state.diagOpen === c;
+  let h = `<div class="mcard" style="padding:11px 14px">`;
+  h += `<div class="clk" data-diag-open="${esc(c)}" style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center">`;
+  h += `<span><span class="code">${esc(c)}</span> ${esc(diagStockName(c))}</span>`;
+  if (p){
+    const chg = p.chg == null ? "" : sgn(p.chg, `（${p.chg>0?"+":""}${(+p.chg).toFixed(2)}%）`);
+    h += `<span>${p.px}${chg}<span class="mut" style="font-size:.72rem;margin-left:4px">${p.live?"即時":"前收（盤後）"}</span></span>`;
+    const pnl = (p.dp != null && hd.sh) ? p.dp * hd.sh : null;
+    h += `<span class="mut" style="font-size:.8rem">今日${pnl==null?"—":sgn(pnl,(pnl>0?"+":"")+Math.round(pnl).toLocaleString("en-US")+"元")}`
+      + (hd.cost && hd.sh ? ` · 總${(()=>{ const t=(p.px-hd.cost)*hd.sh; return sgn(t,(t>0?"+":"")+Math.round(t).toLocaleString("en-US")+"元"); })()}` : "") + `</span>`;
+  } else h += `<span class="mut" style="font-size:.8rem">現價待載入</span>`;
+  if (s && m){
+    const L = diagLights(s, m);
+    h += `<span style="margin-left:auto">總<span class="dlt dlt-${L.total}" style="margin-left:3px"></span>`
+      + DIAG_DIMS.map(d=>`<span class="mut" style="font-size:.74rem;margin-left:9px">${d}<span class="dlt dlt-${L.dims[d]}" style="margin-left:3px"></span></span>`).join("")
+      + `<span class="mut" style="margin-left:9px;font-size:.74rem">${open?"▲":"▼"}</span></span>`;
+  } else if (dg && dg.stocks){
+    h += `<span class="mut" style="margin-left:auto;font-size:.76rem">不在診斷宇宙（日均成交值前${dg.n||1200}檔外），僅顯示現價</span>`;
+  } else {
+    h += `<span class="mut" style="margin-left:auto;font-size:.76rem">素材庫未載入，僅顯示現價</span>`;
+  }
+  h += `</div>`;
+  if (open && s && m){
+    const L = diagLights(s, m);
+    if (L.hits.length){
+      h += `<div style="margin-top:9px;font-size:.82rem">` + L.hits.map(r =>
+        `<div class="dfact"><span><span class="dlt dlt-${r.col}" style="margin-right:6px"></span>${esc(r.name)}`
+        + `<span class="dtag ${r.ver?"dtag-v":"dtag-d"}" title="${esc(r.ver?(r.ref||""):"描述性統計，未經回測驗證")}">${r.ver?"已驗證":"描述性"}</span></span>`
+        + `<span class="mut">${typeof r.why==="function"?r.why(s,m):""}</span></div>`).join("") + `</div>`;
+    } else {
+      h += `<div class="mut" style="margin-top:9px;font-size:.8rem">未觸發任何紅/綠燈規則（黃＝中性/證據不足）。</div>`;
+    }
+    let cur = "";
+    h += `<div class="kvgrid" style="margin-top:9px">`;
+    for (const f of diagFacts(s)){
+      if (f.dim !== cur){ cur = f.dim; h += `<div class="kvsec">${cur}</div>`; }
+      h += `<div class="kv"><span class="mut">${f.label}<span class="dtag ${f.ver?"dtag-v":"dtag-d"}">${f.ver?"已驗證":"描述性"}</span></span><span style="text-align:right">${f.val}</span></div>`;
+    }
+    h += `</div>`;
+  }
+  return h + `</div>`;
+}
+
+function diagRulesHtml(){
+  let h = `<div class="mcard" style="padding:10px 14px">`;
+  h += `<div class="clk" data-diag-rules="1" style="font-size:.86rem"><b>規則說明</b>`
+    + `<span class="mut" style="font-size:.76rem;margin-left:8px">燈號條件表（先驗權重，未來回測校準）${state.diagRulesOpen?"▲":"▼"}</span></div>`;
+  if (state.diagRulesOpen){
+    h += `<div class="mut" style="font-size:.78rem;margin:8px 0 6px;line-height:1.6">`
+      + `判定：任一紅燈規則成立 → 總燈紅；無紅且個股層（籌碼/價量/題材）有綠 → 總燈綠；其餘黃（系統面綠燈只影響子燈）。`
+      + `「已驗證」＝曾以歷史資料回測並記錄於工作區文件的訊號，僅代表歷史統計傾向；其餘為描述性統計、未經回測。規則權重為先驗設定，將隨回測校準調整。</div>`;
+    h += `<table style="border-collapse:collapse;width:100%;font-size:.8rem">`
+      + `<tr>${["面向","燈","規則","條件","性質"].map(x=>`<th style="text-align:left;padding:3px 8px;color:var(--muted);font-weight:400">${x}</th>`).join("")}</tr>`
+      + DIAG_RULES.map(r => `<tr>`
+        + `<td style="padding:3px 8px;white-space:nowrap">${r.dim}</td>`
+        + `<td style="padding:3px 8px"><span class="dlt dlt-${r.col}"></span></td>`
+        + `<td style="padding:3px 8px;white-space:nowrap">${esc(r.name)}</td>`
+        + `<td style="padding:3px 8px">${esc(r.cond)}</td>`
+        + `<td style="padding:3px 8px;white-space:nowrap"><span class="dtag ${r.ver?"dtag-v":"dtag-d"}" title="${esc(r.ver?(r.ref||""):"")}">${r.ver?"已驗證":"描述性"}</span></td>`
+        + `</tr>`).join("") + `</table>`;
+  }
+  return h + `</div>`;
+}
+
+function diagHtml(){
+  const hs = diagHoldings();
+  let h = `<div class="diag-disc">本頁為客觀資料彙整與風險提示，非投資建議；訊號標註「已驗證」僅代表歷史統計傾向，不保證未來表現。持股資料僅存於本機瀏覽器，不上傳任何伺服器。</div>`;
+  const dg = state.diag;
+  if (state.diagErr) h += `<div class="mcard mut" style="font-size:.82rem">診斷素材庫（data/diag/diag.json）載入失敗：夜間管線尚未產出或網路異常。仍可輸入持股，燈號待素材庫就緒。</div>`;
+  else if (!dg) h += `<div class="mcard mut" style="font-size:.82rem">素材庫載入中…</div>`;
+  else h += `<div class="mut" style="font-size:.74rem;margin:2px 4px">素材庫資料日 ${esc(dg.date||"—")} · 更新 ${esc(String(dg.generated_at||"").slice(0,16).replace("T"," "))}（台灣）· ${dg.n||0} 檔`
+    + (state.diagLive && typeof state.diagLive==="object" && !state.diagLive.err ? ` · 即時快照 ${esc(String(state.diagLive.ts||"").slice(5,16))}` : state.diagLive==="loading" ? " · 即時載入中…" : ` · <span class="dwarn">即時來源失敗，顯示前收</span>`)
+    + `</div>`;
+  h += diagInputHtml(hs);
+  if (hs.length && dg && dg.stocks) h += diagPortfolioHtml(hs);
+  if (hs.length) h += sec("逐檔診斷", "點卡片展開事實清單") + hs.map(diagCardHtml).join("");
+  h += diagRulesHtml();
+  return h;
+}
+
+document.addEventListener("click", e => {
+  const del = e.target.closest("[data-diag-del]");
+  if (del){
+    const hs = diagHoldings(); hs.splice(+del.dataset.diagDel, 1);
+    diagSaveHoldings(hs); state.diagMsg = ""; render(); return;
+  }
+  if (e.target.closest("[data-diag-add]")){
+    const c = (document.getElementById("diagNewC").value || "").trim().toUpperCase();
+    const sh = parseFloat(document.getElementById("diagNewSh").value);
+    const cost = parseFloat(document.getElementById("diagNewCost").value);
+    const hs = diagHoldings();
+    if (!c){ state.diagMsg = "請輸入代號"; }
+    else if (hs.some(x => x.c === c)){ state.diagMsg = `${c} 已在清單`; }
+    else if (!diagCodeValid(c)){ state.diagMsg = `查無代號 ${c}（不在素材庫與本頁各表）`; }
+    else {
+      hs.push({ c, sh: isNaN(sh) ? null : sh, cost: isNaN(cost) ? null : cost });
+      diagSaveHoldings(hs); state.diagMsg = "";
+    }
+    render(); return;
+  }
+  const op = e.target.closest("[data-diag-open]");
+  if (op){ state.diagOpen = state.diagOpen === op.dataset.diagOpen ? null : op.dataset.diagOpen; render(); return; }
+  if (e.target.closest("[data-diag-rules]")){ state.diagRulesOpen = !state.diagRulesOpen; render(); return; }
+});
+document.addEventListener("change", e => {
+  const f = e.target.closest("[data-diag-f]");
+  if (!f) return;
+  const hs = diagHoldings();
+  const hd = hs[+f.dataset.diagI];
+  if (!hd) return;
+  const v = parseFloat(f.value);
+  hd[f.dataset.diagF] = isNaN(v) ? null : v;
+  diagSaveHoldings(hs); render();
+});
+
 async function loadJSON(url){
   const r = await fetch(url);
   if (!r.ok) throw new Error("HTTP "+r.status);
@@ -1889,8 +2254,13 @@ async function load(){
   const pTf = (async ()=>{
     try{ state.tf = await loadJSON(TF_BASE+"/latest.json?t="+t); }catch(e){}
   })();
-  pAetf.then(render); pPm.then(render); pTf.then(render);
-  await Promise.all([pAetf, pPm, pTf]);
+  // 持股診斷素材庫（本 repo data/diag/，夜間管線產出）：失敗只影響診斷 tab 燈號
+  const pDiag = (async ()=>{
+    try{ state.diag = await loadJSON("data/diag/diag.json?t="+t); }
+    catch(e){ state.diagErr = e; }
+  })();
+  pAetf.then(render); pPm.then(render); pTf.then(render); pDiag.then(render);
+  await Promise.all([pAetf, pPm, pTf, pDiag]);
   render();
 }
 load();
