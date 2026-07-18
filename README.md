@@ -3,7 +3,7 @@
 台股盤後資料的靜態儀表板（單一 `index.html`，無 build 工具），
 是[股市雷達 Hub](https://shihpc.github.io/) 的子站之一。
 
-## 九個 Tab（2026-07-14 改版後）
+## 十個 Tab（2026-07-18 加「持股診斷」後）
 
 | Tab | 資料源 | 內容 |
 |---|---|---|
@@ -16,6 +16,7 @@
 | 零股 | TWSE `TWTC7U`（盤中）/`TWT53U`（盤後），公開端點免金鑰 | 盤中/盤後兩子標籤，個股成交股數/筆數/金額 |
 | 分點 | FinMind `TaiwanSecuritiesTraderInfo`＋`TradingDailyReport` 專屬 endpoint | 單點（查分點進出個股）/個股（查個股進出分點）/清單（1010 分點模糊查找） |
 | 日期 | 即時 fetch 八個資料源的 date/generated_at | 全專案資料日期總覽：各源資料日/產出時間(台北,到分)/新鮮度狀態（最新/落後N日），一眼看清哪些資料到今天 |
+| 持股診斷 | `data/diag/diag.json`（`src/build_diag.py` 夜間管線）＋ v2 `/live` 現價＋ taiwan-stock-news 新聞 | 輸入持股（僅存 localStorage）→ 逐檔五面向（籌碼/價量/題材/基本面/系統）紅黃綠燈號＋事實清單＋組合層檢查＋近3日新聞命中＋可選 AI 解讀 |
 
 原「融資」「融券借券賣出餘額」兩 tab 於 2026-07-11 併入「融資券借券」整合排行。
 
@@ -41,7 +42,30 @@
 - **日期欄語意**：五 repo 所有產出檔的日期欄（欄位/語意/時區/粒度）對照表見
   [`docs/date-semantics.md`](docs/date-semantics.md)——跨站資料流除錯或調整 dlabel 對齊時先讀它。
 
-## 快速接手（2026-07-12）
+## 快速接手（2026-07-12；持股診斷段 2026-07-18 補）
+
+### 持股診斷 tab（2026-07-18 兩子期上線）
+
+- **資料流**：`src/build_diag.py`（`.github/workflows/diag.yml`，平日台北 22:10、排在
+  build.yml 21:53 後）→ `data/diag/diag.json`（全市場日均成交值前 1200 檔，<2.5MB）＋
+  `data/diag/cache.json`（增量快取）。來源：FinMind 價量/法人/融資/借券/千張大戶/月營收/
+  PER/股利公告（token 走 Actions secret；千張大戶與 PER3年百分位/除權息只能單檔查，
+  採每晚上限輪替刷新 `HOLD_CAP`/`VAL_CAP`）＋ TWSE/TPEx 處置注意 OpenAPI（免金鑰；
+  TPEx 站憑證缺 SKI 需 `verify=False`）＋ v2 raw（classify/morning/us）＋本站 postmkt.json
+  （券資比/當沖量 merge）。前端另即時抓 v2 `/live`（現價）與 taiwan-stock-news `news.json`
+  （新聞命中，本機過濾）。本地驗證：`python src/build_diag.py --sample`（免 token）。
+- **燈號規則位置**：全部集中在 `index.html` 的 `DIAG_RULES` 陣列（資料驅動條件表，
+  單一定義處；聚合邏輯在 `diagLights()`）。誠實性約定：`ver`/`tag` 標「已驗證（附回測出處）
+  ／描述性／交易所公告」；`addon:true`（土洋同買）為疊加條件，需另有**非系統面**綠燈
+  才計入，不單獨亮綠。權重為先驗設定，待回測校準。
+- **隱私設計**：持股清單只存 localStorage `pm_holdings`，不進任何網路請求 payload、
+  不走 gh_token 雲端。tab 內對外請求全是固定 URL 唯讀 GET（diag.json／live／news.json）。
+  AI 解讀按了才呼叫 Claude，送出＝該股事實＋市場＋組合層「彙總指標」，
+  **不含持股清單/股數/成本**（UI 有明示）。
+- **待觀察／待辦**：TPEx 上櫃「注意股」無公開 OpenAPI 端點（2026-07 swagger 查證），
+  `at` 欄僅涵蓋 TWSE，列待辦；千張大戶/估值百分位靠輪替刷新，首週資料逐晚補齊；
+  燈號規則未經整體回測（僅個別訊號有站內回測出處），校準後調 `DIAG_RULES` 即可；
+  盤中行為（/live 降級、即時損益）未在開盤時段實測。
 
 - 前端表格框架 `tbl(cols, rows, opts)`：表頭排序（`col.sortVal` 供複合欄位給原始值）、
   分組雙列表頭（`col.g`）、加總列（`opts.totals`，sticky 在表頭下）、凍結首二欄

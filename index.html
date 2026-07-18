@@ -170,6 +170,7 @@
     vertical-align:middle;white-space:nowrap}
   .dtag-v{background:#173a2a;color:#2fbf71;border:1px solid #1e5c40}
   .dtag-d{background:#232c42;color:var(--muted);border:1px solid var(--line)}
+  .dtag-x{background:#3a2a10;color:#e0b341;border:1px solid #5a4a20}
   .diag-in{background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:8px;
     padding:5px 9px;font-size:.85rem;outline:none;width:104px}
   .diag-in:focus{border-color:var(--accent)}
@@ -220,7 +221,7 @@ const SUBS = {
   oddlot:"零股交易行情（TWSE公開端點）：盤中零股／盤後零股，依個股呈現成交股數、筆數、金額。單位：股／元。",
   broker:"券商分點進出（FinMind TradingDailyReport，每交易日約21:00更新）。單點＝查一個分點當日全部進出個股；個股＝查一檔股票當日全部進出分點；清單＝全部分點代號對照。",
   dates:"各資料源目前的資料日與產出時間；判斷哪些已是最新交易日、哪些尚未更新。資料為排程產出，當日盤後資料通常於當晚 21:00 後才更新，故白天多半看到前一交易日。",
-  diag:"持股診斷：輸入持股後逐檔彙整籌碼／價量／題材／系統面事實與紅黃綠風險燈號。證據彙整工具、非投資建議，不輸出買賣指令；持股資料僅存於本機瀏覽器（localStorage），不上傳任何伺服器。素材庫每交易日約 22:10 更新（全市場通用資料）。",
+  diag:"持股診斷：輸入持股後逐檔彙整籌碼／價量／題材／基本面／系統五面向事實與紅黃綠風險燈號，附近3日新聞命中與可選的 AI 解讀（按了才呼叫、token 自備）。證據彙整工具、非投資建議，不輸出買賣指令；持股資料僅存於本機瀏覽器（localStorage），不上傳任何伺服器。素材庫每交易日約 22:10 更新（全市場通用資料）。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
 // 盤後法人動態站（taiwan-flows）的資料：三大法人買賣超排行＋外資台指期未平倉，平日21:00更新
@@ -235,7 +236,8 @@ const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQu
   summary:null, summaryLoading:false, summaryErr:null, summaryProg:"", summaryAbort:null,
   sumAutoIdx:undefined, sumAutoOpen:null, sumManualOpen:null, cloudOpen:null,
   datesData:null, datesLoading:false,
-  diag:null, diagErr:null, diagLive:undefined, diagOpen:null, diagRulesOpen:false, diagMsg:"" };
+  diag:null, diagErr:null, diagLive:undefined, diagOpen:null, diagRulesOpen:false, diagMsg:"",
+  diagNews:undefined, diagAI:null };
 
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -609,7 +611,11 @@ function renderPM(){
   const main = document.getElementById("main");
   if (state.tab === "insight"){ main.innerHTML = insightHtml(); return; }
   if (state.tab === "summary"){ main.innerHTML = summaryHtml(); return; }
-  if (state.tab === "diag"){ if (state.diagLive === undefined) fetchDiagLive(); main.innerHTML = diagHtml(); return; }
+  if (state.tab === "diag"){
+    if (state.diagLive === undefined) fetchDiagLive();
+    if (state.diagNews === undefined) fetchDiagNews();
+    main.innerHTML = diagHtml(); return;
+  }
   if (state.pmErr){ main.innerHTML = `<div class="empty">尚無盤後資料（data/postmkt.json 未產生或載入失敗）。<br>每交易日 21:53 排程更新（含延遲約 22:10–23:50 完成）。</div>`; return; }
   const d = state.pm;
   if (!d){ main.innerHTML = `<div class="empty">載入中…</div>`; return; }
@@ -1928,6 +1934,100 @@ function diagPrice(c){
   return null;
 }
 
+// 持股新聞命中（子期2）：taiwan-stock-news repo raw news.json（全市場檔、URL 不含持股資訊），
+// 前端本機按持股代號過濾近 3 個交易日的命中新聞
+async function fetchDiagNews(){
+  state.diagNews = "loading";
+  try{ state.diagNews = await loadJSON(SUM_NEWS_URL+"?t="+Date.now()); }
+  catch(e){ state.diagNews = { err:1 }; }
+  if (state.tab === "diag") render();
+}
+function diagNewsFor(c){
+  const nw = state.diagNews;
+  if (!nw || typeof nw !== "object" || nw.err || !Array.isArray(nw.stocks)) return null;
+  const days = (nw.trading_days || []).slice(-3);
+  const ent = nw.stocks.find(s => s.stock_id === c);
+  if (!ent) return [];
+  return (ent.news || []).filter(n => days.includes(String(n.date||"").slice(0,10)));
+}
+
+// AI 綜合解讀（子期2）：重用既有 callClaude（三站同步函式零改動），使用者按了才呼叫。
+// 隱私：送出內容＝該股五面向事實＋市場區塊＋組合層「彙總指標」（集中度/占比/流動性警示數/beta），
+// 不含持股清單、股數與成本；token 走既有 anthropic_key（只存本機）。
+function diagPortfolioBrief(){
+  const dg = state.diag;
+  if (!dg || !dg.stocks) return "";
+  const hs = diagHoldings().filter(h => h.sh);
+  let total = 0; const rows = [];
+  for (const hd of hs){
+    const p = diagPrice(hd.c);
+    const mv = p ? p.px * hd.sh : null;
+    if (mv != null){ total += mv; rows.push({ c:hd.c, s:dg.stocks[hd.c], mv }); }
+  }
+  if (!total || !rows.length) return "";
+  const w = r => r.mv / total;
+  const chains = {};
+  for (const r of rows){ const ch = (r.s && r.s.ch && r.s.ch[0]) || "未分類"; chains[ch] = (chains[ch]||0) + w(r); }
+  const topCh = Object.entries(chains).sort((a,b)=>b[1]-a[1])[0];
+  const topW = Math.max(...rows.map(w));
+  const illiq = rows.filter(r => r.s && r.s.av20 && (r.mv/1000)/r.s.av20 > 0.5).length;
+  const m = dg.market || {};
+  let beta = null;
+  if (m.ret20 != null && Math.abs(m.ret20) >= 1){
+    let bw = 0, cov = 0;
+    for (const r of rows){ if (r.s && r.s.r20 != null){ bw += w(r); cov += w(r) * (r.s.r20 / m.ret20); } }
+    if (bw > 0.5) beta = cov / bw;
+  }
+  return `【組合層彙總（僅統計指標，不含個股清單/股數/成本）】共 ${rows.length} 檔；`
+    + `最大產業鏈「${topCh[0]}」占 ${(topCh[1]*100).toFixed(0)}%；最大單檔占 ${(topW*100).toFixed(0)}%；`
+    + `流動性警示 ${illiq} 檔；beta 粗估 ${beta==null?"—":beta.toFixed(2)}`;
+}
+const stripTags = s => String(s==null?"":s).replace(/<[^>]*>/g, "");
+function diagGatherAI(c){
+  const s = state.diag.stocks[c], m = state.diag.market || {};
+  const L = diagLights(s, m);
+  const parts = [];
+  parts.push(`【個股】${c} ${s.n||""}（素材庫資料日 ${state.diag.date||"—"}）`);
+  parts.push(`總燈號：${L.total}；子燈：${DIAG_DIMS.map(d=>`${d}=${L.dims[d]}`).join("、")}`);
+  if (L.hits.length)
+    parts.push("觸發規則：" + L.hits.map(r=>`${r.name}〔${r.col}／${r.tag||(r.ver?"已驗證":"描述性")}〕${stripTags(typeof r.why==="function"?r.why(s,m):"")}`).join("；"));
+  let cur = ""; const fl = [];
+  for (const f of diagFacts(s)){
+    if (f.dim !== cur){ cur = f.dim; fl.push(`[${cur}]`); }
+    fl.push(`${stripTags(f.label)}：${stripTags(f.val)}（${f.tag||(f.ver?"已驗證":"描述性")}）`);
+  }
+  parts.push("事實清單：\n" + fl.join("\n"));
+  parts.push(`【市場】大盤 ${m.close??"—"}（距MA20 ${DIAG_PCT(m.ma20)}／MA60 ${DIAG_PCT(m.ma60)}／60日高 ${DIAG_PCT(m.dd60)}）`
+    + `regime=${m.regime||"—"}；近5日寬度 ${m.breadth5==null?"—":m.breadth5+"%"}`
+    + (m.fut&&m.fut.close!=null?`；台指期夜盤 ${m.fut.close}（${DIAG_PCT(m.fut.chg_pct)}）`:""));
+  if (m.us && m.us.brief) parts.push("美股：" + m.us.brief);
+  const pb = diagPortfolioBrief();
+  if (pb) parts.push(pb);
+  const news = diagNewsFor(c) || [];
+  if (news.length)
+    parts.push("【近3日新聞命中】\n" + news.slice(0,10).map(n=>`- ${String(n.date||"").slice(0,16)} ${n.title}`).join("\n"));
+  return parts.join("\n\n");
+}
+async function runDiagAI(c){
+  if (!anthKey()){
+    state.diagAI = { c, err:"尚未設定 Anthropic API token（到「摘要分析」tab 設定，token 只存本機瀏覽器）" };
+    render(); return;
+  }
+  if (state.diagAI && state.diagAI.loading) return;
+  state.diagAI = { c, loading:true }; render();
+  try{
+    const SYS = "你是台股客觀證據彙整助手。針對提供的單一持股：彙整五面向（籌碼/價量/題材/基本面/系統）事實、"
+      + "市場區塊與組合層彙總指標，用繁體中文條列解讀——哪些證據偏多、哪些偏空、哪些互相矛盾、還缺什麼關鍵資訊。"
+      + "已標「已驗證」的訊號代表歷史統計傾向，「描述性」未經回測，「交易所公告」為監理事實。"
+      + "僅描述證據與風險，不預測股價、不給買進賣出指令。輸出精簡 markdown（250-450字）。";
+    const r = await callClaude(anthKey(), state.insightModel, SYS, diagGatherAI(c));
+    state.diagAI = { c, text:r.text, usage:r.usage, at:twNow(), model:state.insightModel };
+  }catch(e){
+    state.diagAI = { c, err:String(e.message||e) };
+  }
+  render();
+}
+
 // 燈號規則表（資料驅動、單一定義處；未來回測校準只改這張表）。
 // col:red/green；ver:true=已驗證（附回測出處 ref），false=描述性未驗證。
 // test 回傳 true/false/null（null=資料不足，不觸發也不列入判定）。
@@ -1977,8 +2077,27 @@ const DIAG_RULES = [
     cond:"大盤收盤 > MA20 且 > MA60（僅影響系統面子燈，不拉升總燈）",
     test:(s,m) => (!m||m.ma20==null||m.ma60==null) ? null : (m.ma20>0 && m.ma60>0),
     why:(s,m) => `大盤距MA20 ${DIAG_PCT(m.ma20)}、距MA60 ${DIAG_PCT(m.ma60)}` },
+  // --- 基本面（子期2）。處置/注意為交易所公告的強制性風險；營收規則為描述性、無回測依據 ---
+  { id:"F1", dim:"基本面", col:"red", ver:false, tag:"交易所公告", cls:"dtag-x", name:"處置股",
+    ref:"TWSE/TPEx 處置有價證券公告（分盤撮合等交易限制）",
+    cond:"交易所公布處置中（TWSE punish／TPEx disposal OpenAPI，處置期間內）",
+    test:s => s.dp==null ? null : s.dp===1,
+    why:s => `處置中，至 ${s.dpu||"—"}` },
+  { id:"F2", dim:"基本面", col:"red", ver:false, tag:"交易所公告", cls:"dtag-x", name:"注意股（今日）",
+    ref:"TWSE 注意交易資訊公告（TPEx 注意股無公開端點，未涵蓋）",
+    cond:"今日列 TWSE 注意股清單（TPEx 注意股無公開端點，僅涵蓋上市）",
+    test:s => s.at==null ? null : s.at===1,
+    why:() => "今日列注意交易資訊" },
+  { id:"F3", dim:"基本面", col:"green", ver:false, name:"營收連3月YoY成長",
+    cond:"月營收連續 ≥3 個月 YoY 成長",
+    test:s => s.rvs==null ? null : s.rvs>=3,
+    why:s => `連續${s.rvs}月YoY成長（最新 ${s.rym||"—"} YoY ${DIAG_PCT(s.yoy)}）` },
+  { id:"F4", dim:"基本面", col:"red", ver:false, name:"營收連3月YoY衰退",
+    cond:"月營收連續 ≥3 個月 YoY 衰退",
+    test:s => s.rvs==null ? null : s.rvs<=-3,
+    why:s => `連續${-s.rvs}月YoY衰退（最新 ${s.rym||"—"} YoY ${DIAG_PCT(s.yoy)}）` },
 ];
-const DIAG_DIMS = ["籌碼","價量","題材","系統"];
+const DIAG_DIMS = ["籌碼","價量","題材","基本面","系統"];
 function diagLights(s, m){
   let hits = DIAG_RULES.map(r => ({ r, on: r.test(s, m) === true }));
   // 疊加條件（addon，如 C3 土洋同買）：回測顯示獨立無效，僅當另有其他綠燈規則
@@ -2022,6 +2141,14 @@ function diagFacts(s){
     { dim:"題材", label:"產業鏈", val:esc((s.ch||[]).join("、")||"—") },
     { dim:"題材", label:"次產業在連湧清單", val:flag(s.cs), tag:"描述性（次產業訊號外推）" },
     { dim:"題材", label:"次產業在昨日退湧清單", val:flag(s.ds) },
+    { dim:"基本面", label:`月營收 YoY／MoM${s.rym?`（${esc(s.rym)}）`:""}`, val:`${DIAG_PCT(s.yoy)}／${DIAG_PCT(s.mom)}` },
+    { dim:"基本面", label:"營收連續 YoY 成長/衰退", val:s.rvs==null?"—":s.rvs>0?`連${s.rvs}月成長`:s.rvs<0?`連${-s.rvs}月衰退`:"持平/轉折" },
+    { dim:"基本面", label:`PER（3年百分位${s.vch?`，${esc(s.vch)}刷新`:""}）`, val:`${s.pe==null?"—":s.pe}（${s.pep==null?"—":s.pep+"%"}）` },
+    { dim:"基本面", label:"PBR（3年百分位）", val:`${s.pb==null?"—":s.pb}（${s.pbp==null?"—":s.pbp+"%"}）` },
+    { dim:"基本面", label:"殖利率", val:s.dy==null?"—":s.dy.toFixed(2)+"%" },
+    { dim:"基本面", label:"除權息（近60日內）", val:s.exd?`${esc(s.exd)}（${esc(s.exk||"")}）`:"無" },
+    { dim:"基本面", label:"處置股", val:s.dp==null?"—（端點失敗）":s.dp?`處置中至 ${esc(s.dpu||"—")}`:"否", tag:"交易所公告", cls:"dtag-x" },
+    { dim:"基本面", label:"注意股（今日，僅TWSE；TPEx待辦）", val:s.at==null?"—（端點失敗）":flag(s.at), tag:"交易所公告", cls:"dtag-x" },
   ];
 }
 
@@ -2149,7 +2276,7 @@ function diagCardHtml(hd){
     if (L.hits.length){
       h += `<div style="margin-top:9px;font-size:.82rem">` + L.hits.map(r =>
         `<div class="dfact"><span><span class="dlt dlt-${r.col}" style="margin-right:6px"></span>${esc(r.name)}`
-        + `<span class="dtag ${r.ver?"dtag-v":"dtag-d"}" title="${esc(r.ref||(r.ver?"":"描述性統計，未經回測驗證"))}">${esc(r.tag||(r.ver?"已驗證":"描述性"))}</span></span>`
+        + `<span class="dtag ${r.cls||(r.ver?"dtag-v":"dtag-d")}" title="${esc(r.ref||(r.ver?"":"描述性統計，未經回測驗證"))}">${esc(r.tag||(r.ver?"已驗證":"描述性"))}</span></span>`
         + `<span class="mut">${typeof r.why==="function"?r.why(s,m):""}</span></div>`).join("") + `</div>`;
     } else {
       h += `<div class="mut" style="margin-top:9px;font-size:.8rem">未觸發任何紅/綠燈規則（黃＝中性/證據不足）。</div>`;
@@ -2158,9 +2285,34 @@ function diagCardHtml(hd){
     h += `<div class="kvgrid" style="margin-top:9px">`;
     for (const f of diagFacts(s)){
       if (f.dim !== cur){ cur = f.dim; h += `<div class="kvsec">${cur}</div>`; }
-      h += `<div class="kv"><span class="mut">${f.label}<span class="dtag ${f.ver?"dtag-v":"dtag-d"}">${esc(f.tag||(f.ver?"已驗證":"描述性"))}</span></span><span style="text-align:right">${f.val}</span></div>`;
+      h += `<div class="kv"><span class="mut">${f.label}<span class="dtag ${f.cls||(f.ver?"dtag-v":"dtag-d")}">${esc(f.tag||(f.ver?"已驗證":"描述性"))}</span></span><span style="text-align:right">${f.val}</span></div>`;
     }
     h += `</div>`;
+    // 近3日新聞命中（taiwan-stock-news raw；本機過濾）
+    const news = diagNewsFor(c);
+    h += `<div class="kvsec" style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px">近3日新聞命中</div>`;
+    if (news === null){
+      h += `<div class="mut" style="font-size:.78rem">${state.diagNews==="loading"?"新聞載入中…":"新聞來源載入失敗（不影響其他面向）"}</div>`;
+    } else if (!news.length){
+      h += `<div class="mut" style="font-size:.78rem">近 3 個交易日無命中新聞。</div>`;
+    } else {
+      h += news.slice(0,8).map(n =>
+        `<div style="font-size:.8rem;padding:2px 0"><span class="mut">${esc(String(n.date||"").slice(5,16))}</span> `
+        + `<a href="${esc(n.link||"#")}" target="_blank" rel="noopener noreferrer" style="color:var(--accent)">${esc(n.title||"")}</a>`
+        + `<span class="mut" style="font-size:.72rem;margin-left:6px">${esc(n.source||"")}</span></div>`).join("");
+    }
+    // AI 綜合解讀（按了才呼叫；重用既有 callClaude／anthropic_key）
+    const ai = state.diagAI;
+    const mine = ai && ai.c === c;
+    h += `<div style="margin-top:10px"><button class="dbtn" data-diag-ai="${esc(c)}"${ai&&ai.loading?" disabled":""}>${mine&&ai.loading?"AI 解讀中…":"AI 解讀"}</button>`
+      + `<span class="mut" style="font-size:.72rem;margin-left:8px">按下才呼叫 Claude（token 自備、存本機）；送出＝本卡事實＋市場＋組合層彙總指標，不含持股清單/股數/成本</span></div>`;
+    if (mine && ai.err) h += `<div class="dwarn" style="font-size:.8rem;margin-top:6px">${esc(ai.err)}</div>`;
+    if (mine && ai.text){
+      const u = ai.usage;
+      h += `<div class="insight-meta" style="margin-top:8px">AI 解讀 · ${esc(ai.at||"")}（台灣）· 模型 ${esc(ai.model||"")}${u?` · 輸入 ${num((u.input_tokens||0)+(u.cache_read_input_tokens||0)+(u.cache_creation_input_tokens||0))}／輸出 ${num(u.output_tokens||0)} token`:""}</div>`;
+      h += `<div class="insight-card insight-md">${linkifyStocks(mdToHtml(ai.text), stockCodeSet())}</div>`;
+      h += `<div class="mut" style="font-size:.74rem;margin-top:4px">AI 解讀為證據彙整，非投資建議；「已驗證」僅代表歷史統計傾向，不保證未來表現。</div>`;
+    }
   }
   return h + `</div>`;
 }
@@ -2181,7 +2333,7 @@ function diagRulesHtml(){
         + `<td style="padding:3px 8px"><span class="dlt dlt-${r.col}"></span></td>`
         + `<td style="padding:3px 8px;white-space:nowrap">${esc(r.name)}</td>`
         + `<td style="padding:3px 8px">${esc(r.cond)}</td>`
-        + `<td style="padding:3px 8px"><span class="dtag ${r.ver?"dtag-v":"dtag-d"}" title="${esc(r.ref||"")}">${esc(r.tag||(r.ver?"已驗證":"描述性"))}</span></td>`
+        + `<td style="padding:3px 8px"><span class="dtag ${r.cls||(r.ver?"dtag-v":"dtag-d")}" title="${esc(r.ref||"")}">${esc(r.tag||(r.ver?"已驗證":"描述性"))}</span></td>`
         + `</tr>`).join("") + `</table>`;
   }
   return h + `</div>`;
@@ -2223,6 +2375,8 @@ document.addEventListener("click", e => {
     }
     render(); return;
   }
+  const aiB = e.target.closest("[data-diag-ai]");
+  if (aiB){ runDiagAI(aiB.dataset.diagAi); return; }
   const op = e.target.closest("[data-diag-open]");
   if (op){ state.diagOpen = state.diagOpen === op.dataset.diagOpen ? null : op.dataset.diagOpen; render(); return; }
   if (e.target.closest("[data-diag-rules]")){ state.diagRulesOpen = !state.diagRulesOpen; render(); return; }
