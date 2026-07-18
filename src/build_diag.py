@@ -460,9 +460,13 @@ def fetch_disposal(today: dt.date) -> tuple[dict, set, bool]:
     disp_ok, attn_ok = True, True
 
     def hit(url, verify=True):
+        # UA 帶瀏覽器字串：TWSE/TPEx OpenAPI 對 python-requests 預設 UA／資料中心流量
+        # 較易回 403 或 HTML 擋頁（2026-07-18 Actions 首跑 dp/at 全 null 的疑因）
+        hdr = {"accept": "application/json",
+               "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         for attempt in (1, 2):
             try:
-                r = requests.get(url, timeout=30, headers={"accept": "application/json"}, verify=verify)
+                r = requests.get(url, timeout=30, headers=hdr, verify=verify)
                 r.raise_for_status()
                 return r.json()
             except Exception as e:  # noqa: BLE001

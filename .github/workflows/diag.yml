@@ -7,6 +7,7 @@ on:
     - cron: "10 14 * * 1-5"
   workflow_dispatch:   # 手動觸發
   push:
+    branches: [main]   # 只限 main：feature 分支觸發會在 push 階段失敗且無意義（run #2 教訓）
     paths:
       - src/build_diag.py
       - .github/workflows/diag.yml
