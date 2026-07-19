@@ -1,0 +1,66 @@
+name: build mktbal data
+
+on:
+  schedule:
+    # 平日 22:20 台北（14:20 UTC）：排在 build.yml 21:53、diag.yml 22:10 之後，
+    # 融資融券/借券/不限用途借貸官方資料約 21:00 後陸續更新完成，留緩衝
+    - cron: "20 14 * * 1-5"
+  workflow_dispatch:   # 手動觸發；backfill=true 時執行一次性回補（近3年月底值＋近30交易日）
+    inputs:
+      backfill:
+        description: "一次性回補（--backfill）"
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches: [main]   # 只限 main：feature 分支觸發會在 push 階段失敗且無意義（沿用 diag.yml 教訓）
+    paths:
+      - src/build_mktbal.py
+      - .github/workflows/mktbal.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-mktbal
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Build market_balance_history.json
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: |
+          if [ "${{ inputs.backfill }}" = "true" ]; then
+            python src/build_mktbal.py --backfill
+          else
+            python src/build_mktbal.py
+          fi
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/market_balance_history.json
+          if git diff --cached --quiet; then
+            echo "no changes"
+            exit 0
+          fi
+          git commit -m "data: mktbal $(date -u +%Y-%m-%dT%H:%MZ)"
+          pushed=0
+          for i in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push; then pushed=1; break; fi
+            sleep 4
+          done
+          if [ "$pushed" != "1" ]; then echo "::error::push failed after 5 retries"; exit 1; fi

@@ -3,7 +3,7 @@
 台股盤後資料的靜態儀表板（單一 `index.html`，無 build 工具），
 是[股市雷達 Hub](https://shihpc.github.io/) 的子站之一。
 
-## 十個 Tab（2026-07-18 加「持股診斷」後）
+## 十一個 Tab（2026-07-19 加「大盤餘額」後）
 
 | Tab | 資料源 | 內容 |
 |---|---|---|
@@ -15,10 +15,12 @@
 | 鉅額交易 | FinMind `TaiwanStockBlockTrade`(+`BlockTradingDailyReport`) | 當日逐筆列表，同股分組、買賣方分點盡力比對 |
 | 零股 | TWSE `TWTC7U`（盤中）/`TWT53U`（盤後），公開端點免金鑰 | 盤中/盤後兩子標籤，個股成交股數/筆數/金額 |
 | 分點 | FinMind `TaiwanSecuritiesTraderInfo`＋`TradingDailyReport` 專屬 endpoint | 單點（查分點進出個股）/個股（查個股進出分點）/清單（1010 分點模糊查找） |
+| 大盤餘額 | FinMind `TaiwanStockTotalMarginPurchaseShortSale`（融資/融券）＋ TWSE `TWT72U`（借券賣出，SLB+NLB整體市場相加）＋ TWSE `TWTA1U`（不限用途借貸，6 selectType加總） | 全市場層級四項餘額合計（融資/融券/借券賣出/不限用途款項借貸），4 pill 切換，近5日逐日＋近3年各月底（年列可展開），與「融借券」tab（個股排行）明確區分定位 |
 | 日期 | 即時 fetch 八個資料源的 date/generated_at | 全專案資料日期總覽：各源資料日/產出時間(台北,到分)/新鮮度狀態（最新/落後N日），一眼看清哪些資料到今天 |
 | 持股診斷 | `data/diag/diag.json`（`src/build_diag.py` 夜間管線）＋ v2 `/live` 現價＋ taiwan-stock-news 新聞 | 輸入持股（僅存 localStorage）→ 逐檔五面向（籌碼/價量/題材/基本面/系統）紅黃綠燈號＋事實清單＋組合層檢查＋近3日新聞命中＋可選 AI 解讀 |
 
-原「融資」「融券借券賣出餘額」兩 tab 於 2026-07-11 併入「融資券借券」整合排行。
+原「融資」「融券借券賣出餘額」兩 tab 於 2026-07-11 併入「融資券借券」整合排行（該 tab 為個股層級排行）；
+2026-07-19 新增「大盤餘額」tab 補上大盤層級（全市場合計）視角，兩者並存、口徑用途不同。
 
 ## 架構
 
@@ -38,11 +40,43 @@
   組成 prompt 送 Claude（`anthropic-dangerous-direct-browser-access:true` header 開瀏覽器
   CORS，已實測）。Anthropic token 存 localStorage `anthropic_key`，只送 Anthropic，不進 repo。
   模型 `state.insightModel`（預設 `claude-opus-4-8`）。輸出走 `mdToHtml()` 極簡 markdown 渲染。
+- `src/build_mktbal.py`：大盤層級四項餘額（融資/融券/借券賣出/不限用途借貸）管線，輸出
+  `data/market_balance_history.json`（daily 近30交易日＋monthly 近36月底，皆升序陣列）。
+  `.github/workflows/mktbal.yml`：平日 22:20 台北排程（排在 build.yml/diag.yml 之後）＋
+  push-paths 首推＋workflow_dispatch（可帶 backfill）。`--backfill` 一次性回補 3 年，
+  TWSE 抓取全域節流(預設4秒/請求，`MKTBAL_TWSE_THROTTLE`可調)＋指數退避重試(2/5/10/20秒)，
+  避免連續打 TWT72U/TWTA1U 觸發 IP 限流（2026-07-19 修：前一版無節流，backfill 連抓
+  約6次後被限流回空、近八成月份 sbl/unrestricted 全 null；修完 64 個回補日期全數 0 null）。
 - 主動ETF tab 直接讀 taiwan-flow-live-v2 的 raw JSON，不搬遷該站管線。
 - **日期欄語意**：五 repo 所有產出檔的日期欄（欄位/語意/時區/粒度）對照表見
   [`docs/date-semantics.md`](docs/date-semantics.md)——跨站資料流除錯或調整 dlabel 對齊時先讀它。
 
-## 快速接手（2026-07-12；持股診斷段 2026-07-18 補）
+## 快速接手（2026-07-12；持股診斷段 2026-07-18 補；大盤餘額段 2026-07-19 補）
+
+### 大盤餘額 tab（2026-07-19 上線）
+
+- **口徑**：融資餘額/融券餘額直接取 FinMind 該 dataset 的 TodayBalance；借券賣出餘額＝
+  TWSE TWT72U 的 SLB＋NLB「整體市場」合計列相加（兩個獨立借券管道、彼此不重疊）；
+  不限用途款項借貸餘額＝TWTA1U 六個 selectType（X/A/F/G/B/I）「證券商不限用途款項
+  借貸／今日餘額」欄逐列加總，欄位位置從回傳 `groups` metadata 動態定位（6類別欄位配置
+  不同，不可假設固定 index）。
+- **抽核紀錄（2026-07-17，獨立於程式碼之外直接打即時 API 核對）**：FinMind
+  margin_shares=9,348,875／margin_money=587,962,513,000／short_shares=236,300 全一致；
+  TWT72U SLB 16,910,017,000股/2,718,883,468,980元＋NLB 13,331,897,000股/742,675,370,680元
+  ＝30,241,914,000股/3,461,558,839,660元，與 sbl_short_shares/sbl_short_value 一致；
+  TWTA1U 六類別加總 16,092,652（仟股），與 unrestricted_shares 一致。
+- **已知教訓**：backfill 對 TWSE 端點是逐日高頻查詢（每日2+6次子請求 ×64個回補日），
+  無節流會在約6次請求後被 TWSE IP 限流（回應變非JSON空內容），且限流後不會自動解除，
+  導致近八成資料全 null——务必保留 `_twse_throttled_get()` 的全域節流鎖與退避重試，
+  不要為了「加速」拿掉。
+- **前端**：`index.html` 插入式改動——`MKTBAL_PILLS`/`renderMktbal()`/`mktThead`/
+  `mktCell`/`mktDiffCell` 等函式與 `renderDates()` 同樣繞過 `renderPM()`，直接掛在
+  `render()` 分派（`state.tab==="mktbal"`）。年展開狀態存 `state.mktbalOpen`，
+  比照 taiwan-flows 的 `ffOpen`/`ffToggle` 機制（點擊委派在 `document` 的
+  `data-mktyr`/`data-mktsel`）。
+- **未解／待觀察**：前端月度年列的 YoY 比較只用「該年最後一筆 vs 去年最後一筆」，
+  非嚴謹交易日對齊；`mktbal.yml` 上線後首次排程觸發尚未實跑驗證（本次僅驗證
+  push-paths 首推），需留意下個交易日 22:20 後產物是否正常更新。
 
 ### 持股診斷 tab（2026-07-18 兩子期上線）
 

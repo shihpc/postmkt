@@ -117,6 +117,12 @@
     font-size:.82rem;color:var(--muted);cursor:pointer;user-select:none;transition:.15s}
   .subtab:hover{border-color:#33507e}
   .subtab.active{color:var(--txt);border-color:var(--accent);font-weight:650}
+  /* 大盤餘額 tab：年列展開徽章＋年列強調底色（比照 taiwan-flows 的 fftoggle/yrow） */
+  .mktoggle{display:inline-block;min-width:15px;text-align:center;border:1px solid var(--line);
+    border-radius:4px;padding:0 3px;margin-right:6px;cursor:pointer;font-size:.72rem;color:var(--muted)}
+  tr.mkt-yr{cursor:pointer}
+  tr.mkt-yr td{font-weight:650;background:var(--card-hover)}
+  tr.mkt-mo td:first-child{padding-left:22px;color:var(--muted)}
   .qrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .qrow input{flex:1;min-width:140px;background:var(--bg);border:1px solid var(--line);color:var(--txt);
     border-radius:9px;padding:8px 12px;font-size:.88rem;outline:none}
@@ -208,7 +214,7 @@ const TABS = [
   ["insight","摘要分析"],
   ["summary","彙總分析"],
   ["aetf","主動ETF"],["dates","日期"],["lending","融借券"],["daytrade","當沖"],
-  ["block","鉅額"],["oddlot","零股"],["broker","分點"],
+  ["block","鉅額"],["oddlot","零股"],["broker","分點"],["mktbal","大盤餘額"],
   ["diag","持股診斷"],
 ];
 const SUBS = {
@@ -220,6 +226,7 @@ const SUBS = {
   block:"當日鉅額交易逐筆列表，同股票分組並附總張數/總金額；買方/賣方券商分點為盡力比對（同股同價當日多筆時可能無法唯一判定，顯示—）。類型僅「配對交易／逐筆交易」兩種，FinMind未提供單一/組合證券的區分欄位。",
   oddlot:"零股交易行情（TWSE公開端點）：盤中零股／盤後零股，依個股呈現成交股數、筆數、金額。單位：股／元。",
   broker:"券商分點進出（FinMind TradingDailyReport，每交易日約21:00更新）。單點＝查一個分點當日全部進出個股；個股＝查一檔股票當日全部進出分點；清單＝全部分點代號對照。",
+  mktbal:"大盤層級籌碼餘額：融資餘額／融券餘額／借券賣出餘額／不限用途款項借貸餘額，四項皆為全市場合計，非個股加總排行——個股層級請見「融借券」tab。融資融券源自FinMind，借券賣出／不限用途借貸源自TWSE公開端點。近30交易日逐日＋近3年各月底（年列可展開）。",
   dates:"各資料源目前的資料日與產出時間；判斷哪些已是最新交易日、哪些尚未更新。資料為排程產出，當日盤後資料通常於當晚 21:00 後才更新，故白天多半看到前一交易日。",
   diag:"持股診斷：輸入持股後逐檔彙整籌碼／價量／題材／基本面／系統五面向事實與紅黃綠風險燈號，附近3日新聞命中與可選的 AI 解讀（按了才呼叫、token 自備）。證據彙整工具、非投資建議，不輸出買賣指令；持股資料僅存於本機瀏覽器（localStorage），不上傳任何伺服器。素材庫每交易日約 22:10 更新（全市場通用資料）。",
 };
@@ -237,7 +244,8 @@ const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQu
   sumAutoIdx:undefined, sumAutoOpen:null, sumManualOpen:null, cloudOpen:null,
   datesData:null, datesLoading:false,
   diag:null, diagErr:null, diagLive:undefined, diagOpen:null, diagRulesOpen:false, diagMsg:"",
-  diagNews:undefined, diagAI:null };
+  diagNews:undefined, diagAI:null,
+  mktbal:null, mktbalErr:null, mktbalSel:"margin", mktbalOpen:{} };
 
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -861,6 +869,10 @@ document.addEventListener("click", e => {
   const jp = e.target.closest("[data-bkjump]");
   if (jp){ state.bkSub = "branch"; render();
     const i = document.getElementById("bkQ_branch"); if (i){ i.value = jp.dataset.bkjump; bkQuery("branch"); } return; }
+  const ms = e.target.closest("[data-mktsel]");
+  if (ms){ state.mktbalSel = ms.dataset.mktsel; render(); return; }
+  const my = e.target.closest("[data-mktyr]");
+  if (my){ const y = my.dataset.mktyr; state.mktbalOpen[y] = !state.mktbalOpen[y]; render(); return; }
 });
 // 清單模糊查找：跟個股查詢(lendQ)同一套路——只更新結果區塊，不整頁重render，
 // 否則每打一個字輸入框就失焦。
@@ -904,6 +916,7 @@ function render(){
   renderStats();
   if (state.tab === "dates") renderDates();
   else if (state.tab === "aetf") renderAETF();
+  else if (state.tab === "mktbal") renderMktbal();
   else renderPM();
 }
 function renderTabs(){
@@ -1008,6 +1021,98 @@ document.addEventListener("click", e=>{
   if (el3){ state.openLend = state.openLend===el3.dataset.lend ? null : el3.dataset.lend; render();
     if (state.openLend){ const x=document.getElementById("lenddd"); if(x)x.scrollIntoView({behavior:"smooth",block:"start"}); } }
 });
+
+// ---------- 大盤餘額 tab（全市場層級四項餘額：融資／融券／借券賣出／不限用途借貸） ----------
+// 資料源 data/market_balance_history.json（src/build_mktbal.py 產出，daily/monthly 皆升序陣列，
+// 見該檔檔頭註解）。定位：大盤層級籌碼合計，與「融借券」tab（個股層級排行）明確區分——見 SUBS.mktbal。
+const MKTBAL_PILLS = [
+  { id:"margin", label:"融資餘額",
+    cols:[ {h:"張數", key:"margin_shares"}, {h:"金額(億)", key:"margin_money", yi:true} ] },
+  { id:"short", label:"融券餘額",
+    cols:[ {h:"張數", key:"short_shares"} ] },
+  { id:"sbl", label:"借券賣出餘額",
+    cols:[ {h:"市值(億)", key:"sbl_short_value", yi:true}, {h:"股數", key:"sbl_short_shares"} ] },
+  { id:"unrestricted", label:"不限用途款項借貸餘額",
+    cols:[ {h:"仟股", key:"unrestricted_shares"} ] },
+];
+const mktNum = v => v==null ? '<span class="mut">—</span>' : Math.round(v).toLocaleString("en-US");
+const mktYi = v => v==null ? '<span class="mut">—</span>' : (v/1e8).toFixed(2)+"億";
+const mktCell = (col, r) => !r ? '<span class="mut">—</span>' : (col.yi ? mktYi(r[col.key]) : mktNum(r[col.key]));
+// 異動：跟前一筆比較（daily 用前一交易日、monthly 用前一月底），紅漲綠跌沿用全站 sgn() 慣例
+const mktDiffCell = (col, cur, prev) => {
+  const a = cur ? cur[col.key] : null, b = prev ? prev[col.key] : null;
+  if (a==null || b==null) return '<span class="mut">—</span>';
+  const dv = a - b;
+  const txt = col.yi ? ((dv>0?"+":"")+(dv/1e8).toFixed(2)+"億") : ((dv>0?"+":"")+Math.round(dv).toLocaleString("en-US"));
+  return sgn(dv, txt);
+};
+const mktThead = (label, cols) => `<tr><th>${label}</th>` + cols.map(c=>`<th>${c.h}</th>`).join("")
+  + cols.map(c=>`<th>${c.yi?"異動(億)":"異動"}</th>`).join("") + `</tr>`;
+function renderMktbal(){
+  const main = document.getElementById("main");
+  if (state.mktbalErr){
+    main.innerHTML = `<div class="empty">尚無大盤餘額資料（data/market_balance_history.json 未產生或載入失敗）。<br>每交易日約 22:20 排程更新。</div>`;
+    return;
+  }
+  const d = state.mktbal;
+  if (!d){ main.innerHTML = `<div class="empty">載入中…</div>`; return; }
+
+  const pillsHtml = `<div class="subtabs">` + MKTBAL_PILLS.map(p =>
+    `<div class="subtab ${state.mktbalSel===p.id?"active":""}" data-mktsel="${p.id}">${p.label}</div>`).join("") + `</div>`;
+  const intro = `<div class="mcard" style="font-size:.8rem;color:var(--muted);line-height:1.6">`
+    + `全市場合計，非個股加總排行；個股層級請見「融借券」tab。融資融券源自 FinMind，借券賣出／不限用途借貸源自 TWSE 公開端點。`
+    + `<br>資料日 <b style="color:var(--txt)">${esc(d.latest_date||"—")}</b> · 更新 ${esc(fmtGenTaipei(d.generated_at))}（台北）</div>`;
+
+  const pill = MKTBAL_PILLS.find(p=>p.id===state.mktbalSel) || MKTBAL_PILLS[0];
+  const cols = pill.cols;
+
+  // 近5日（daily 升序陣列；取後5筆，異動用完整 daily 陣列找前一交易日）
+  const daily = d.daily || [];
+  const last5 = daily.slice(-5);
+  const dailyRows = last5.map(r => {
+    const idx = daily.indexOf(r);
+    const prev = idx>0 ? daily[idx-1] : null;
+    return `<tr><td>${esc(r.date)}</td>` + cols.map(c=>`<td>${mktCell(c,r)}</td>`).join("")
+      + cols.map(c=>`<td>${mktDiffCell(c,r,prev)}</td>`).join("") + `</tr>`;
+  }).join("");
+  const dailyTable = daily.length
+    ? `<div class="tblbox"><table class="mtable"><thead>${mktThead("日期",cols)}</thead><tbody>${dailyRows}</tbody></table></div>`
+    : `<div class="empty">尚無近日資料</div>`;
+
+  // 近3年各月底（monthly 升序陣列；依年分組，年列可展開/收合月列，比照 taiwan-flows ffToggle/ffOpen）
+  const monthly = d.monthly || [];
+  const yrs = {};
+  monthly.forEach(r => { const y = r.ym.slice(0,4); (yrs[y] = yrs[y]||[]).push(r); });
+  const years = Object.keys(yrs).sort().reverse();
+  let monthlyRows = "";
+  years.forEach(y => {
+    const ms = yrs[y]; // 該年月份（升序）
+    const lastRec = ms[ms.length-1];
+    const prevYear = yrs[String(Number(y)-1)];
+    const prevRec = prevYear ? prevYear[prevYear.length-1] : null; // YoY：去年最後一筆月底
+    const isOpen = !!state.mktbalOpen[y];
+    monthlyRows += `<tr class="mkt-yr" data-mktyr="${y}"><td><span class="mktoggle">${isOpen?"－":"＋"}</span>${y}（月底）</td>`
+      + cols.map(c=>`<td>${mktCell(c,lastRec)}</td>`).join("")
+      + cols.map(c=>`<td>${mktDiffCell(c,lastRec,prevRec)}</td>`).join("") + `</tr>`;
+    if (isOpen){
+      ms.slice().reverse().forEach(r => {
+        const idx = monthly.indexOf(r);
+        const prev = idx>0 ? monthly[idx-1] : null; // MoM：完整 monthly 陣列的前一筆
+        monthlyRows += `<tr class="mkt-mo"><td>${r.ym}</td>` + cols.map(c=>`<td>${mktCell(c,r)}</td>`).join("")
+          + cols.map(c=>`<td>${mktDiffCell(c,r,prev)}</td>`).join("") + `</tr>`;
+      });
+    }
+  });
+  const monthlyTable = monthly.length
+    ? `<div class="tblbox"><table class="mtable"><thead>${mktThead("年／月",cols)}</thead><tbody>${monthlyRows}</tbody></table></div>`
+    : `<div class="empty">尚無月度資料</div>`;
+
+  main.innerHTML = pillsHtml + intro
+    + sec("近5日", esc(pill.label))
+    + dailyTable
+    + sec("近3年各月底", "年列可展開／收合月列 · YoY／MoM 紅漲綠跌")
+    + monthlyTable;
+}
 
 // ---------- 摘要分析（前端即時呼叫 Claude API） ----------
 // key 只存本機 localStorage，只隨查詢送給 Anthropic，不進 repo、不傳第三方。
@@ -2419,8 +2524,13 @@ async function load(){
     try{ state.diag = await loadJSON("data/diag/diag.json?t="+t); }
     catch(e){ state.diagErr = e; }
   })();
-  pAetf.then(render); pPm.then(render); pTf.then(render); pDiag.then(render);
-  await Promise.all([pAetf, pPm, pTf, pDiag]);
+  // 大盤餘額（本 repo data/market_balance_history.json，src/build_mktbal.py 產出）
+  const pMktbal = (async ()=>{
+    try{ state.mktbal = await loadJSON("data/market_balance_history.json?t="+t); }
+    catch(e){ state.mktbalErr = e; }
+  })();
+  pAetf.then(render); pPm.then(render); pTf.then(render); pDiag.then(render); pMktbal.then(render);
+  await Promise.all([pAetf, pPm, pTf, pDiag, pMktbal]);
   render();
 }
 load();
