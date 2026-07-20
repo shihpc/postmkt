@@ -51,7 +51,26 @@
 - **日期欄語意**：五 repo 所有產出檔的日期欄（欄位/語意/時區/粒度）對照表見
   [`docs/date-semantics.md`](docs/date-semantics.md)——跨站資料流除錯或調整 dlabel 對齊時先讀它。
 
-## 快速接手（2026-07-12；持股診斷段 2026-07-18 補；大盤餘額段 2026-07-19 補；主動ETF UI 段 2026-07-20 補）
+## 快速接手（2026-07-12；持股診斷段 2026-07-18 補；大盤餘額段 2026-07-19 補；主動ETF UI 段 2026-07-20 補；批次改進 2026-07-21 補）
+
+### 盤後批次改進四項（2026-07-21，依 b-group-investigation 調查結果）
+
+- **項5 ETF 持股加市值欄**：`renderAETF` 持股組合表新增「市值(億)」欄＝`stocks[code][3]/1e8`，
+  section 註記「市值依 FinMind 揭露日、非即時」；缺值顯「—」。資料源 build_aetf.py 已補逐股 mv
+  （v2 `src/build_aetf.py` `grab_holding()`），但 postmkt 讀 v2 raw latest.json，故要等 v2 排程
+  重跑 build_aetf push 後該欄才有實值（在此之前一律「—」，屬預期）。
+- **項8 大盤餘額只留金額**：`MKTBAL_PILLS` 由 4 pill（融資/融券/借券賣出/不限用途）縮為 2 pill：
+  融資餘額（只 `margin_money` 金額(億)、拿掉張數）＋借券賣出餘額（只 `sbl_short_value` 金額(元)＋
+  `mktNum` 千位點、拿掉股數）。融券/不限用途 TWSE/FinMind 官方無金額欄故不顯示；資料檔
+  `market_balance_history.json` 欄位不動、僅前端不消費那兩項。
+- **項9 融借券整合排行拆 TSE/券商兩區塊**：`index.html` 整合排行表把單一「借券餘額」欄組拆成
+  「TSE餘額」「券商餘額」兩區塊各 餘額(張)/異動(張)/市值(億)/市值異動(億)，刪掉合計三欄
+  （`plat_total*` 資料保留、Line 1381 摘要仍用不動）。後端 `build_postmkt.py build_lending()` 新增
+  `sys_mv_chg`/`otc_mv_chg`（=異動張數×收盤價，同 sbl_short_mv_chg 近似法）寫入 row。
+- **項10 日期 tab 移最右＋文案**：TABS 陣列 `["dates","日期"]` 移到 `["diag","持股診斷"]` 之後；
+  「自動產出」section 文案由「早場08:00／晚場22:00」更正為實際 cron「早場06:23／晚場22:47 台北」。
+- **驗證**：本機跑 build_postmkt（3481 群創 sys_mv_chg=-376891/otc_mv_chg=109469 千元）＋瀏覽器 11 tab
+  零 console error；大盤2pill、融借券兩區塊八欄無合計、ETF市值欄、借券賣出金額帶千位點、日期 tab 在最右皆實測。
 
 ### 主動ETF tab 三項UI改進（2026-07-20，純前端，`renderAETF` 內）
 

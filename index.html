@@ -213,9 +213,9 @@
 const TABS = [
   ["insight","摘要分析"],
   ["summary","彙總分析"],
-  ["aetf","主動ETF"],["dates","日期"],["lending","融借券"],["daytrade","當沖"],
+  ["aetf","主動ETF"],["lending","融借券"],["daytrade","當沖"],
   ["block","鉅額"],["oddlot","零股"],["broker","分點"],["mktbal","大盤餘額"],
-  ["diag","持股診斷"],
+  ["diag","持股診斷"],["dates","日期"],
 ];
 const SUBS = {
   insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、只存本機瀏覽器。非投資建議、非預測，僅描述歷史統計傾向。",
@@ -616,7 +616,8 @@ function renderAETF(){
       const shares = Array.isArray(v) ? v[0] : (v && v.shares);
       const nm = (Array.isArray(v) ? v[1] : (v && v.name)) || "";
       const weight = Array.isArray(v) ? v[2] : (v && v.weight);
-      return { c:code, n:nm, shares, weight };
+      const mv = Array.isArray(v) ? v[3] : (v && v.mv);
+      return { c:code, n:nm, shares, weight, mv };
     }).sort((a,b)=>{
       if (a.weight!=null && b.weight!=null) return b.weight-a.weight;
       if (a.weight!=null) return -1;
@@ -624,11 +625,12 @@ function renderAETF(){
       return (b.shares||0)-(a.shares||0);
     });
     html += `<div id="etfdd">`;
-    html += sec(`${label} 最新持股組合`, `持股基準日 ${esc(le.src_date||"—")} · 依權重排序 · 共 ${holdRows.length} 檔`);
+    html += sec(`${label} 最新持股組合`, `持股基準日 ${esc(le.src_date||"—")} · 依權重排序 · 共 ${holdRows.length} 檔 · 市值依 FinMind 揭露日、非即時`);
     html += tbl([
       {h:"個股",cls:"l",f:nameCell},
       {h:"股數",f:r=>r.shares==null?'<span class="mut">—</span>':Math.round(r.shares).toLocaleString("en-US")},
-      {h:"權重(%)",f:r=>r.weight==null?'<span class="mut">—</span>':r.weight.toFixed(2)+"%"}], holdRows);
+      {h:"權重(%)",f:r=>r.weight==null?'<span class="mut">—</span>':r.weight.toFixed(2)+"%"},
+      {h:"市值(億)",f:r=>r.mv==null?'<span class="mut">—</span>':(r.mv/1e8).toFixed(2)}], holdRows);
     const hasDiff = !!((de.buy&&de.buy.length)||(de.sell&&de.sell.length));
     const diffDate = de.d0 ? `${dd(de.d0)}→${dd(de.d1)}` : (diff&&diff.primary_date ? dd(diff.primary_date) : "—");
     html += sec(`${label} 加減碼明細`,
@@ -716,11 +718,14 @@ function renderPM(){
     const yiChgK = v => v==null ? '<span class="mut">—</span>' : yi(v*1000);
     html += tbl([
       {h:"個股",cls:"l",f:r=>`<span class="clk ${state.openLend===r.c?"sel":""}" data-lend="${esc(r.c)}">${nameCell(r)}</span>`},
-      {h:"TSE(張)",g:"借券餘額",f:r=>num(r.sys_bal)},
-      {h:"券商(張)",g:"借券餘額",f:r=>num(r.otc_bal)},
-      {h:"合計(張)",g:"借券餘額",f:r=>num(r.plat_total)},
-      {h:"合計異動(張)",g:"借券餘額",f:r=>zh(r.plat_total_chg)},
-      {h:"合計市值(億)",g:"借券餘額",f:r=>yiK(r.plat_total_mv)},
+      {h:"餘額(張)",g:"TSE餘額",f:r=>num(r.sys_bal)},
+      {h:"異動(張)",g:"TSE餘額",f:r=>zh(r.sys_chg)},
+      {h:"市值(億)",g:"TSE餘額",f:r=>yiK(r.sys_mv)},
+      {h:"市值異動(億)",g:"TSE餘額",f:r=>yiChgK(r.sys_mv_chg)},
+      {h:"餘額(張)",g:"券商餘額",f:r=>num(r.otc_bal)},
+      {h:"異動(張)",g:"券商餘額",f:r=>zh(r.otc_chg)},
+      {h:"市值(億)",g:"券商餘額",f:r=>yiK(r.otc_mv)},
+      {h:"市值異動(億)",g:"券商餘額",f:r=>yiChgK(r.otc_mv_chg)},
       {h:"餘額(張)",g:"借賣",f:r=>num(r.sbl_short_bal)},
       {h:"異動(張)",g:"借賣",f:r=>zh(r.sbl_short_chg)},
       {h:"市值(億)",g:"借賣",f:r=>yiK(r.sbl_short_mv)},
@@ -1089,18 +1094,15 @@ document.addEventListener("click", e=>{
     if (state.openLend){ const x=document.getElementById("lenddd"); if(x)x.scrollIntoView({behavior:"smooth",block:"start"}); } }
 });
 
-// ---------- 大盤餘額 tab（全市場層級四項餘額：融資／融券／借券賣出／不限用途借貸） ----------
+// ---------- 大盤餘額 tab（全市場層級金額：融資／借券賣出，官方無金額的融券/不限用途不顯示） ----------
 // 資料源 data/market_balance_history.json（src/build_mktbal.py 產出，daily/monthly 皆升序陣列，
 // 見該檔檔頭註解）。定位：大盤層級籌碼合計，與「融借券」tab（個股層級排行）明確區分——見 SUBS.mktbal。
+// 融券／不限用途借貸 TWSE/FinMind 無官方金額欄位，故本表僅列有金額口徑的融資、借券賣出兩項。
 const MKTBAL_PILLS = [
   { id:"margin", label:"融資餘額",
-    cols:[ {h:"張數", key:"margin_shares"}, {h:"金額(億)", key:"margin_money", yi:true} ] },
-  { id:"short", label:"融券餘額",
-    cols:[ {h:"張數", key:"short_shares"} ] },
+    cols:[ {h:"金額(億)", key:"margin_money", yi:true} ] },
   { id:"sbl", label:"借券賣出餘額",
-    cols:[ {h:"市值(億)", key:"sbl_short_value", yi:true}, {h:"股數", key:"sbl_short_shares"} ] },
-  { id:"unrestricted", label:"不限用途款項借貸餘額",
-    cols:[ {h:"仟股", key:"unrestricted_shares"} ] },
+    cols:[ {h:"金額(元)", key:"sbl_short_value"} ] },
 ];
 const mktNum = v => v==null ? '<span class="mut">—</span>' : Math.round(v).toLocaleString("en-US");
 const mktYi = v => v==null ? '<span class="mut">—</span>' : (v/1e8).toFixed(2)+"億";
@@ -1952,7 +1954,7 @@ function summaryHtml(){
   // 歷史區⓪：雲端歷史（近3日，data/analyses/；讀取免 token，raw CDN ~5分快取）
   h += cloudHistSectionHtml();
   // 歷史區①：自動產出（GitHub Actions 早晚場，讀 data/summary/index.json）
-  h += sec("自動產出（近三日）","GitHub Actions 早場08:00／晚場22:00 台北 · 點列展開閱讀");
+  h += sec("自動產出（近三日）","GitHub Actions 早場06:23／晚場22:47 台北 · 點列展開閱讀");
   if (state.sumAutoIdx === undefined){
     sumLoadAutoIdx();
     h += `<div class="empty">載入自動產出清單…</div>`;

@@ -265,6 +265,9 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
         otc_chg = round(ob.get("in", 0) - ob.get("out", 0))
         sys_mv = round(sb.get("mv", 0))
         otc_mv = round(ob.get("mv", 0))
+        # 各平台市值異動（千元）＝異動張數×今日收盤價，同 sbl_short_mv_chg 的近似法（見 L280-281 警語）
+        sys_mv_chg = round(sys_chg * px) if px else None
+        otc_mv_chg = round(otc_chg * px) if px else None
         sbl_short = (s.get("SBLShortSalesCurrentDayBalance") or 0) / 1000
         sbl_short_prev = (s.get("SBLShortSalesPreviousDayBalance") or 0) / 1000
         margin_short = (s.get("MarginShortSalesCurrentDayBalance") or 0) / 1000
@@ -289,8 +292,8 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
         row = {
             "c": c, "n": nm.get(c, ""),
             # 兩平台借券餘額（張；fetch_twse_lending()已將股轉張、元轉千元）
-            "sys_bal": round(sys_bal_v), "sys_chg": sys_chg, "sys_mv": sys_mv,
-            "otc_bal": round(otc_bal_v), "otc_chg": otc_chg, "otc_mv": otc_mv,
+            "sys_bal": round(sys_bal_v), "sys_chg": sys_chg, "sys_mv": sys_mv, "sys_mv_chg": sys_mv_chg,
+            "otc_bal": round(otc_bal_v), "otc_chg": otc_chg, "otc_mv": otc_mv, "otc_mv_chg": otc_mv_chg,
             "plat_total": round(plat_total), "plat_total_chg": sys_chg + otc_chg,
             "plat_total_mv": sys_mv + otc_mv,
             # Short interest（放空部位：借賣＝SBL借券賣出、融券）
