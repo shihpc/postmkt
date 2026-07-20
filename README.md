@@ -9,7 +9,7 @@
 |---|---|---|
 | 摘要分析 | 前端彙整以下各 tab ＋ 即時呼叫 Anthropic Claude API | AI 生成以查找 alpha 標的為目標的洞見（首頁預設 tab） |
 | 彙總分析 | 三頁面（本站盤後/即時類股/新聞晨報）context × Sonnet5 各 2 次 ＝ 6 份摘要 → Opus4.8 彙總 | 跨份共振精粹 alpha：方向預測＋進出建議；手動一鍵（近2次存瀏覽器）＋自動場（近3日、讀 `data/summary/`） |
-| 主動ETF | taiwan-flow-live-v2 `data/aetf/`（跨 repo 唯讀，資料源 FinMind、20+ 檔） | 每日投組快照、主動加減碼**兩欄並列**（主動純額 net_active｜含申贖 raw_change）、進出個股、次產業流向；彙整含跨ETF共識與「主動 vs 含申贖」解讀 |
+| 主動ETF | taiwan-flow-live-v2 `data/aetf/`（跨 repo 唯讀，資料源 FinMind、20+ 檔） | 每日投組快照、主動加減碼**兩欄並列**（主動純額 net_active｜含申贖 raw_change）、進出個股、次產業流向（含ETF名稱）；點 ETF 一律可展開，先看**最新持股組合**（標持股基準日）再看加減碼明細（標資料日，無加減碼顯示「今日無主動加減碼」）；彙整含跨ETF共識與「主動 vs 含申贖」解讀 |
 | 融資券借券 | FinMind 融資/融券/借券 + TWSE TWT72U 兩平台借券餘額 | 個股查詢（點開完整明細）＋整合排行（全市場 2200+ 檔、分組雙列表頭、虛擬捲動） |
 | 當沖 | FinMind `TaiwanStockDayTrading` + `TaiwanStockPrice` + `TradingDailyReport` | 當沖排行（含漲跌幅/振幅/分點推估） |
 | 鉅額交易 | FinMind `TaiwanStockBlockTrade`(+`BlockTradingDailyReport`) | 當日逐筆列表，同股分組、買賣方分點盡力比對 |
@@ -51,7 +51,25 @@
 - **日期欄語意**：五 repo 所有產出檔的日期欄（欄位/語意/時區/粒度）對照表見
   [`docs/date-semantics.md`](docs/date-semantics.md)——跨站資料流除錯或調整 dlabel 對齊時先讀它。
 
-## 快速接手（2026-07-12；持股診斷段 2026-07-18 補；大盤餘額段 2026-07-19 補）
+## 快速接手（2026-07-12；持股診斷段 2026-07-18 補；大盤餘額段 2026-07-19 補；主動ETF UI 段 2026-07-20 補）
+
+### 主動ETF tab 三項UI改進（2026-07-20，純前端，`renderAETF` 內）
+
+- **修「部分ETF點不進去」的bug**：根因是舊版 ETF 總覽表只在 `diff.etfs[code]` 有
+  buy/sell（`n_buy`/`n_sell` 非0）時才把 ETF 名稱掛可點（`data-etf`），00981A 等
+  當日無主動加減碼的 ETF（`n_buy=n_sell=0`）因此點不進去。改法：`ov` 每列一律
+  可點，不再看 `hasDiff`；`state.openEtf` 展開區塊改成先看 `latest.etfs[code]`
+  是否存在（持股一定有，只要 latest 載入成功），不再依賴 `diff.etfs[code]` 是否有值。
+- **展開區塊重排**：「最新持股組合」（讀 `latest.json etfs[code].stocks`，dict
+  `code→[股數,名稱,權重%]`，實測結構）移到「加減碼明細」**上方**，各自標資料日
+  （持股＝`src_date`；加減碼＝`de.d0→d1`，該 ETF 若無 diff 條目則退回
+  `diff.primary_date`）。無加減碼時顯示「今日無主動加減碼」而非空白兩欄。
+- **次產業流向明細補 ETF 名稱**：`so.detail[].etf` 原本只有代號，改用
+  `latest.etfs[code].name`（備援 `diff.etfs[code].name`）補上，呈現同
+  `code`+`nm` span 樣式（跟個股欄一致）。
+- 三項均已本機起 `python -m http.server` 跑 `index.html` 實測（00981A/00403A 兩種
+  case＋次產業展開），全 11 個 tab 逐一點擊 console 零 error；未動
+  `callClaude`/`mdToHtml`/`linkifyStocks` 等三站同步函式本體。
 
 ### 大盤餘額 tab（2026-07-19 上線）
 

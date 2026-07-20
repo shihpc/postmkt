@@ -594,28 +594,57 @@ function renderAETF(){
     const d = (diff && diff.etfs && diff.etfs[code]) || {};
     return { code, name:e.name, aum:e.twse_aum_yi, src:String(e.src_date||"").slice(5),
       d0:dd(d.d0), d1:dd(d.d1), flow:d.est_flow!=null?d.est_flow:null,
-      nb:d.n_buy, ns:d.n_sell, hasDiff:!!((d.buy&&d.buy.length)||(d.sell&&d.sell.length)) };
+      nb:d.n_buy, ns:d.n_sell };
   }).sort((a,b)=>(b.aum||0)-(a.aum||0));
-  html += sec("ETF 總覽","規模＝集保口徑 · 點 ETF 名稱看加減碼明細");
+  html += sec("ETF 總覽","規模＝集保口徑 · 點 ETF 名稱看持股組合與加減碼明細");
   html += tbl([
-    {h:"ETF",cls:"l",f:r=>r.hasDiff
-      ? `<span class="clk ${state.openEtf===r.code?"sel":""}" data-etf="${esc(r.code)}"><span class="code">${esc(r.code)}</span><span class="nm">${esc(r.name||"")}</span></span>`
-      : `<span class="code">${esc(r.code)}</span><span class="nm">${esc(r.name||"")}</span>`},
+    {h:"ETF",cls:"l",f:r=>`<span class="clk ${state.openEtf===r.code?"sel":""}" data-etf="${esc(r.code)}"><span class="code">${esc(r.code)}</span><span class="nm">${esc(r.name||"")}</span></span>`},
     {h:"規模(億)",f:r=>r.aum==null?'<span class="mut">—</span>':r.aum.toLocaleString("en-US")},
     {h:"申贖估",f:r=>yi(r.flow)},
     {h:"加碼檔",f:r=>r.nb==null?'<span class="mut">—</span>':`<span class="up">${r.nb}</span>`},
     {h:"減碼檔",f:r=>r.ns==null?'<span class="mut">—</span>':`<span class="down">${r.ns}</span>`},
     {h:"資料日",f:r=>r.d0?`${esc(r.d0)}→${esc(r.d1)}`:esc(r.src||"—")}], ov);
-  if (state.openEtf && diff && diff.etfs && diff.etfs[state.openEtf]){
-    const de = diff.etfs[state.openEtf];
-    const cols = [{h:"個股",cls:"l",f:nameCell},
-      {h:"張",g:"主動純額",f:r=>zh(r.zh)},{h:"金額",g:"主動純額",f:r=>yi(r.val)},
-      {h:"張",g:"含申贖",f:r=>zh(r.rzh)},{h:"金額",g:"含申贖",f:r=>yi(r.rval)}];
-    html += sec(`${esc(state.openEtf)} ${esc(de.name||"")} 加減碼明細`,"主動純額(排除申贖)｜含申贖(原始) · 依金額排序 · 再點 ETF 名稱收合");
-    html += `<div class="grid2" id="etfdd">`
-      + `<div><div class="mut" style="font-size:.76rem;margin:4px 2px">加碼（${(de.buy||[]).length}檔）</div>${tbl(cols,de.buy||[])}</div>`
-      + `<div><div class="mut" style="font-size:.76rem;margin:4px 2px">減碼（${(de.sell||[]).length}檔）</div>${tbl(cols,de.sell||[])}</div>`
-      + `</div>`;
+  // 點開的 ETF：不論當日有無主動加減碼，一律可展開（修「部分ETF點不進去」的bug，
+  // 根因是舊版只在 buy/sell 非空才掛可點）。「最新持股組合」在上（latest.json，
+  // 每日全量持股快照，自身資料日＝src_date）、「加減碼明細」在下（diff.json，
+  // 需累積2個揭露日才有值，可能為空）；兩區塊各自的資料日不一定相同，分開標註。
+  if (state.openEtf && latest.etfs && latest.etfs[state.openEtf]){
+    const le = latest.etfs[state.openEtf];
+    const de = (diff && diff.etfs && diff.etfs[state.openEtf]) || {};
+    const label = `${esc(state.openEtf)} ${esc(le.name||de.name||"")}`;
+    const holdRows = Object.entries(le.stocks||{}).map(([code,v])=>{
+      const shares = Array.isArray(v) ? v[0] : (v && v.shares);
+      const nm = (Array.isArray(v) ? v[1] : (v && v.name)) || "";
+      const weight = Array.isArray(v) ? v[2] : (v && v.weight);
+      return { c:code, n:nm, shares, weight };
+    }).sort((a,b)=>{
+      if (a.weight!=null && b.weight!=null) return b.weight-a.weight;
+      if (a.weight!=null) return -1;
+      if (b.weight!=null) return 1;
+      return (b.shares||0)-(a.shares||0);
+    });
+    html += `<div id="etfdd">`;
+    html += sec(`${label} 最新持股組合`, `持股基準日 ${esc(le.src_date||"—")} · 依權重排序 · 共 ${holdRows.length} 檔`);
+    html += tbl([
+      {h:"個股",cls:"l",f:nameCell},
+      {h:"股數",f:r=>r.shares==null?'<span class="mut">—</span>':Math.round(r.shares).toLocaleString("en-US")},
+      {h:"權重(%)",f:r=>r.weight==null?'<span class="mut">—</span>':r.weight.toFixed(2)+"%"}], holdRows);
+    const hasDiff = !!((de.buy&&de.buy.length)||(de.sell&&de.sell.length));
+    const diffDate = de.d0 ? `${dd(de.d0)}→${dd(de.d1)}` : (diff&&diff.primary_date ? dd(diff.primary_date) : "—");
+    html += sec(`${label} 加減碼明細`,
+      `主動純額(排除申贖)｜含申贖(原始) · 資料日 ${esc(diffDate)}${hasDiff?" · 依金額排序":""} · 再點 ETF 名稱收合`);
+    if (hasDiff){
+      const cols = [{h:"個股",cls:"l",f:nameCell},
+        {h:"張",g:"主動純額",f:r=>zh(r.zh)},{h:"金額",g:"主動純額",f:r=>yi(r.val)},
+        {h:"張",g:"含申贖",f:r=>zh(r.rzh)},{h:"金額",g:"含申贖",f:r=>yi(r.rval)}];
+      html += `<div class="grid2">`
+        + `<div><div class="mut" style="font-size:.76rem;margin:4px 2px">加碼（${(de.buy||[]).length}檔）</div>${tbl(cols,de.buy||[])}</div>`
+        + `<div><div class="mut" style="font-size:.76rem;margin:4px 2px">減碼（${(de.sell||[]).length}檔）</div>${tbl(cols,de.sell||[])}</div>`
+        + `</div>`;
+    } else {
+      html += `<div class="empty">今日無主動加減碼</div>`;
+    }
+    html += `</div>`;
   }
   if (!diff || !(diff.stocks||[]).length){
     html += `<div class="empty">主動加減碼需累積 2 個揭露日的快照，資料累積中。</div>`;
@@ -639,9 +668,11 @@ function renderAETF(){
   if (state.openSub){
     const so = (diff.subs||[]).find(s=>s.name===state.openSub);
     if (so){
+      // ETF 明細只有代號 → 補名稱（latest優先、diff備援，見 README aetf 段）
+      const etfName = code => ((latest.etfs||{})[code]||{}).name || ((diff.etfs||{})[code]||{}).name || "";
       html += sec(`${esc(cleanSub(state.openSub))} 明細`,"ETF×個股 · 再點收合");
       html += `<div id="subdd">`+tbl([
-        {h:"ETF",cls:"l",f:r=>esc(r.etf)},
+        {h:"ETF",cls:"l",f:r=>`<span class="code">${esc(r.etf)}</span><span class="nm">${esc(etfName(r.etf))}</span>`},
         {h:"個股",cls:"l",f:nameCell},
         {h:"張數",f:r=>zh(r.zh)},
         {h:"金額",f:r=>yi(r.val)}], so.detail||[])+`</div>`;
