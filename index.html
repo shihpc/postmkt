@@ -1129,7 +1129,7 @@ function renderMktbal(){
   const pillsHtml = `<div class="subtabs">` + MKTBAL_PILLS.map(p =>
     `<div class="subtab ${state.mktbalSel===p.id?"active":""}" data-mktsel="${p.id}">${p.label}</div>`).join("") + `</div>`;
   const intro = `<div class="mcard" style="font-size:.8rem;color:var(--muted);line-height:1.6">`
-    + `全市場合計，非個股加總排行；個股層級請見「融借券」tab。融資融券源自 FinMind，借券賣出／不限用途借貸源自 TWSE 公開端點。`
+    + `全市場合計，非個股加總排行；個股層級請見「融借券」tab。融資金額源自 FinMind，借券賣出金額源自 TWSE 公開端點。融券／不限用途借貸官方無金額統計，本表僅列這兩項有金額口徑者。`
     + `<br>資料日 <b style="color:var(--txt)">${esc(d.latest_date||"—")}</b> · 更新 ${esc(fmtGenTaipei(d.generated_at))}（台北）</div>`;
 
   const pill = MKTBAL_PILLS.find(p=>p.id===state.mktbalSel) || MKTBAL_PILLS[0];
