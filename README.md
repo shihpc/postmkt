@@ -9,7 +9,7 @@
 |---|---|---|
 | 摘要分析 | 前端彙整以下各 tab ＋ 即時呼叫 Anthropic Claude API | AI 生成以查找 alpha 標的為目標的洞見（首頁預設 tab） |
 | 彙總分析 | 三頁面（本站盤後/即時類股/新聞晨報）context × Sonnet5 各 2 次 ＝ 6 份摘要 → Opus4.8 彙總 | 跨份共振精粹 alpha：方向預測＋進出建議；手動一鍵（近2次存瀏覽器）＋自動場（近3日、讀 `data/summary/`） |
-| 主動ETF | taiwan-flow-live-v2 `data/aetf/`（跨 repo 唯讀） | 每日投組快照、主動加減碼、進出個股、次產業流向 |
+| 主動ETF | taiwan-flow-live-v2 `data/aetf/`（跨 repo 唯讀，資料源 FinMind、20+ 檔） | 每日投組快照、主動加減碼**兩欄並列**（主動純額 net_active｜含申贖 raw_change）、進出個股、次產業流向；彙整含跨ETF共識與「主動 vs 含申贖」解讀 |
 | 融資券借券 | FinMind 融資/融券/借券 + TWSE TWT72U 兩平台借券餘額 | 個股查詢（點開完整明細）＋整合排行（全市場 2200+ 檔、分組雙列表頭、虛擬捲動） |
 | 當沖 | FinMind `TaiwanStockDayTrading` + `TaiwanStockPrice` + `TradingDailyReport` | 當沖排行（含漲跌幅/振幅/分點推估） |
 | 鉅額交易 | FinMind `TaiwanStockBlockTrade`(+`BlockTradingDailyReport`) | 當日逐筆列表，同股分組、買賣方分點盡力比對 |

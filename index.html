@@ -220,7 +220,7 @@ const TABS = [
 const SUBS = {
   insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、只存本機瀏覽器。非投資建議、非預測，僅描述歷史統計傾向。",
   summary:"AI 彙總分析：一鍵 6+1 次 Claude 呼叫——3 個頁面（盤後分析／即時類股動態／新聞晨報）× Sonnet 5 各 2 次獨立分析共 6 份摘要，再由 Opus 4.8 融會貫通彙總出跨份共振的精華 alpha。費用約每次 NT$8-10（摘要用 Sonnet 5、彙總用 Opus），token 由你自備、只存本機瀏覽器。另可閱讀 GitHub Actions 早晚場自動產出。非投資建議。",
-  aetf:"主動式ETF每日投組快照＋主動加減碼（資料源：taiwan-flow-live-v2，投信 16:30 揭露）。",
+  aetf:"主動式ETF每日投組快照＋主動加減碼（資料源：taiwan-flow-live-v2 via FinMind，每日揭露）。加減碼兩欄並列：主動純額（排除申贖）｜含申贖（原始總變動）。",
   lending:"借券系統(SLB)＋證商營業處所(NLB)兩平台餘額、Short Interest、融資融券、當沖、三大法人買賣超整合排行，依兩平台借券餘額排序。點個股展開完整明細。單位：張／千元／億元。",
   daytrade:"當沖成交金額排行。分點推估為估算法，非逐筆交易證據。",
   block:"當日鉅額交易逐筆列表，同股票分組並附總張數/總金額；買方/賣方券商分點為盡力比對（同股同價當日多筆時可能無法唯一判定，顯示—）。類型僅「配對交易／逐筆交易」兩種，FinMind未提供單一/組合證券的區分欄位。",
@@ -525,6 +525,8 @@ function blockTradeTable(rows){
 }
 
 // ---------- 主動ETF（跨repo唯讀 taiwan-flow-live-v2 data/aetf/） ----------
+// 【三站同步】aetfAdvice 被 insightGatherContext（三站逐字一致的 AI 彙整 gather）呼叫，
+// 不得單站修改；前端顯示的加強版彙整改用下方 aetfInsight（postmkt 專用、不進 gather）。
 function aetfAdvice(diff){
   const L = [];
   const st = diff.stocks||[], sb = diff.subs||[];
@@ -541,6 +543,35 @@ function aetfAdvice(diff){
   }
   return L;
 }
+// postmkt 前端專用加強版彙整（跨ETF共識＋主動vs含申贖解讀＋規模概況）；不進三站 gather。
+function aetfInsight(diff){
+  const L = [];
+  const dd0 = x => String(x||"").slice(5).replace("/","-");
+  const st = diff.stocks||[], sb = diff.subs||[], et = diff.etfs||{};
+  const nBuyers = s => Object.values(s.by||{}).filter(v=>v>0).length;
+  const nSellers = s => Object.values(s.by||{}).filter(v=>v<0).length;
+  const nEtf = Object.keys(et).length, nLag = (diff.laggards||[]).length, nAgg = nEtf - nLag;
+  L.push(`涵蓋 <b>${nEtf}</b> 檔主動股票型ETF，主基準日 <b>${esc(dd0(diff.primary_date))}</b>`
+    + `（同基準日聚合 ${nAgg} 檔${nLag?`、另 ${nLag} 檔基準日較舊未併入共識`:``}）。`);
+  const co = st.filter(s=>nBuyers(s)>=2).sort((a,b)=>(b.val||0)-(a.val||0)).slice(0,4);
+  if (co.length) L.push(`<b class="up">跨ETF加碼共識</b>：`
+    + co.map(s=>`${esc(s.n||s.c)}（${nBuyers(s)}檔）`).join("、"));
+  const cs = st.filter(s=>nSellers(s)>=2).sort((a,b)=>(a.val||0)-(b.val||0)).slice(0,3);
+  if (cs.length) L.push(`<b class="down">跨ETF減碼共識</b>：`
+    + cs.map(s=>`${esc(s.n||s.c)}（${nSellers(s)}檔）`).join("、"));
+  const div = st.filter(s=>Math.abs(s.rval||0)>=3e8 && Math.abs(s.rval||0)>=3*Math.abs(s.val||0)+1e8)
+                .sort((a,b)=>Math.abs(b.rval||0)-Math.abs(a.rval||0)).slice(0,2);
+  if (div.length) L.push(`<span class="mut">申贖主導（含申贖變動大、主動純額小，多為申購贖回而非經理人調整）：`
+    + div.map(s=>`${esc(s.n||s.c)} 原始${((s.rval||0)/1e8).toFixed(1)}億／主動${((s.val||0)/1e8).toFixed(1)}億`).join("；")+`</span>`);
+  const inn = sb.filter(s=>s.val>0)[0], out = sb.filter(s=>s.val<0)[0];
+  if (inn) L.push(`次產業最大加碼：<span class="up">${esc(cleanSub(inn.name))} +${(inn.val/1e8).toFixed(1)}億</span>`);
+  if (out) L.push(`最大減碼：<span class="down">${esc(cleanSub(out.name))} ${(out.val/1e8).toFixed(1)}億</span>`);
+  for (const [k,v] of Object.entries(et)){
+    if (v.est_flow && Math.abs(v.est_flow) >= 10e8)
+      L.push(`${esc(k)} ${esc(v.name||"")} 淨${v.est_flow>0?"申購":"贖回"}約 ${(Math.abs(v.est_flow)/1e8).toFixed(0)}億`);
+  }
+  return L;
+}
 const byChips = by => Object.entries(by||{}).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]))
   .map(([k,v])=>`<span class="${v>0?'up':'down'}" style="white-space:nowrap">${esc(k)} ${(v>0?"+":"")+v.toLocaleString("en-US")}</span>`).join("　");
 
@@ -550,10 +581,11 @@ function renderAETF(){
   if (!a){ main.innerHTML = `<div class="empty">載入主動ETF資料…</div>`; return; }
   const {latest, diff} = a;
   if (!latest){ main.innerHTML = `<div class="empty">主動ETF資料載入失敗（來源：taiwan-flow-live-v2）。</div>`; return; }
-  let html = `<div class="mcard" style="font-size:.8rem;color:var(--muted)">主動式ETF每日投組（投信 16:30 揭露）。`
-    + `「主動加減碼」已排除申購贖回的等比效應，呈現經理人真實動作。快照 ${esc(latest.run_date||"—")}。</div>`;
+  let html = `<div class="mcard" style="font-size:.8rem;color:var(--muted)">主動式ETF每日投組（資料源：FinMind，每日揭露）。`
+    + `加減碼<b>兩欄並列</b>：<b>主動純額</b>＝排除申購贖回等比效應的經理人淨調整；<b>含申贖</b>＝原始總變動（FinMind buy−sell）。`
+    + `快照 ${esc(latest.run_date||"—")}。</div>`;
   if (diff && (diff.stocks||[]).length){
-    const adv = aetfAdvice(diff);
+    const adv = aetfInsight(diff);
     if (adv.length) html += `<div class="mcard">${adv.map(x=>`<div>${x}</div>`).join("")}</div>`;
   }
   // ① ETF 總覽（點 ETF 名稱展開加碼/減碼子表）
@@ -576,8 +608,10 @@ function renderAETF(){
     {h:"資料日",f:r=>r.d0?`${esc(r.d0)}→${esc(r.d1)}`:esc(r.src||"—")}], ov);
   if (state.openEtf && diff && diff.etfs && diff.etfs[state.openEtf]){
     const de = diff.etfs[state.openEtf];
-    const cols = [{h:"個股",cls:"l",f:nameCell},{h:"張數",f:r=>zh(r.zh)},{h:"金額",f:r=>yi(r.val)}];
-    html += sec(`${esc(state.openEtf)} ${esc(de.name||"")} 加減碼明細`,"依金額排序 · 再點 ETF 名稱收合");
+    const cols = [{h:"個股",cls:"l",f:nameCell},
+      {h:"張",g:"主動純額",f:r=>zh(r.zh)},{h:"金額",g:"主動純額",f:r=>yi(r.val)},
+      {h:"張",g:"含申贖",f:r=>zh(r.rzh)},{h:"金額",g:"含申贖",f:r=>yi(r.rval)}];
+    html += sec(`${esc(state.openEtf)} ${esc(de.name||"")} 加減碼明細`,"主動純額(排除申贖)｜含申贖(原始) · 依金額排序 · 再點 ETF 名稱收合");
     html += `<div class="grid2" id="etfdd">`
       + `<div><div class="mut" style="font-size:.76rem;margin:4px 2px">加碼（${(de.buy||[]).length}檔）</div>${tbl(cols,de.buy||[])}</div>`
       + `<div><div class="mut" style="font-size:.76rem;margin:4px 2px">減碼（${(de.sell||[]).length}檔）</div>${tbl(cols,de.sell||[])}</div>`
@@ -587,13 +621,15 @@ function renderAETF(){
     html += `<div class="empty">主動加減碼需累積 2 個揭露日的快照，資料累積中。</div>`;
     main.innerHTML = html; return;
   }
-  // ② 進出個股
+  // ② 進出個股（跨ETF 合計，兩欄並列）
   html += sec("進出個股", `主動加減碼，${esc((diff.generated_dates||[]).join("、"))}`);
   html += tbl([
     {h:"個股",cls:"l",f:nameCell},
-    {h:"合計",f:r=>zh(r.zh)},
-    {h:"金額",f:r=>yi(r.val)},
-    {h:"各ETF明細(張)",cls:"l",f:r=>byChips(r.by)}], (diff.stocks||[]).slice(0,60));
+    {h:"合計張",g:"主動純額",f:r=>zh(r.zh)},
+    {h:"金額",g:"主動純額",f:r=>yi(r.val)},
+    {h:"合計張",g:"含申贖",f:r=>zh(r.rzh)},
+    {h:"金額",g:"含申贖",f:r=>yi(r.rval)},
+    {h:"各ETF明細(主動張)",cls:"l",f:r=>byChips(r.by)}], (diff.stocks||[]).slice(0,60));
   // ③ 次產業流向（點名稱展開明細）
   html += sec("次產業流向","點名稱展開明細");
   html += tbl([
