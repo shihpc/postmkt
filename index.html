@@ -1102,7 +1102,7 @@ const MKTBAL_PILLS = [
   { id:"margin", label:"融資餘額",
     cols:[ {h:"金額(億)", key:"margin_money", yi:true} ] },
   { id:"sbl", label:"借券賣出餘額",
-    cols:[ {h:"金額(元)", key:"sbl_short_value"} ] },
+    cols:[ {h:"金額(億)", key:"sbl_short_value", yi:true} ] },
 ];
 const mktNum = v => v==null ? '<span class="mut">—</span>' : Math.round(v).toLocaleString("en-US");
 const mktYi = v => v==null ? '<span class="mut">—</span>' : (v/1e8).toFixed(2)+"億";
