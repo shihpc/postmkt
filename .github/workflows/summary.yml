@@ -2,11 +2,11 @@ name: build summary analysis
 
 on:
   schedule:
-    # 提早觸發＋錯開整點（GitHub cron 整點/UTC 00:00 最壅塞，週一早上尤甚），
-    # 讓資料閘門去等資料：cron 延遲不可控，閘門輪詢可控。
-    # am 場：台北 06:23（UTC 前一日 22:23，週日~四）；
-    # pm 場：台北 22:47（UTC 14:47；2026-07-14 依審計由 22:17 延後——pm 閘門改等
-    #        三源齊備，其中新聞晚班 22:37 才起跑，太早觸發只是空轉輪詢）
+    # 2026-07-22 起主觸發＝taiwan-flow-live-v2 Worker 事件驅動 dispatch（上游全齊即發、
+    # 帶 inputs.slot；am 常態 ~07:1x、pm 常態 ~22:0x）。本 cron 降級為兜底備援：
+    # 時間「不挪」——Decide slot 依 cron 字串精確比對判場次，挪動必須同步改 case；
+    # 正常日備援 run 被 build_summary.py「已產出守門」秒退（零 LLM 花費），挪動零收益。
+    # am 場：台北 06:23（UTC 前一日 22:23，週日~四）；pm 場：台北 22:47（UTC 14:47）
     - cron: "23 22 * * 0-4"
     - cron: "47 14 * * 1-5"
   workflow_dispatch:

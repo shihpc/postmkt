@@ -4,7 +4,7 @@ on:
   schedule:
     # 平日 22:20 台北（14:20 UTC）：排在 build.yml 21:53、diag.yml 22:10 之後，
     # 融資融券/借券/不限用途借貸官方資料約 21:00 後陸續更新完成，留緩衝
-    - cron: "20 14 * * 1-5"
+    - cron: "55 14 * * 1-5"   # 22:55 台北（備援；主觸發＝v2 Worker 晚場協調班鏈式 dispatch：diag.json 今日已備即發，2026-07-22）
   workflow_dispatch:   # 手動觸發；backfill=true 時執行一次性回補（近3年月底值＋近30交易日）
     inputs:
       backfill:

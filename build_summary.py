@@ -1006,6 +1006,13 @@ def main() -> None:
         anth_key()  # 缺 Secret 秒失敗（fail-fast），不等閘門輪詢完才發現
 
     trading_day = slot_trading_day(args.slot)
+    # 已產出守門（2026-07-22，Worker 事件驅動化的備援去重）：本場當日檔已在 checkout 內
+    # → 主場（Worker dispatch）已跑完，本 run 是 GH cron 備援排隊進來的 → 秒退，零 LLM 花費。
+    # concurrency: build-summary 保證排隊不並跑，備援 run checkout 時必含主場 commit。
+    done = OUT_DIR / f"{trading_day.replace('-', '')}-{args.slot}.json"
+    if not args.dry_run and done.exists():
+        print(f"{done.name} 已存在（主場已產出）→ 備援 run 跳過", flush=True)
+        return
     if not args.no_wait and not args.dry_run:
         wait_gate(args.slot, trading_day)
 
