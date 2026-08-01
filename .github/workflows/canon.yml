@@ -23,7 +23,7 @@ jobs:
     env:
       EXPECT: a14e4bea6c7d5bd4cad488817105948c93805baec1b3a9323b2beb7f53457284
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: 驗 CLAUDE.md 的 CANON 區塊未被單獨修改
         run: |
           python - <<'PY'
