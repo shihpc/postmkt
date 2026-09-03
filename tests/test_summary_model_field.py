@@ -113,18 +113,23 @@ def test_batch_timeout_fallback_records_sync_model(monkeypatch):
 
 def test_write_output_synthesis_has_model(tmp_path, monkeypatch):
     monkeypatch.setattr(bs, "OUT_DIR", tmp_path)
+    # 資料日必須相對於「今天」算，不可寫死：write_output 尾端會刪掉檔名日期早於
+    # (taipei_now() − 3 日) 的 am/pm 檔，寫死日期的測試會在該日掉出保留窗後由綠轉紅
+    # （2026-09-03 實際發生：原本寫死 2026-08-29，cutoff 推到 20260831 後檔案被自己刪掉）。
+    day = bs.taipei_now().date().isoformat()
+    fname = day.replace("-", "") + "-pm.json"
     six = [{"page": "postmkt", "model": "claude-sonnet-5", "tag": "Sonnet5",
-            "date": "2026-08-29", "ok": True, "via": "batch", "text": "甲",
+            "date": day, "ok": True, "via": "batch", "text": "甲",
             "stop_reason": "end_turn", "usage": {"input_tokens": 1, "output_tokens": 2}}]
-    bs.write_output("pm", "2026-08-29", six,
+    bs.write_output("pm", day, six,
                     {"text": "彙總", "usage": {"input_tokens": 5, "output_tokens": 6},
                      "via": "batch", "model": "claude-opus-4-8"})
-    out = json.loads((tmp_path / "20260829-pm.json").read_text(encoding="utf-8"))
+    out = json.loads((tmp_path / fname).read_text(encoding="utf-8"))
     assert out["synthesis"]["model"] == "claude-opus-4-8"
     # 既有欄位一個都沒少
     assert set(out["synthesis"]) == {"text", "usage", "via", "model"}
     assert out["six"][0]["model"] == "claude-sonnet-5"
-    assert out["dates"] == {"postmkt": "2026-08-29"}
+    assert out["dates"] == {"postmkt": day}
 
 
 def test_model_values_match_frontend_price_table():
