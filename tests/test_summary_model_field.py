@@ -141,3 +141,97 @@ def test_model_values_match_frontend_price_table():
     keys = set(re.findall(r'"([a-z0-9-]+)":\s*\[', block))
     assert bs.SYNTH_MODEL in keys
     assert set(bs.SUMMARY_MODELS) <= keys
+
+
+# ---------- main() 的彙總接線（run_synthesis → synthesis_field → write_output） ----------
+# 這段是 2026-09-06 補的覆蓋缺口：原本 model／via 的組裝內嵌在 main() 裡，測試只各自驗
+# 「call_claude_batch／call_claude_retry 會回報 model」（平行實作），把 main() 裡的
+# "model": synth.get("model") 改成錯字串全部測試仍然全綠。以下改為驗「接線」本身。
+
+def _boom(*a, **kw):
+    raise AssertionError("這條路不該被呼叫")
+
+
+def test_run_synthesis_batch_success_wires_batch_model_and_via(monkeypatch):
+    """batch 成功：產出欄位的 model／via 必須來自 batch 那一路實際回報的值。"""
+    seen = {}
+
+    def fake_batch(reqs, deadline_sec, label):
+        seen["reqs"], seen["deadline"] = reqs, deadline_sec
+        return {"synth": {"model": reqs["synth"][0], "text": "彙總全文",
+                          "stop_reason": "end_turn", "usage": {"output_tokens": 9}}}
+
+    monkeypatch.setattr(bs, "call_claude_batch", fake_batch)
+    monkeypatch.setattr(bs, "call_claude_retry", _boom)   # batch 成功就不該回退
+    synth = bs.run_synthesis("三份全文", 600)
+    assert seen["reqs"]["synth"][0] == bs.SYNTH_MODEL and seen["deadline"] == 600
+    assert bs.synthesis_field(synth) == {
+        "text": "彙總全文", "usage": {"output_tokens": 9},
+        "via": "batch", "model": bs.SYNTH_MODEL}
+
+
+def test_run_synthesis_batch_timeout_falls_back_to_sync(monkeypatch):
+    """batch 逾時／取消／下載失敗（該筆回 None）→ 同步回退，via 轉 sync、model 取同步那次。"""
+    monkeypatch.setattr(bs, "call_claude_batch", lambda reqs, dl, label: {"synth": None})
+    calls = []
+
+    def fake_retry(model, system, user_msg, label):
+        calls.append((model, user_msg, label))
+        return {"ok": True, "model": model, "text": "回退全文",
+                "stop_reason": "end_turn", "usage": {"output_tokens": 5}}
+
+    monkeypatch.setattr(bs, "call_claude_retry", fake_retry)
+    synth = bs.run_synthesis("三份全文", 600)
+    assert calls == [(bs.SYNTH_MODEL, "三份全文", f"彙總×{bs.SYNTH_MODEL}")]
+    assert bs.synthesis_field(synth) == {
+        "text": "回退全文", "usage": {"output_tokens": 5},
+        "via": "sync", "model": bs.SYNTH_MODEL}
+
+
+def test_run_synthesis_zero_deadline_skips_batch(monkeypatch):
+    """預算不足（batch_deadline 回 0）或 --sync：完全不打 batch，直接同步。"""
+    monkeypatch.setattr(bs, "call_claude_batch", _boom)
+    monkeypatch.setattr(bs, "call_claude_retry",
+                        lambda model, system, user_msg, label: {
+                            "ok": True, "model": model, "text": "同步全文",
+                            "stop_reason": "end_turn", "usage": {"output_tokens": 1}})
+    assert bs.synthesis_field(bs.run_synthesis("三份全文", 0)) == {
+        "text": "同步全文", "usage": {"output_tokens": 1},
+        "via": "sync", "model": bs.SYNTH_MODEL}
+
+
+def test_run_synthesis_propagates_not_ok(monkeypatch):
+    """同步也失敗時要把 ok:false 原樣傳回——main() 靠它決定整場失敗（sys.exit(1)）。"""
+    monkeypatch.setattr(bs, "call_claude_batch", lambda reqs, dl, label: {"synth": None})
+    monkeypatch.setattr(bs, "call_claude_retry",
+                        lambda model, system, user_msg, label: {
+                            "ok": False, "model": model, "text": "（該份產出失敗：x）",
+                            "stop_reason": None, "usage": None})
+    synth = bs.run_synthesis("三份全文", 600)
+    assert synth["ok"] is False and synth["via"] == "sync"
+
+
+def test_synthesis_field_missing_model_is_none_not_keyerror():
+    """現行行為存證：synth 沒有 model／via 鍵時，欄位仍在、值為 None（不丟 KeyError）。
+    這是現況記錄，不是主張它應該如此——要改成別的行為是另一個決策。"""
+    field = bs.synthesis_field({"ok": True, "text": "x", "usage": {"output_tokens": 1}})
+    assert field["model"] is None and field["via"] is None
+    assert set(field) == {"text", "usage", "via", "model"}
+
+
+def test_synthesis_wiring_end_to_end_reaches_output_json(tmp_path, monkeypatch):
+    """batch 逾時回退這條實戰路徑，一路走到落地 JSON：synthesis.model 必須是同步那次的模型。"""
+    monkeypatch.setattr(bs, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(bs, "call_claude_batch", lambda reqs, dl, label: {"synth": None})
+    monkeypatch.setattr(bs, "call_claude_retry",
+                        lambda model, system, user_msg, label: {
+                            "ok": True, "model": model, "text": "回退全文",
+                            "stop_reason": "end_turn", "usage": {"output_tokens": 5}})
+    day = bs.taipei_now().date().isoformat()   # 不可寫死日期，理由見 write_output 測試註解
+    six = [{"page": "postmkt", "model": "claude-sonnet-5", "tag": "Sonnet5", "date": day,
+            "ok": True, "via": "batch", "text": "甲", "stop_reason": "end_turn",
+            "usage": {"input_tokens": 1, "output_tokens": 2}}]
+    bs.write_output("pm", day, six, bs.synthesis_field(bs.run_synthesis("三份全文", 600)))
+    out = json.loads((tmp_path / (day.replace("-", "") + "-pm.json")).read_text(encoding="utf-8"))
+    assert out["synthesis"] == {"text": "回退全文", "usage": {"output_tokens": 5},
+                                "via": "sync", "model": bs.SYNTH_MODEL}

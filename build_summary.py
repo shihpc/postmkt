@@ -1000,6 +1000,33 @@ def wait_gate(slot: str, today: str) -> None:
         time.sleep(300)
 
 
+# ---------- 彙總（batch 優先、逾時回退同步）與產出欄位 ----------
+
+def run_synthesis(user_msg: str, deadline_sec: int) -> dict:
+    """跑彙總：deadline_sec 為 0 時直接同步，否則 batch 優先、拿不到結果就回退同步。
+    回傳該路的原始結果（含 ok/text/usage/model）並補上 via 標記。
+    抽出 main() 是為了可測——這段「batch→sync 回退接線」原本沒有任何測試涵蓋。"""
+    synth = None
+    if deadline_sec:
+        got = call_claude_batch({"synth": (SYNTH_MODEL, SYS_SYNTH, user_msg)},
+                                deadline_sec, "彙總").get("synth")
+        if got:
+            synth = {"ok": True, "via": "batch", **got}
+    if synth is None:
+        synth = {"via": "sync",
+                 **call_claude_retry(SYNTH_MODEL, SYS_SYNTH, user_msg, f"彙總×{SYNTH_MODEL}")}
+    return synth
+
+
+def synthesis_field(synth: dict) -> dict:
+    """把彙總結果組成 write_output 的 synthesis 欄位。
+    model 取自 synth 本身（batch 成功走 call_claude_batch、超時／失敗走 call_claude_retry，
+    兩路都會回報自己實際用的模型），不寫 SYNTH_MODEL 字面量——前端才不必從程式碼推論。
+    抽成純函式是為了可測：原本內嵌在 main() 裡，model／via 接線錯了沒有任何測試會紅。"""
+    return {"text": synth["text"], "usage": synth["usage"],
+            "via": synth.get("via"), "model": synth.get("model")}
+
+
 # ---------- 輸出與清理 ----------
 
 def write_output(slot: str, trading_day: str, six: list[dict], synthesis: dict) -> None:
@@ -1208,23 +1235,13 @@ def main() -> None:
     blocks = [f"【{s['page']}×{s.get('tag') or s['model']}】（資料日 {s['date'] or '—'}）\n{s['text']}" for s in six]
     synth_user = "\n\n".join(blocks)
     print(f"彙總中…（{SYNTH_MODEL}）", flush=True)
-    synth = None
     dl2 = batch_deadline(args.slot, t_start)   # 重算剩餘預算（摘要 batch 可能耗掉大半）
-    if not args.sync and dl2:
-        got = call_claude_batch({"synth": (SYNTH_MODEL, SYS_SYNTH, synth_user)}, dl2, "彙總").get("synth")
-        if got:
-            synth = {"ok": True, "via": "batch", **got}
-    if synth is None:
-        synth = {"via": "sync", **call_claude_retry(SYNTH_MODEL, SYS_SYNTH, synth_user, f"彙總×{SYNTH_MODEL}")}
+    synth = run_synthesis(synth_user, 0 if args.sync else dl2)
     if not synth["ok"]:
         print("彙總失敗，本場失敗", flush=True)
         sys.exit(1)
 
-    # model 取自 synth 本身（batch 成功走 call_claude_batch、超時／失敗走 call_claude_retry，
-    # 兩路都會回報自己實際用的模型），不寫 SYNTH_MODEL 字面量——前端才不必從程式碼推論
-    write_output(args.slot, trading_day, six,
-                 {"text": synth["text"], "usage": synth["usage"], "via": synth.get("via"),
-                  "model": synth.get("model")})
+    write_output(args.slot, trading_day, six, synthesis_field(synth))
 
 
 if __name__ == "__main__":
