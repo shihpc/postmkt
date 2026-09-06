@@ -11,13 +11,14 @@ from __future__ import annotations
 import datetime as dt
 import json
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 from fmclient import TAIPEI, api_get, token  # noqa: E402
-from twseclient import resolve_cols, throttled_get  # noqa: E402 — TWSE 全域節流（限流教訓見該檔檔頭）
+from twseclient import RETRY_BACKOFFS, resolve_cols, throttled_get  # noqa: E402 — TWSE 全域節流（限流教訓見該檔檔頭）
 
 TOP_N = 50
 MAX_BACK_DAYS = 5
@@ -56,10 +57,12 @@ def fetch_twse_lending(date: str, select_type: str) -> dict:
     """TWSE公開JSON端點（免金鑰）：借券系統(SLB)/證商營業處所(NLB)借券餘額表，全市場單次查詢。
     見 docs/cmoney-sbl-mapping-research.md 2.2節，date=YYYY-MM-DD可直接傳、TWSE自動轉換。
     此端點無正式SLA保證，失敗時回空dict，呼叫端不應讓整個管線因此中斷。
-    重試一次（間隔5秒）：實測過暫時性失敗讓整批sys_bal歸零、排行整個變形，
-    多一次重試能擋掉大部分瞬斷。"""
+    重試依 twseclient.RETRY_BACKOFFS（2/5/10/20 秒，共 5 次嘗試；2026-09-06 由「重試一次間隔 5 秒」
+    對齊 build_mktbal._fetch_twt72u_total 同法）：實測過暫時性失敗讓整批sys_bal歸零、
+    排行整個變形，退避重試能擋掉大部分瞬斷。"""
     j = None
-    for attempt in range(2):
+    max_attempts = len(RETRY_BACKOFFS) + 1
+    for attempt in range(max_attempts):
         try:
             r = throttled_get("https://www.twse.com.tw/rwd/zh/lending/TWT72U",
                               params={"date": date.replace("-", ""), "selectType": select_type, "response": "json"},
@@ -68,12 +71,14 @@ def fetch_twse_lending(date: str, select_type: str) -> dict:
             j = r.json()
             break
         except Exception as e:
-            print(f"  TWSE {select_type} 抓取失敗（第{attempt+1}次）：{e}", flush=True)
-            if attempt == 0:
-                import time
-                time.sleep(5)
+            if attempt < len(RETRY_BACKOFFS):
+                wait = RETRY_BACKOFFS[attempt]
+                print(f"  TWSE {select_type} 抓取失敗（第{attempt+1}/{max_attempts}次，{wait}s後重試）：{e}", flush=True)
+                time.sleep(wait)
+            else:
+                print(f"  TWSE {select_type} 抓取失敗（已重試{max_attempts}次，放棄）：{e}", flush=True)
     if j is None:
-        print(f"  TWSE {select_type} 兩次皆失敗（該欄位缺值，不影響其餘欄位）", flush=True)
+        print(f"  TWSE {select_type} {max_attempts} 次皆失敗（該欄位缺值，不影響其餘欄位）", flush=True)
         return {}
     def num(s):
         try:

@@ -115,3 +115,45 @@ def test_resolve_cols_missing_fields_fallback():
     from twseclient import resolve_cols
     cols = resolve_cols({}, {"bal": (5, ("餘額",), ()), "mv": (7, ("市值",), ())})
     assert cols == {"bal": 5, "mv": 7}
+
+
+# ---------- fetch_twse_lending：重試序列對齊 twseclient.RETRY_BACKOFFS（2026-09-06） ----------
+
+def test_fetch_twse_lending_retries_follow_backoffs(monkeypatch):
+    """暫時性錯誤時依 RETRY_BACKOFFS 等待、共 len+1 次嘗試，全失敗回空 dict（不拋、不中斷管線）。"""
+    calls, waits = [], []
+
+    def boom(url, params, timeout=30):
+        calls.append(params["selectType"])
+        raise RuntimeError("simulated TWSE outage")
+
+    monkeypatch.setattr(bp, "throttled_get", boom)
+    monkeypatch.setattr(bp.time, "sleep", lambda s: waits.append(s))
+    assert bp.fetch_twse_lending("2026-09-04", "SLB") == {}
+    assert len(calls) == len(bp.RETRY_BACKOFFS) + 1
+    assert waits == list(bp.RETRY_BACKOFFS)
+
+
+def test_fetch_twse_lending_success_after_transient_failure(monkeypatch):
+    """第 1 次失敗、第 2 次成功：只等一次 RETRY_BACKOFFS[0]、回傳解析結果。"""
+    n = {"i": 0}
+    waits = []
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"stat": "OK", "fields": [], "data": []}
+
+    def flaky(url, params, timeout=30):
+        n["i"] += 1
+        if n["i"] == 1:
+            raise RuntimeError("first hit fails")
+        return Resp()
+
+    monkeypatch.setattr(bp, "throttled_get", flaky)
+    monkeypatch.setattr(bp.time, "sleep", lambda s: waits.append(s))
+    out = bp.fetch_twse_lending("2026-09-04", "NLB")
+    assert isinstance(out, dict)
+    assert n["i"] == 2 and waits == [bp.RETRY_BACKOFFS[0]]
