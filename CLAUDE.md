@@ -64,7 +64,7 @@
    `gather_*` 是 index.html gather 的 Python 移植副本。SYS prompt 唯一事實來源＝index.html
    `SUM_SYS_POSTMKT`，`build_summary.py SYS_POSTMKT` 為移植複本需逐字同步。
    **第五組（2026-08-27 起）**：費用估算 `insightCostText`／`INSIGHT_PRICES`／`USD_TWD`
-   （`index.html:2111-2135`）三站亦為逐字副本，改價或改算式需三站同步。
+   （`index.html:2111-2133`）三站亦為逐字副本，改價或改算式需三站同步。
    **另有一組「四站同步但非逐字」的 `loadSiteVer()`＋footer `#siteVer`**（`index.html:260`、
    `:3430`）：postmkt／taiwan-flow-live-v2／taiwan-flows／taiwan-stock-news 四站都有
    （入口站 shihpc.github.io 沒有），刻意不同的三處＝①各站打自己 repo 的 commits 端點
