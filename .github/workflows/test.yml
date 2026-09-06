@@ -9,12 +9,18 @@ on:
       - "tests/**"
       - "requirements.txt"
       - ".github/workflows/test.yml"
+      # tests/test_summary_call.py 與 tests/test_summary_model_field.py 會讀 index.html
+      # （SYS prompt 同步、INSIGHT_PRICES 鍵），前端改動也要跑
+      - "index.html"
   pull_request:
     paths:
       - "**.py"
       - "tests/**"
       - "requirements.txt"
       - ".github/workflows/test.yml"
+      # tests/test_summary_call.py 與 tests/test_summary_model_field.py 會讀 index.html
+      # （SYS prompt 同步、INSIGHT_PRICES 鍵），前端改動也要跑
+      - "index.html"
 
 permissions:
   contents: read
