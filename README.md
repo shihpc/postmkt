@@ -190,10 +190,12 @@
   平行抓 `latest.json` 存 `state.tf`（失敗不擋），`insightGatherContext()` 新增
   「三大法人買賣超」段（外資買超前10/賣超前6＋台指期未平倉、投信買超前10/賣超前6，
   dlabel 跨日警告自動生效）。SYS prompt 未改。退版點：git tag `pre-insight-tab`。
-- 彙總分析 tab（2026-07-12 新增，第 8 個 tab）：一鍵 6+1 呼叫（3 頁 context×每頁 2 次
-  ＋Opus 彙總，約 NT$8-10/次）。**2026-07-12 起 6 份摘要全改 Sonnet 5（每頁×2 次獨立分析、
-  標籤 Sonnet5-A/B 去重）、彙總維持 Opus 4.8，成本考量。**彙總 SYS 以「跨份共振優先」
-  （N/6 份提及）精粹 alpha、給方向預測與進出建議。單份失敗不中止（≥3 份成功才彙總）。手動近 2 次存 localStorage
+- 彙總分析 tab（2026-07-12 新增，第 8 個 tab）：一鍵 3+1 呼叫（3 頁 context×每頁 1 次
+  ＋Opus 彙總）。**摘要全走 Sonnet 5、彙總維持 Opus 4.8，成本考量**（2026-07-12 起改
+  Sonnet 5，當時為每頁×2 次共 6 份、標籤 Sonnet5-A/B 去重；2026-08-29 起減為每頁 1 次共
+  3 份，見下）。彙總 SYS 以「跨份共振優先」（N/3 份提及，`index.html` `SUM_SYS_SYNTH`）
+  精粹 alpha、給方向預測與進出建議。單份失敗不中止（≥2 份成功才彙總，
+  `build_summary.py` `MIN_OK_FOR_SYNTH=2`／`index.html` 手動場同門檻）。手動近 2 次存 localStorage
   `summary_manual`；自動場由 `build_summary.py`＋`summary.yml`（cron 06:23/22:47 台北觸發——提早＋錯開整點
   避開 GitHub cron 壅塞（UTC 00:00 整點延遲常達 2-3 小時），由資料齊全輪詢閘門等資料
   **2026-08-29 起：每頁 1 份（共 3 份、≥2 份成功才彙總、共振強度 N/3），自動場摘要與彙總改走

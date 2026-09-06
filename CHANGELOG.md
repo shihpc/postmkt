@@ -135,6 +135,29 @@ Opus 4.8 $5/$25、Sonnet 5 $2/$10。`claude-opus-4-8`（`[5,25]`）與 `USD_TWD`
 postmkt 無 RRG 後端實作（座標公式正本在 taiwan-flow-live-v2 `backtest/run_rrg_daily_axes.py`，
 該處無此清單排序），故本次為單邊改動。UI 標籤「動能領先」暫未更名。
 
+## 2026-08-29 彙總分析 6→3 份＋自動場改走 Message Batches（＋三項小改）
+
+commit `3617f69`／`ef9c2d4`／`09ac097`（摘要與彙總）、`9f49344`（no_wait）、
+`9a161ee`（頁尾版本）、`f2a7d65`（主動ETF）。
+
+| 改動 | 內容 |
+|------|------|
+| 摘要 6→3 份 | 每頁由 2 次獨立分析（Sonnet5-A/B）減為 1 次，共 3 份；`MIN_OK_FOR_SYNTH` 3→2；彙總 SYS 的共振強度口徑 N/6→**N/3**（`index.html` `SUM_SYS_SYNTH` 與 `build_summary.py SYS_SYNTH` 同步）。手動場執行鈕文案一併由「6+1 次呼叫」改「3+1 次」 |
+| 自動場改 Message Batches | `build_summary.py` 新增 `call_claude_batch`：摘要與彙總都以 batch 送出（**半價**），am 期限 25 分／pm 180 分；逾時或單筆失敗**逐筆同步回退**至 `call_claude_retry`。另加全場時間預算折算，避免撞上 `summary.yml` 的 240 分 timeout |
+| `summary.yml` 加 `no_wait` | `workflow_dispatch` 新增布林輸入 `no_wait`（→ `--no-wait`），跳過資料齊全輪詢閘門，供測試與補跑；**週末假日也會照跑**，正常排程不受影響 |
+| 頁尾顯示站台版本 | footer 加 `#siteVer`＋`loadSiteVer()`：打 `api.github.com/repos/shihpc/postmkt/commits/main` 取 main 最新 commit 短碼與時間，存 sessionStorage `pm_site_ver`；任何失敗一律靜默隱藏。四站（本站／live-v2／flows／news）同步但**非逐字**，差異見 CLAUDE.md 約定第 2 條 |
+| 主動ETF比較 4→6 | 同時勾選上限由 4 檔放寬為 6 檔 |
+
+同批曾試「產出檔加 `code_version` 版本戳」（`5be7561`）後**整條 revert**（`bd88a1f`），
+`data/summary/*.json` 無該欄——費用估算缺的 `synthesis.model` 改由 08-30 那則補齊。
+
+## 2026-08-27 摘要分析顯示本次 API 費用估算（三站）
+
+commit `691226a`（本站）／live-v2 `737d9b2`／news `04c4d78`。依回應 `usage` 與 model
+估算單次費用，新增三站逐字同步的 `insightCostText`／`INSIGHT_PRICES`／`USD_TWD`
+（**第五組三站同步函式**，見 CLAUDE.md 約定第 2 條）。當時只掛在單發摘要分析，
+其餘場次由 08-30 那則補齊。
+
 ## 2026-08-12 新增第 13 個 tab「選股」（分析師預估 EPS 篩選）
 
 動機＝富邦投顧「明年 EPS>50 找萬元股」報告的自動化重現。新管線 `src/build_screen.py` →

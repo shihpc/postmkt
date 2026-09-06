@@ -42,7 +42,11 @@
 - `index.html`：13 個 tab 全部前端（CSS/JS 內嵌）。`render()` 分派各 tab；共用表格框架 `tbl()`
   （排序/分組表頭/凍結欄/虛擬捲動，sticky 的坑記在 `<style>` 註解）。
 - `build_postmkt.py` → `data/postmkt.json`（主資料，五個盤後 tab）
-- `build_summary.py` → `data/summary/`（AI 彙總自動場；含資料齊全輪詢閘門與假日判斷）
+- `build_summary.py` → `data/summary/`（AI 彙總自動場；含資料齊全輪詢閘門與假日判斷）。
+  **2026-08-29 起：每頁 1 份共 3 份摘要（原 6 份）、`MIN_OK_FOR_SYNTH=2` 才彙總、共振強度口徑 N/3；
+  自動場摘要與彙總改走 Anthropic Message Batches（半價，am 期限 25 分／pm 180 分，逾時或單筆
+  失敗逐筆同步回退）**。`summary.yml` 另有 `workflow_dispatch` 輸入 `no_wait`（跳過資料齊全閘門，
+  測試／補跑用）
 - `src/build_diag.py` → `data/diag/diag.json`（持股診斷素材庫；cache.json 走 actions/cache 不進 git）
 - `src/build_mktbal.py` → `data/market_balance_history.json`（大盤餘額）
 - `src/build_screen.py` → `data/screen/screen.json`（選股：TradingView 初篩＋鉅亨 FactSet 預估
@@ -59,6 +63,17 @@
    在 taiwan-flow-live-v2、taiwan-stock-news 有逐字副本，改動需三站同步；`build_summary.py` 的
    `gather_*` 是 index.html gather 的 Python 移植副本。SYS prompt 唯一事實來源＝index.html
    `SUM_SYS_POSTMKT`，`build_summary.py SYS_POSTMKT` 為移植複本需逐字同步。
+   **第五組（2026-08-27 起）**：費用估算 `insightCostText`／`INSIGHT_PRICES`／`USD_TWD`
+   （`index.html:2111-2135`）三站亦為逐字副本，改價或改算式需三站同步。
+   **另有一組「四站同步但非逐字」的 `loadSiteVer()`＋footer `#siteVer`**（`index.html:260`、
+   `:3430`）：postmkt／taiwan-flow-live-v2／taiwan-flows／taiwan-stock-news 四站都有
+   （入口站 shihpc.github.io 沒有），刻意不同的三處＝①各站打自己 repo 的 commits 端點
+   ②sessionStorage key 各站獨立（`pm_site_ver`／`tf2_site_ver`／`tf_site_ver`／`news_site_ver`）
+   ③時間格式 postmkt 走 `fmtGenTaipei`、另三站內嵌 `toLocaleString("sv-SE")`。
+   改行為要四站一起改，但**不要**強求逐字。它帶來一個對外依賴
+   `api.github.com/repos/shihpc/<repo>/commits/main`（免金鑰、限 60 req/hr/IP，失敗或超限
+   一律靜默隱藏版本列）；本站 CSP 的 `connect-src` 早已含 `https://api.github.com`
+   （`index.html:10`），無須再加，其餘三站無 CSP meta。
 3. **lending 衍生欄重建公式三處一致**：postmkt.json 的 lending.rows 只存基礎量＋px，
    衍生欄由 `index.html augmentLending()` 與 `build_summary.py _augment_lending()` 重建，
    改公式要同步（有 parity 測試守著）。
