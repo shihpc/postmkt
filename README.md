@@ -148,7 +148,8 @@
 ### 持股診斷 tab（2026-07-18 兩子期上線）
 
 - **資料流**：`src/build_diag.py`（`.github/workflows/diag.yml`，平日台北 22:10、排在
-  build.yml 21:53 後）→ `data/diag/diag.json`（全市場日均成交值前 1200 檔，<2.5MB）＋
+  build.yml 21:53 後）→ `data/diag/diag.json`（全市場日均成交值前 1200 檔；2026-09-06
+  實測 746KB、gzip 約 165KB，原文件寫「<2.5MB」屬上限估計）＋
   `data/diag/cache.json`（增量快取；2026-07-24 起不進 git、改由 diag.yml 以
   actions/cache 跨 run 保存——快取被淘汰時管線自動全量重建，只是該晚 API 呼叫較多）。
   來源：FinMind 價量/法人/融資/借券/千張大戶/月營收/
@@ -170,6 +171,9 @@
   `at` 欄僅涵蓋 TWSE，列待辦；千張大戶/估值百分位靠輪替刷新，首週資料逐晚補齊；
   燈號規則未經整體回測（僅個別訊號有站內回測出處），校準後調 `DIAG_RULES` 即可；
   盤中行為（/live 降級、即時損益）未在開盤時段實測。
+- **已知限制（選股 tab）**：預估 EPS／目標價的預估日與樣本數（`est[y].date/n`、`tp.date/n`）
+  自 2026-09-06 起顯示於表內儲存格第二行（原本 screen.json 已有、表內未顯示）；
+  評等分布的來源樣本與 EPS 家數不同源，表內不互相換算。
 
 - 前端表格框架 `tbl(cols, rows, opts)`：表頭排序（`col.sortVal` 供複合欄位給原始值）、
   分組雙列表頭（`col.g`）、加總列（`opts.totals`，sticky 在表頭下）、凍結首二欄
@@ -247,7 +251,8 @@
    未設時自動場會失敗、前端顯示「尚無自動產出」，手動一鍵不受影響。
    費用參考：自動雙場 × 約 22 交易日 ≈ NT$350-450/月（摘要用 Sonnet 5、彙總用 Opus 4.8；
    Sonnet 5 介紹價 input $2/output $10 per MTok 至 2026-08-31，之後恢復 $3/$15、月費略升），
-   計入該 key 的 Anthropic 帳戶。
+   計入該 key 的 Anthropic 帳戶。**此數字為介紹價時期估算**，未反映 2026-08-29 起自動場
+   摘要與彙總改走 Message Batches（半價）及每頁 1 份摘要（原 6 份）的變動，待實際用量重估。
 2. **GitHub Pages**：Settings → Pages → Source 選 `Deploy from a branch`，
    Branch 選 `main` / `(root)` → Save。
 3. （可選）Actions tab 手動跑一次 `build postmkt data` 產生第一份資料。
