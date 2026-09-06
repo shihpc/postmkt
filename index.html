@@ -33,6 +33,12 @@
     font-size:.86rem;color:var(--muted);cursor:pointer;user-select:none;transition:.15s;white-space:nowrap}
   .tab:hover{border-color:#33507e}
   .tab.active{color:var(--txt);border-color:var(--accent);background:var(--card-hover);font-weight:650}
+  /* 頂列：資料日｜本站更新｜狀態（四子站統一標示；判準見 pmStatus() 註解） */
+  .topbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin:10px 0 0;padding:6px 11px;
+    background:var(--card);border:1px solid var(--line);border-radius:11px;font-size:.78rem;color:var(--muted)}
+  .topbar b{color:var(--txt);font-weight:650}
+  .topbar .tb-sep{color:var(--line);margin:0 2px}
+  .topbar .tb-ok{color:#2fbf71}.topbar .tb-lag{color:#e0b341}.topbar .tb-mut{color:var(--muted)}
   .stats{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
   .stat{background:var(--card);border:1px solid var(--line);border-radius:11px;
     padding:6px 11px;font-size:.76rem;color:var(--muted)}
@@ -258,6 +264,7 @@
       margin:10px 0 8px;padding-bottom:4px}
     .tab{flex:0 0 auto;padding:6px 10px;font-size:.8rem}
     .stat{font-size:.7rem;padding:5px 8px}
+    .topbar{font-size:.72rem;padding:5px 8px}
     .mcard{padding:10px 12px;font-size:.84rem;line-height:1.6}
     .insight-card{padding:12px;font-size:.86rem}
     .msection{font-size:.92rem;margin:14px 2px 6px}
@@ -277,6 +284,8 @@
     <h1>📊 盤後分析</h1>
     <div class="sub" id="pageSub"></div>
   </header>
+  <!-- 頂列（2026-09-06 批次二 #5）：資料日｜本站更新｜狀態，由 renderTopbar() 填；懶載前顯「載入中」 -->
+  <div class="topbar" id="topbar">資料日 <b>—</b><span class="tb-sep">｜</span>本站更新 <b>—</b><span class="tb-sep">｜</span>狀態 <b class="tb-mut">載入中</b></div>
 
   <div class="tabs" id="tabs"></div>
   <div class="stats" id="stats"></div>
@@ -1248,6 +1257,7 @@ function renderStats(){
 function render(){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===state.tab));
   document.getElementById("pageSub").textContent = SUBS[state.tab] || "";
+  renderTopbar();
   renderStats();
   if (state.tab === "dates") renderDates();
   else if (state.tab === "aetf"){ ensureAetf(); renderAETF(); }
@@ -3449,7 +3459,7 @@ function ensurePm(){
   if (!PM_P) PM_P = loadJSON("data/postmkt.json")
     .then(j=>{ state.pm = j; augmentLending(state.pm); buildBkNm(); })
     .catch(e=>{ state.pmErr = e; })
-    .finally(()=>{ PM_P = null; render(); });
+    .finally(()=>{ PM_P = null; renderTopbar(); render(); });
   return PM_P;
 }
 function ensureAetf(){
@@ -3490,12 +3500,51 @@ function ensurePmHead(){
     if (!str("date")) throw new Error("檔頭無 date");
     state.pmHead = { date:str("date"), generated_at:str("generated_at"), date_mismatch:dm, head:true };
   })().catch(e=>{ state.pmHeadErr = e; })
-    .finally(()=>{ PMH_P = null; if (state.tab === "insight") render(); });
+    .finally(()=>{ PMH_P = null; renderTopbar(); if (state.tab === "insight") render(); });
   return PMH_P;
 }
 // 頂層資料日／產出時間的來源：全檔優先、其次檔頭速讀；兩者皆無回 null
 const pmMeta = () => state.pm || state.pmHead || null;
-function load(){ renderTabs(); render(); }
+// ---------- 頂列：資料日｜本站更新｜狀態 ----------
+// 欄位語意依 docs/date-semantics.md §4：date＝盤後主資料交易日（台北）、generated_at＝產出時刻（台北 +08:00，
+// 顯示走 fmtGenTaipei）。狀態判準（台北時區；交易日只排週末、國定假日不扣，與日期 tab dayDiff 同口徑，
+// 平日國定假日 22:30 後會誤判「延遲」一次，屬已知近似）：
+//   正常＝資料日為今日；或資料日為上一交易日且尚未過 22:30（盤後 build 21:53 起跑、含延遲約 22:10 完成）
+//   休市定格＝週末且資料日為上一交易日（週五）——非延遲，資料本來就停在那
+//   延遲＝平日 22:30 後資料日仍非今日；或資料日落後超過一個交易日；或週末資料日早於週五
+//   查詢失敗（未知）＝檔頭速讀與全檔皆載入失敗（不知道資料好壞，不是資料異常）
+//   載入中＝尚未載入（懶載：insight 檔頭 4KB 到達前、或 summary tab 尚未觸發任何載入）
+// nowStr 可注入（測試用），格式同 twNow()＝"YYYY-MM-DD HH:MM:SS" 台北。
+function pmStatus(meta, err, nowStr){
+  if (!meta) return err ? { txt:"查詢失敗（未知）", cls:"tb-mut", title:"postmkt.json 載入失敗，無法判斷資料狀態" }
+                        : { txt:"載入中", cls:"tb-mut", title:"" };
+  const date = dateNorm(meta.date);
+  if (!date) return { txt:"查詢失敗（未知）", cls:"tb-mut", title:"postmkt.json 無有效 date" };
+  const now = nowStr || twNow();
+  const today = now.slice(0, 10), hm = now.slice(11, 16);
+  const dow = new Date(today + "T00:00:00Z").getUTCDay();
+  const back = n => new Date(Date.parse(today + "T00:00:00Z") - n * 864e5).toISOString().slice(0, 10);
+  const prevTd = dow === 1 ? back(3) : dow === 0 ? back(2) : back(1);  // 上一交易日（僅排週末）
+  if (dow === 0 || dow === 6){
+    return date === prevTd ? { txt:"休市定格", cls:"tb-mut", title:`週末休市，資料停在上一交易日 ${prevTd}` }
+                           : { txt:"延遲", cls:"tb-lag", title:`資料日 ${date} 早於上一交易日 ${prevTd}` };
+  }
+  if (date === today) return { txt:"正常", cls:"tb-ok", title:`資料日即今日 ${today}` };
+  if (date === prevTd && hm < "22:30")
+    return { txt:"正常", cls:"tb-ok", title:`今日盤後資料約 22:30 前後更新，目前為上一交易日 ${prevTd}` };
+  return { txt:"延遲", cls:"tb-lag", title:`資料日 ${date} 非今日 ${today}${hm >= "22:30" ? "，已過 22:30 更新時窗" : ""}` };
+}
+function renderTopbar(){
+  const el = document.getElementById("topbar"); if (!el) return;
+  const m = pmMeta();
+  const st = pmStatus(m, !!(state.pmErr || state.pmHeadErr));
+  const date = m && m.date ? esc(m.date) : "—";
+  const gen = m && m.generated_at ? esc(fmtGenTaipei(m.generated_at)) : "—";
+  el.innerHTML = `資料日 <b>${date}</b><span class="tb-sep">｜</span>本站更新 <b>${gen}</b>`
+    + `<span class="tb-sep">｜</span>狀態 <b class="${st.cls}" title="${esc(st.title || "")}">${esc(st.txt)}</b>`;
+}
+// 頂列「資料日｜本站更新｜狀態」不分 tab 都要填：首屏一律先讀檔頭 4KB（與各 tab 的 ensurePm 並行、全檔到後以 state.pm 為準）
+function load(){ renderTabs(); render(); ensurePmHead(); }
 // 懶載（不在 load() 首屏抓）：diag.json(~2.5MB) 與 market_balance_history.json 只有
 // 該 tab 用到，切入時才抓，首屏傳輸量約砍半；render() 分派時觸發，重入以 *Loading 防抖
 function ensureDiag(){

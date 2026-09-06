@@ -180,6 +180,11 @@
   `cache-control: max-age=600`，CDN 端最多可能殘留 10 分鐘舊版——**資料更新→使用者可見的實際
   延遲尚待線上實測**（本機 `python -m http.server` 只能驗 304 路徑）。`data/analyses/`
   的雲端歷史讀回（`cloudLoadHist`）是寫入後立即重讀的路徑，刻意保留 `?t=`。
+- **首屏懶載與頂列（2026-09-06 批次二）**：`load()` 不再首屏抓 postmkt.json（1.6MB）／aetf／
+  taiwan-flows latest.json，改 `ensurePm()`／`ensureAetf()`／`ensureTf()` 於需要的 tab 或一鍵流程
+  才載；預設 tab「摘要分析」與頂列「資料日｜本站更新｜狀態」只靠 `ensurePmHead()` 讀檔頭 4KB
+  （`Range: bytes=0-4095`，GitHub Pages 回 206）。狀態四值判準見 `docs/date-semantics.md` §4
+  與 `index.html` `pmStatus()`（平日國定假日 22:30 後會誤判「延遲」一次，屬已知近似）。
 
 - 前端表格框架 `tbl(cols, rows, opts)`：表頭排序（`col.sortVal` 供複合欄位給原始值）、
   分組雙列表頭（`col.g`）、加總列（`opts.totals`，sticky 在表頭下）、凍結首二欄
