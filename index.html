@@ -292,7 +292,7 @@ const TF_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flows/main/data
 const INSIGHT_BROKERS = ["9268","9800","9600","9A00"];
 const INSIGHT_MODELS = [["claude-opus-4-8","Opus 4.8（最佳判讀，約NT$3/次）"],["claude-sonnet-5","Sonnet 5（近Opus、約半價更快）"]];
 const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQuery:"",
-  oddSub:"intraday", bkSub:"branch", bkListQuery:"", aetf:null, pm:null, pmErr:null, tf:null,
+  oddSub:"intraday", bkSub:"branch", bkListQuery:"", aetf:null, pm:null, pmErr:null, tf:null, tfErr:null,
   insight:null, insightLoading:false, insightErr:null, insightAbort:null,
   insightModel: localStorage.getItem("insight_model") || "claude-opus-4-8",
   summary:null, summaryLoading:false, summaryErr:null, summaryProg:"", summaryAbort:null,
@@ -1204,7 +1204,7 @@ function renderStats(){
   } else if (state.tab === "dates"){
     el.innerHTML = "";  // 本 tab 本身就是各源日期總覽，不重複顯示單一資料日
   } else {
-    const d = state.pm;
+    const d = pmMeta();  // insight 首屏只有檔頭速讀（date/generated_at/date_mismatch 齊全）
     if (!d){ el.innerHTML = ""; return; }
     // 借券tab日期落後徽章（P5）：postmkt.json date_mismatch 非空時顯示，title 列出落後段落與其資料日
     const dm = d.date_mismatch || [];
@@ -1221,11 +1221,17 @@ function render(){
   document.getElementById("pageSub").textContent = SUBS[state.tab] || "";
   renderStats();
   if (state.tab === "dates") renderDates();
-  else if (state.tab === "aetf") renderAETF();
+  else if (state.tab === "aetf"){ ensureAetf(); renderAETF(); }
   else if (state.tab === "mktbal"){ ensureMktbal(); renderMktbal(); }
   else if (state.tab === "rrgd"){ ensureChainDaily(); renderRrgd(); }
   else if (state.tab === "screen"){ ensureScreen(); renderScreen(); }
-  else { if (state.tab === "diag") ensureDiag(); renderPM(); }
+  // insight 的標題資料日與五個盤後 tab 都吃 state.pm；summary／diag 不需要（各自的一鍵流程再 await ensure*）
+  else {
+    if (state.tab === "diag") ensureDiag();
+    else if (state.tab === "insight") ensurePmHead();  // 只要資料日：檔頭速讀 4KB，不抓全檔
+    else if (state.tab !== "summary") ensurePm();
+    renderPM();
+  }
 }
 function renderTabs(){
   document.getElementById("tabs").innerHTML = TABS.map(([k,label])=>
@@ -1282,7 +1288,7 @@ async function fetchDates(){
     { name:"自動彙總（近一筆）", kind:"tw", url:"data/summary/index.json", pick:j=>{ const r=(j.runs||[])[0]||{}; return { date:r.date, gen:r.generated_at }; } },
   ];
   const results = await Promise.allSettled(srcs.map(async s => {
-    if (s.local){ const v = s.local(); if (!v) throw new Error("本站資料未載入"); return v; }
+    if (s.local){ await ensurePm(); const v = s.local(); if (!v) throw new Error("本站資料未載入"); return v; }
     let v;
     try { v = s.pick(await loadJSON(s.url)); }
     catch(e){ if (s.fb) v = s.pick(await loadJSON(s.fb)); else throw e; }
@@ -2164,6 +2170,7 @@ async function runInsight(){
   state.insightLoading = true; state.insightErr = null;
   state.insightAbort = new AbortController(); render();
   try{
+    await Promise.all([ensurePm(), ensureAetf(), ensureTf()]);  // 懶載後，gather 前先確保三份資料都試過載入
     const g = insightGatherContext();
     if (!g.text.trim()) throw new Error("本頁資料尚未載入完成，請稍候再試");
     const bk = await insightFetchBrokers(g.primary);
@@ -2182,7 +2189,8 @@ async function runInsight(){
   state.insightLoading = false; render();
 }
 function insightHtml(){
-  let h = sec("摘要分析", (state.pm && state.pm.date) ? esc(state.pm.date) : "");
+  const pmd = (pmMeta()||{}).date;
+  let h = sec("摘要分析", pmd ? esc(pmd) : ((state.pmErr || state.pmHeadErr) ? "" : "資料日載入中…"));
   // token 輸入區
   if (!anthKey()){
     h += `<div class="mcard" style="font-size:.84rem">此功能會用你自己的 Anthropic API token 即時呼叫 Claude 產生分析。`
@@ -2295,6 +2303,8 @@ const SUM_SYS_SYNTH = "你是台股首席策略師。以下是同一天由三個
 // 「產生彙總分析」（早於 load() 完成，或該次 fetch 失敗未重試），這三個 state 會是 null，
 // insightGatherContext() 拿到空物件、g.text 變空字串，導致本頁兩份摘要必定同時失敗。
 // 在這裡補一次「缺就補抓」，與 load() 用同樣的來源，已有資料則不重抓。
+// 2026-09-06 起 load() 不再首屏抓這三份（改 ensurePm/ensureAetf/ensureTf 懶載），runSummary 呼叫本函式前
+// 已 await 三支 ensure*()，下面的補抓分支常態不會觸發、僅作保險；函式本體屬三站同步碼，維持不動。
 async function sumCtxPostmkt(){
   try{
     if (!state.pm){ try{ state.pm = await loadJSON("data/postmkt.json?t="+Date.now()); augmentLending(state.pm); buildBkNm(); }catch(e){} }
@@ -2507,6 +2517,7 @@ async function runSummary(){
   state.summaryProg = "準備中：並行抓取三頁資料…"; render();
   try{
     const key = anthKey();
+    await Promise.all([ensurePm(), ensureAetf(), ensureTf()]);  // 懶載後先確保本頁三份資料試過載入（sumCtxPostmkt 本體不動）
     const [gPost, gLive, gNews] = await Promise.all([sumCtxPostmkt(), sumGatherLive(), sumGatherNews()]);
     const pages = [
       { page:"盤後分析", g:gPost, sys:SUM_SYS_POSTMKT, user:sumUserPostmkt },
@@ -3391,26 +3402,64 @@ async function loadJSON(url, opts){
   if (!r.ok) throw new Error("HTTP "+r.status);
   return r.json();
 }
-async function load(){
-  renderTabs(); render();
-  const pAetf = (async ()=>{
-    const o = {latest:null, diff:null};
+// 首屏懶載（2026-09-06 批次二）：預設 tab insight 只用 state.pm.date，所以 postmkt.json（>1.6MB）、
+// 主動ETF 兩檔（aetf latest/diff）與三大法人 latest.json（taiwan-flows）不再由 load() 首屏全抓，
+// 改為需要的 tab／功能才載（比照下方 ensureDiag 等）。三支 ensure*() 都回 Promise：已載或已失敗
+// ＝立即 resolve、載入中共享同一份 in-flight 不重抓；render() 分派時觸發（不 await），
+// runInsight()/runSummary() 在 gather 前 await（sumCtx* 函式本體三站同步、不動，只在呼叫前確保資料在）。
+let PM_P = null, AETF_P = null, TF_P = null;
+function ensurePm(){
+  if (state.pm || state.pmErr) return Promise.resolve();
+  if (!PM_P) PM_P = loadJSON("data/postmkt.json")
+    .then(j=>{ state.pm = j; augmentLending(state.pm); buildBkNm(); })
+    .catch(e=>{ state.pmErr = e; })
+    .finally(()=>{ PM_P = null; render(); });
+  return PM_P;
+}
+function ensureAetf(){
+  if (state.aetf) return Promise.resolve();
+  if (!AETF_P) AETF_P = (async ()=>{
+    const o = {latest:null, diff:null};  // 兩檔各自失敗留 null，renderAETF 依 latest 缺席顯示失敗文案
     try{ o.latest = await loadJSON(V2_BASE+"/latest.json"); }catch(e){}
     try{ o.diff = await loadJSON(V2_BASE+"/diff.json"); }catch(e){}
     state.aetf = o;
-  })();
-  const pPm = (async ()=>{
-    try{ state.pm = await loadJSON("data/postmkt.json"); augmentLending(state.pm); buildBkNm(); }
-    catch(e){ state.pmErr = e; }
-  })();
-  // 三大法人買賣超（taiwan-flows 跨repo）：失敗不影響其他資料，state.tf 維持 null
-  const pTf = (async ()=>{
-    try{ state.tf = await loadJSON(TF_BASE+"/latest.json"); }catch(e){}
-  })();
-  pAetf.then(render); pPm.then(render); pTf.then(render);
-  await Promise.all([pAetf, pPm, pTf]);
-  render();
+  })().finally(()=>{ AETF_P = null; render(); });
+  return AETF_P;
 }
+// 三大法人買賣超（taiwan-flows 跨repo）：只有摘要／彙總 gather 用到；失敗記 tfErr 不重試，state.tf 維持 null
+function ensureTf(){
+  if (state.tf || state.tfErr) return Promise.resolve();
+  if (!TF_P) TF_P = loadJSON(TF_BASE+"/latest.json")
+    .then(j=>{ state.tf = j; }).catch(e=>{ state.tfErr = e; })
+    .finally(()=>{ TF_P = null; });
+  return TF_P;
+}
+// 檔頭速讀（首屏用）：只抓 postmkt.json 前 4KB（Range；GitHub Pages 實測回 206、content-length 4096），
+// regex 撈頂層 date／generated_at／date_mismatch（檔案前三個 key），供 insight 標題與頂列在未載全檔前顯示，
+// 與 Worker /status 對 postmkt 的判讀同法。不支援 Range 的伺服器（本機 http.server）會回 200 全檔——
+// 讀到第一塊就 cancel 串流、只解析已到的字串，不會整檔進記憶體。全檔 ensurePm() 完成後以 state.pm 為準。
+let PMH_P = null;
+function ensurePmHead(){
+  if (state.pm || state.pmHead || state.pmHeadErr) return Promise.resolve();
+  if (!PMH_P) PMH_P = (async ()=>{
+    const r = await fetch("data/postmkt.json", { headers:{ Range:"bytes=0-4095" }, cache:"no-cache" });
+    if (!r.ok) throw new Error("HTTP "+r.status);
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    while (buf.length < 4096){ const {value, done} = await reader.read(); if (done) break; buf += dec.decode(value, {stream:true}); }
+    reader.cancel().catch(()=>{});
+    const str = k => (buf.match(new RegExp(`"${k}":"([^"]*)"`)) || [])[1] || null;
+    const mm = buf.match(/"date_mismatch":(\[[^\]]*\])/);
+    let dm = []; try{ dm = mm ? JSON.parse(mm[1]) : []; }catch(e){ dm = []; }
+    if (!str("date")) throw new Error("檔頭無 date");
+    state.pmHead = { date:str("date"), generated_at:str("generated_at"), date_mismatch:dm, head:true };
+  })().catch(e=>{ state.pmHeadErr = e; })
+    .finally(()=>{ PMH_P = null; if (state.tab === "insight") render(); });
+  return PMH_P;
+}
+// 頂層資料日／產出時間的來源：全檔優先、其次檔頭速讀；兩者皆無回 null
+const pmMeta = () => state.pm || state.pmHead || null;
+function load(){ renderTabs(); render(); }
 // 懶載（不在 load() 首屏抓）：diag.json(~2.5MB) 與 market_balance_history.json 只有
 // 該 tab 用到，切入時才抓，首屏傳輸量約砍半；render() 分派時觸發，重入以 *Loading 防抖
 function ensureDiag(){
