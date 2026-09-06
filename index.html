@@ -2787,6 +2787,18 @@ const scrFilterEps = (r, y1) => {
 const scrPer = (px, eps) => (scrNum(px) != null && scrNum(eps) != null && eps > 0) ? px / eps : null;
 const scrF1 = v => scrNum(v) == null ? '<span class="mut">—</span>' : v.toFixed(1);
 const scrF2 = v => scrNum(v) == null ? '<span class="mut">—</span>' : v.toFixed(2);
+// 預估日／樣本數副標：est[y] 與 tp 各自帶 date（YYYY-MM-DD）與 n，以第二行小字
+// （沿用 .nm 樣式）顯示「MM-DD·n15」、title 給全文。副標只進 f() 渲染字串，
+// 帶副標的欄位一律另給 sortVal 回傳原始數值，排序不從渲染文字反推。
+const scrSub = e => {
+  if (!e || typeof e !== "object") return "";
+  const m = String(e.date || "").match(/^\d{4}-(\d{2}-\d{2})$/);
+  const n = scrNum(e.n);
+  const parts = [], full = [];
+  if (m){ parts.push(m[1]); full.push("預估日 " + e.date); }
+  if (n != null){ parts.push("n" + n); full.push("樣本 " + n + " 家"); }
+  return parts.length ? `<span class="nm" title="${esc(full.join("，"))}">${esc(parts.join("·"))}</span>` : "";
+};
 // rating 鍵名可能與 schema 例略異 → 動態列舉分三桶：sell/under→賣、hold/neutral→持、
 // buy/over/outperform→買（underweight 不含 "over"，先驗 sell/under 不會誤入買桶）
 function scrRating(r){
@@ -2835,23 +2847,26 @@ function renderScreen(){
     {h:"代號", cls:"l", f:r => yahoo(r.code || ""), sortVal:r => String(r.code || "")},
     {h:"名稱", cls:"l", f:r => esc(r.name || "—")},
     {h:"現價", f:r => scrF2(scrNum(r.px))},
-    {h:(fy(y0) || "今年") + " EPS", f:r => scrF2(scrEstMean(r, y0))},
-    {h:(fy(y1) || "明年") + " EPS", f:r => scrF2(scrEstMean(r, y1))},
+    {h:(fy(y0) || "今年") + " EPS", f:r => scrF2(scrEstMean(r, y0)) + scrSub(scrEstY(r, y0)), sortVal:r => scrEstMean(r, y0)},
+    {h:(fy(y1) || "明年") + " EPS", f:r => scrF2(scrEstMean(r, y1)) + scrSub(scrEstY(r, y1)), sortVal:r => scrEstMean(r, y1)},
     {h:(fy(y0) || "今年") + " PER", f:r => scrF1(scrPer(r.px, scrEstMean(r, y0)))},
     {h:(fy(y1) || "明年") + " PER", f:r => scrF1(scrPer(r.px, scrEstMean(r, y1)))},
-    {h:"分析師數", f:r => { const e = scrEstY(r, y1); const n = e ? scrNum(e.n) : null; return n == null ? '<span class="mut">—</span>' : String(n); }},
-    {h:"目標價中位", f:r => scrF2(r.tp ? scrNum(r.tp.median) : null)},
+    {h:"EPS預估家數(明年)", f:r => { const e = scrEstY(r, y1); const n = e ? scrNum(e.n) : null; return n == null ? '<span class="mut">—</span>' : String(n); },
+      sortVal:r => { const e = scrEstY(r, y1); return e ? scrNum(e.n) : null; }},
+    {h:"目標價中位", f:r => scrF2(r.tp ? scrNum(r.tp.median) : null) + scrSub(r.tp), sortVal:r => r.tp ? scrNum(r.tp.median) : null},
     {h:"潛在漲幅%", f:r => { const u = upside(r); return u == null ? '<span class="mut">—</span>' : sgn(u, (u > 0 ? "+" : "") + u.toFixed(1) + "%"); }},
     {h:"營收YoY%", f:r => scrF1(r.diag ? scrNum(r.diag.yoy) : null)},
     {h:"連N月", f:r => { const v = r.diag ? scrNum(r.diag.rvs) : null; return v == null ? '<span class="mut">—</span>' : String(v); }},
     {h:"PER-TTM", f:r => scrF1(r.diag ? scrNum(r.diag.pe) : null)},
-    {h:"評等", f:r => { const rt = scrRating(r); return rt ? esc(`買${rt.b}/持${rt.h}/賣${rt.s}`) : '<span class="mut">—</span>'; },
+    {h:`評等<span class="mut" title="評等來源樣本與 EPS 家數不同">ⓘ</span>`, f:r => { const rt = scrRating(r); return rt ? esc(`買${rt.b}/持${rt.h}/賣${rt.s}`) : '<span class="mut">—</span>'; },
       sortVal:r => { const rt = scrRating(r); return rt ? rt.b : null; }},
   ];
   main.innerHTML = disc + pills
     + tbl(cols, rows)
     + `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px">今明年＝以資料日期年份錨定的日曆年（該列無該年度預估顯「—」）；EPS＝各券商預估平均（mean）；`
     + `PER＝現價÷預估 EPS（EPS≤0 不計）；潛在漲幅＝目標價中位÷現價−1；`
+    + `EPS／目標價儲存格第二行小字＝該筆預估的更新日（MM-DD）與樣本家數（n），各年度／目標價各自獨立；`
+    + `EPS預估家數(明年)＝明年度預估的樣本數；評等分布的來源樣本與 EPS 家數不同源，不可互相換算；`
     + `營收YoY／連N月／PER-TTM 取自持股診斷素材庫口徑。點欄位表頭可排序。</div>`;
 }
 
