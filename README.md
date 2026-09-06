@@ -174,6 +174,12 @@
 - **已知限制（選股 tab）**：預估 EPS／目標價的預估日與樣本數（`est[y].date/n`、`tp.date/n`）
   自 2026-09-06 起顯示於表內儲存格第二行（原本 screen.json 已有、表內未顯示）；
   評等分布的來源樣本與 EPS 家數不同源，表內不互相換算。
+- **已知限制（前端快取，2026-09-06 批次二）**：`loadJSON()` 不再對每個 URL 掛 `?t=Date.now()`
+  繞過快取，改以 `fetch(url,{cache:"no-cache"})` 每次做條件請求（內容未變回 304 只傳 header；
+  `index.html` 的 `FETCH_MODE` 改回 `"buster"` 即恢復舊行為）。代價：GitHub Pages 回
+  `cache-control: max-age=600`，CDN 端最多可能殘留 10 分鐘舊版——**資料更新→使用者可見的實際
+  延遲尚待線上實測**（本機 `python -m http.server` 只能驗 304 路徑）。`data/analyses/`
+  的雲端歷史讀回（`cloudLoadHist`）是寫入後立即重讀的路徑，刻意保留 `?t=`。
 
 - 前端表格框架 `tbl(cols, rows, opts)`：表頭排序（`col.sortVal` 供複合欄位給原始值）、
   分組雙列表頭（`col.g`）、加總列（`opts.totals`，sticky 在表頭下）、凍結首二欄

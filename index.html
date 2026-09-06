@@ -1268,7 +1268,6 @@ function dateStatus(dateStr, baseline, kind, err){
 // 併發抓所有資料源的日期，單一源失敗只標該列「讀取失敗」不中斷其他（Promise.allSettled）
 async function fetchDates(){
   state.datesLoading = true;
-  const t = Date.now();
   const V2 = SUM_V2_RAW; // taiwan-flow-live-v2 的 data/ 根
   const srcs = [
     { name:"盤後分析（本站）", kind:"tw", base:true, local:()=> state.pm ? { date:state.pm.date, gen:state.pm.generated_at } : null },
@@ -1285,9 +1284,9 @@ async function fetchDates(){
   const results = await Promise.allSettled(srcs.map(async s => {
     if (s.local){ const v = s.local(); if (!v) throw new Error("本站資料未載入"); return v; }
     let v;
-    try { v = s.pick(await loadJSON(s.url+"?t="+t)); }
-    catch(e){ if (s.fb) v = s.pick(await loadJSON(s.fb+"?t="+t)); else throw e; }
-    if (s.aux && s.auxPick){ try { v = s.auxPick(v, await loadJSON(s.aux+"?t="+t)); } catch(e){ /* aux 失敗不影響主資料 */ } }
+    try { v = s.pick(await loadJSON(s.url)); }
+    catch(e){ if (s.fb) v = s.pick(await loadJSON(s.fb)); else throw e; }
+    if (s.aux && s.auxPick){ try { v = s.auxPick(v, await loadJSON(s.aux)); } catch(e){ /* aux 失敗不影響主資料 */ } }
     return v;
   }));
   const rows = srcs.map((s,i) => {
@@ -2470,10 +2469,9 @@ function sumCtxNews(newsData, morning, us){
 }
 // 跨站資料 fetch（一鍵時才抓，不常駐）。單一來源失敗→該頁標 err 但不中止全場。
 async function sumGatherLive(){
-  const t = Date.now();
   const [liveR, clR] = await Promise.allSettled([
-    loadJSON(SUM_V2_LIVE+"?t="+t),
-    loadJSON(SUM_V2_RAW+"/classify.json?t="+t)
+    loadJSON(SUM_V2_LIVE),
+    loadJSON(SUM_V2_RAW+"/classify.json")
   ]);
   if (liveR.status !== "fulfilled")
     return { text:"", primary:"", dates:{}, err:"即時資料抓取失敗："+String((liveR.reason&&liveR.reason.message)||liveR.reason) };
@@ -2483,11 +2481,10 @@ async function sumGatherLive(){
   return g.text.trim() ? g : Object.assign(g, { err:"即時資料為空" });
 }
 async function sumGatherNews(){
-  const t = Date.now();
   const [nR, mR, uR] = await Promise.allSettled([
-    loadJSON(SUM_NEWS_URL+"?t="+t),
-    loadJSON(SUM_V2_RAW+"/morning.json?t="+t),
-    loadJSON(SUM_V2_RAW+"/us.json?t="+t)
+    loadJSON(SUM_NEWS_URL),
+    loadJSON(SUM_V2_RAW+"/morning.json"),
+    loadJSON(SUM_V2_RAW+"/us.json")
   ]);
   if (nR.status !== "fulfilled")
     return { text:"", primary:"", dates:{}, err:"新聞資料抓取失敗："+String((nR.reason&&nR.reason.message)||nR.reason) };
@@ -2605,7 +2602,7 @@ let SUM_AUTO_FETCHING = false;
 const SUM_AUTO_CACHE = {};
 function sumLoadAutoIdx(){
   if (SUM_AUTO_FETCHING) return; SUM_AUTO_FETCHING = true;
-  loadJSON("data/summary/index.json?t="+Date.now())
+  loadJSON("data/summary/index.json")
     .then(j=>{ state.sumAutoIdx = j || {}; })
     .catch(e=>{ state.sumAutoIdx = { err:String(e.message||e) }; })
     .then(()=>{ if (state.tab==="summary") render(); });
@@ -2699,6 +2696,9 @@ function cloudLoadHist(){
   CLOUD_HIST = "loading";
   const files = [];
   for (const d of twDayList(3)) for (const [k,label] of CLOUD_KINDS) files.push({ file:`${k}-${d}.json`, kind:k, label, day:d });
+  // 保留 ?t= buster（2026-09-06 快取改制的例外）：這是 ghSaveAnalysis 寫入後的讀回路徑，
+  // 使用者按鈕觸發、寫入後緊接著重讀，靠每次不同 URL 確保不吃到瀏覽器已快取的舊清單
+  // （raw CDN 本身另有約 5 分快取，非本站可控）。其餘 data/*.json 走 loadJSON 的 FETCH_MODE。
   Promise.all(files.map(f => fetch(CLOUD_RAW + f.file + "?t=" + Date.now())
       .then(r => r.ok ? r.json() : null).catch(() => null)))
     .then(res => {
@@ -2752,7 +2752,7 @@ document.addEventListener("click", e => {
     state.sumAutoOpen = f;
     if (!SUM_AUTO_CACHE[f]){
       SUM_AUTO_CACHE[f] = "loading";
-      loadJSON("data/summary/"+f+"?t="+Date.now())
+      loadJSON("data/summary/"+f+"")
         .then(j=>{ SUM_AUTO_CACHE[f] = j || { err:"空檔案" }; })
         .catch(err=>{ SUM_AUTO_CACHE[f] = { err:String(err.message||err) }; })
         .then(()=>{ if (state.tab==="summary") render(); });
@@ -2887,10 +2887,9 @@ function diagSaveHoldings(hs){ localStorage.setItem(HOLD_KEY, JSON.stringify(hs)
 // 即時現價（v2 /live，全市場快照）：失敗降級 raw live.json，再失敗只顯示前收
 async function fetchDiagLive(){
   state.diagLive = "loading";
-  const t = Date.now();
-  try{ state.diagLive = await loadJSON(SUM_V2_LIVE+"?t="+t); }
+  try{ state.diagLive = await loadJSON(SUM_V2_LIVE); }
   catch(e){
-    try{ state.diagLive = await loadJSON(SUM_V2_RAW+"/live.json?t="+t); }
+    try{ state.diagLive = await loadJSON(SUM_V2_RAW+"/live.json"); }
     catch(e2){ state.diagLive = { err:1 }; }
   }
   if (state.tab === "diag" || state.tab === "aetf") render();  // aetf 比較區塊的漲跌% 也吃這份
@@ -2912,7 +2911,7 @@ function diagPrice(c){
 // 前端本機按持股代號過濾近 3 個交易日的命中新聞
 async function fetchDiagNews(){
   state.diagNews = "loading";
-  try{ state.diagNews = await loadJSON(SUM_NEWS_URL+"?t="+Date.now()); }
+  try{ state.diagNews = await loadJSON(SUM_NEWS_URL+""); }
   catch(e){ state.diagNews = { err:1 }; }
   if (state.tab === "diag") render();
 }
@@ -3376,27 +3375,37 @@ document.addEventListener("change", e => {
   diagSaveHoldings(hs); render();
 });
 
-async function loadJSON(url){
-  const r = await fetch(url);
+// ---------- JSON 載入（快取策略，2026-09-06 批次二） ----------
+// 舊行為＝每個 URL 掛 ?t=Date.now() 逐次繞過快取，每次都是全新 200 傳輸（postmkt.json 逾 1.6MB）。
+// 現行 FETCH_MODE="no-cache"：不掛 buster、以 fetch cache:"no-cache" 每次向來源做條件請求
+// （If-None-Match／If-Modified-Since），內容未變回 304、只傳 header；本站 data/*.json 每交易日
+// 3 次 build 原址覆寫與跨 repo raw 檔都適用。已知副作用：GitHub Pages CDN 端可能殘留最多
+// max-age=600 的舊版（README「已知限制」），更新→可見延遲待實測。
+// 回退：改成 "buster" 即完全恢復舊行為（所有 loadJSON 呼叫自動掛 ?t=）。
+// 個別呼叫可用 loadJSON(url, {buster:true}) 強制掛 buster（例：寫入後要立即讀回的路徑）。
+const FETCH_MODE = "no-cache";
+async function loadJSON(url, opts){
+  const buster = FETCH_MODE === "buster" || !!(opts && opts.buster);
+  const u = buster ? url + (url.includes("?") ? "&" : "?") + "t=" + Date.now() : url;
+  const r = await fetch(u, buster ? {} : { cache:"no-cache" });
   if (!r.ok) throw new Error("HTTP "+r.status);
   return r.json();
 }
 async function load(){
   renderTabs(); render();
-  const t = Date.now();
   const pAetf = (async ()=>{
     const o = {latest:null, diff:null};
-    try{ o.latest = await loadJSON(V2_BASE+"/latest.json?t="+t); }catch(e){}
-    try{ o.diff = await loadJSON(V2_BASE+"/diff.json?t="+t); }catch(e){}
+    try{ o.latest = await loadJSON(V2_BASE+"/latest.json"); }catch(e){}
+    try{ o.diff = await loadJSON(V2_BASE+"/diff.json"); }catch(e){}
     state.aetf = o;
   })();
   const pPm = (async ()=>{
-    try{ state.pm = await loadJSON("data/postmkt.json?t="+t); augmentLending(state.pm); buildBkNm(); }
+    try{ state.pm = await loadJSON("data/postmkt.json"); augmentLending(state.pm); buildBkNm(); }
     catch(e){ state.pmErr = e; }
   })();
   // 三大法人買賣超（taiwan-flows 跨repo）：失敗不影響其他資料，state.tf 維持 null
   const pTf = (async ()=>{
-    try{ state.tf = await loadJSON(TF_BASE+"/latest.json?t="+t); }catch(e){}
+    try{ state.tf = await loadJSON(TF_BASE+"/latest.json"); }catch(e){}
   })();
   pAetf.then(render); pPm.then(render); pTf.then(render);
   await Promise.all([pAetf, pPm, pTf]);
@@ -3407,21 +3416,21 @@ async function load(){
 function ensureDiag(){
   if (state.diag || state.diagErr || state.diagLoading) return;
   state.diagLoading = true;
-  loadJSON("data/diag/diag.json?t="+Date.now())
+  loadJSON("data/diag/diag.json")
     .then(j=>{ state.diag = j; }).catch(e=>{ state.diagErr = e; })
     .finally(()=>{ state.diagLoading = false; if (state.tab === "diag") render(); });
 }
 function ensureScreen(){
   if (state.screen || state.screenErr || state.screenLoading) return;
   state.screenLoading = true;
-  loadJSON("data/screen/screen.json?t="+Date.now())
+  loadJSON("data/screen/screen.json")
     .then(j=>{ state.screen = j; }).catch(e=>{ state.screenErr = e; })
     .finally(()=>{ state.screenLoading = false; if (state.tab === "screen") render(); });
 }
 function ensureMktbal(){
   if (state.mktbal || state.mktbalErr || state.mktbalLoading) return;
   state.mktbalLoading = true;
-  loadJSON("data/market_balance_history.json?t="+Date.now())
+  loadJSON("data/market_balance_history.json")
     .then(j=>{ state.mktbal = j; }).catch(e=>{ state.mktbalErr = e; })
     .finally(()=>{ state.mktbalLoading = false; if (state.tab === "mktbal") render(); });
 }
@@ -3430,7 +3439,7 @@ function ensureMktbal(){
 function ensureChainDaily(){
   if (state.rrgd || state.rrgdErr || state.rrgdLoading) return;
   state.rrgdLoading = true;
-  loadJSON(SUM_V2_RAW+"/chain_daily/series.json?t="+Date.now())
+  loadJSON(SUM_V2_RAW+"/chain_daily/series.json")
     .then(j=>{ Object.assign(RRGD, rrgdPrep(j)); state.rrgd = j; })
     .catch(e=>{ state.rrgdErr = e; })
     .finally(()=>{ state.rrgdLoading = false; if (state.tab === "rrgd") render(); });
