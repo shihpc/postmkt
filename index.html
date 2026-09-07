@@ -253,6 +253,37 @@
   details.cred>summary::before{content:"▸";color:var(--accent);margin-right:6px}
   details.cred[open]>summary::before{content:"▾"}
   details.cred[open]>summary{border-radius:10px 10px 0 0}
+  /* 個股摘要側欄（2026-09-07 批次三 #15 後半）：position:fixed 不進文件流，
+     所以不影響任何表格的 sticky 凍結欄（.bstick*／.stick* 都靠 .tblbox 的 padding 補償）。
+     ⚠ .stkpanel 是 flex，[hidden] 會被 display:flex 蓋掉，必須顯式寫 display:none。
+     寬度用 min(420px,100%)：375px 手機時等於滿版，不會撐出水平捲軸。 */
+  .stkbtn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:6px;
+    font-size:.66rem;line-height:1;padding:2px 4px;margin-left:5px;cursor:pointer;vertical-align:middle}
+  .stkbtn:hover{color:var(--accent);border-color:var(--accent)}
+  .stkmask{position:fixed;inset:0;background:rgba(4,9,20,.55);z-index:60}
+  .stkpanel{position:fixed;top:0;right:0;height:100%;width:min(420px,100%);z-index:61;
+    background:var(--bg2);border-left:1px solid var(--line);box-shadow:-10px 0 30px rgba(0,0,0,.45);
+    display:flex;flex-direction:column;overflow:hidden}
+  .stkmask[hidden],.stkpanel[hidden]{display:none}
+  .stkhead{display:flex;align-items:baseline;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .stkhead .t{font-size:1.05rem;font-weight:700}
+  .stkhead .n{color:var(--muted);font-size:.86rem}
+  .stkclose{margin-left:auto;background:var(--chip);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:3px 11px;font-size:.9rem;cursor:pointer;align-self:center}
+  .stkclose:hover{border-color:var(--accent)}
+  .stkbody{overflow-y:auto;overflow-x:hidden;padding:8px 14px 28px;-webkit-overflow-scrolling:touch}
+  .stk-sec{margin:8px 0 12px}
+  .stk-st{font-size:.84rem;font-weight:700;color:var(--accent);display:flex;gap:8px;align-items:baseline;
+    border-bottom:1px solid var(--line);padding-bottom:4px;margin-bottom:5px}
+  .stk-dt{margin-left:auto;color:var(--muted);font-size:.7rem;font-weight:400;white-space:nowrap}
+  .stk-kv{display:flex;justify-content:space-between;gap:10px;font-size:.8rem;padding:2.5px 0;line-height:1.5}
+  .stk-kv>span{color:var(--muted);flex:1 1 auto}
+  .stk-kv>b{font-weight:600;text-align:right;flex:0 1 auto;word-break:break-word}
+  .stk-links{display:flex;flex-wrap:wrap;gap:6px}
+  .stk-links a{display:inline-block;background:var(--card);border:1px solid var(--line);border-radius:9px;
+    padding:5px 10px;font-size:.78rem;color:var(--txt);text-decoration:none}
+  .stk-links a:hover{border-color:var(--accent);color:var(--accent)}
+  .stk-note{color:var(--muted);font-size:.72rem;line-height:1.6;margin:6px 0 0}
   /* 手機（2026-09-06 批次二 #12）：全檔原本 0 條 @media。原則＝表格內允許橫捲（.tblbox overflow:auto），
      整頁不得出現水平捲軸；tabs 改單列橫向可捲不換行；外距與字級略縮。
      ⚠ 不動 .tblbox 的 padding（凍結欄 left:-12px／50px 是拿它補償的，改了 sticky 會穿幫）。 */
@@ -273,6 +304,9 @@
     .tblbox{max-height:70vh}
     .qrow input{min-width:0}
     .grid2>div{min-width:0;flex-basis:100%}
+    .stkbody{padding:8px 12px 28px}
+    .stk-kv{font-size:.76rem}
+    .stk-links a{font-size:.74rem;padding:5px 8px}
     footer{margin-top:20px;font-size:.72rem}
   }
 </style>
@@ -298,6 +332,11 @@
     <span id="siteVer" hidden></span>
   </footer>
 </div>
+
+<!-- 個股摘要側欄（2026-09-07 批次三 #15 後半）：內容由 renderStockDrawer() 填。
+     放在 .wrap 外＝不受 max-width:880px 與版面捲動影響；預設 hidden。 -->
+<div id="stkMask" class="stkmask" hidden></div>
+<aside id="stkPanel" class="stkpanel" hidden role="dialog" aria-modal="true" aria-label="個股摘要"></aside>
 
 <script>
 "use strict";
@@ -342,13 +381,18 @@ const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQu
   mktbal:null, mktbalErr:null, mktbalLoading:false, mktbalSel:"margin", mktbalOpen:{},
   screen:null, screenErr:null, screenLoading:false, screenMin:50,
   rrgd:null, rrgdErr:null, rrgdLoading:false, rrgdIdx:null, rrgdPicks:null, rrgdMsg:"",
-  bkPending:null, diagScroll:null, diagPrefill:"" };
+  bkPending:null, diagScroll:null, diagPrefill:"",
+  stkOpen:null };   // 個股摘要側欄目前開啟的代號（null＝關閉），對應 hash 的 stock=（見下方 URL 狀態註解）
 
 // ---------- URL 狀態（hash 路由，2026-09-07 批次三） ----------
-// 格式：#tab=<TABS 之一>&code=<個股／分點代號>&sub=<子分頁>，只放非預設值（預設 tab insight 時 hash 為空）。
+// 格式：#tab=<TABS 之一>&code=<個股／分點代號>&sub=<子分頁>&stock=<個股代號>，只放非預設值
+//（預設 tab insight 且側欄關閉時 hash 為空）。
 // 子狀態只挑最有用的：oddlot 的 sub(intraday|after)、broker 的 sub(branch|stock|list)＋code(查詢 id)、
 // lending 的 code(展開個股)、diag 的 code(聚焦持股卡；不在持股時提示並預填新增欄，不炸)。
 // 入口站「我的異動」連到 #tab=diag&code=<代號>，此格式須維持可用。
+// stock=：個股摘要側欄（2026-09-07 批次三 #15 後半）開啟中的代號。**刻意與 code= 分家**——
+// code= 的語意已被 lending(展開列)／broker(查詢 id)／diag(聚焦持股卡) 三個 tab 各自佔用，
+// 側欄跨 tab 都可開，混用會讓同一把 key 有兩種意思。兩者可並存（例 #tab=lending&code=2330&stock=2454）。
 // 讀入一律白名單／型別檢查：tab 必在 TABS、sub 必在該 tab 允許值、code 為 4–6 位大寫英數；非法值靜默退回預設。
 // 寫出走 history.replaceState（不塞歷史堆疊、不觸發 hashchange）；hashchange 只在外部改網址（返回鍵／貼連結）時進入。
 // 持股清單本身絕不進 hash（只有單一代號），與 CLAUDE.md 約定 6 一致。
@@ -365,11 +409,14 @@ function parseHash(){
   if (HASH_CODE_RE.test(code)) out.code = code;
   const sub = q.get("sub");
   if (out.tab && HASH_SUBS[out.tab] && HASH_SUBS[out.tab].includes(sub)) out.sub = sub;
+  const stock = String(q.get("stock") || "").trim().toUpperCase();
+  if (HASH_CODE_RE.test(stock)) out.stock = stock;
   return out;
 }
 // 把 hash 套進 state（載入時與 hashchange 時呼叫；之後由 render() 接手）
 function applyHash(){
   const h = parseHash();
+  state.stkOpen = h.stock || null;   // 側欄不分 tab，先套；沒有 stock= 就是關閉（本站深連結靠這點關掉側欄）
   state.tab = h.tab || "insight";
   if (state.tab === "oddlot") state.oddSub = h.sub || "intraday";
   if (state.tab === "broker"){
@@ -400,6 +447,7 @@ function currentHash(){
   }
   if (state.tab === "lending" && state.openLend && HASH_CODE_RE.test(state.openLend)) p.push("code=" + state.openLend);
   if (state.tab === "diag" && state.diagOpen && HASH_CODE_RE.test(state.diagOpen)) p.push("code=" + state.diagOpen);
+  if (state.stkOpen && HASH_CODE_RE.test(state.stkOpen)) p.push("stock=" + state.stkOpen);
   return p.length ? "#" + p.join("&") : "";
 }
 function syncHash(){
@@ -420,7 +468,9 @@ const yi = v => { if (v==null) return '<span class="mut">—</span>'; const r = 
 // Claude API usage 的輸入 token 合計（quota 三欄位加總；5 處顯示共用）
 const inTok = u => (u.input_tokens||0)+(u.cache_read_input_tokens||0)+(u.cache_creation_input_tokens||0);
 const yiAbs = v => v==null ? "—" : (v/1e8).toFixed(2)+"億";
-const nameCell = r => `<span class="code">${esc(r.c)}</span><span class="nm">${esc(r.n||"")}</span>`;
+// 個股欄：代號＋名稱＋「摘要側欄」小鈕。鈕獨立於既有互動（融借券展開列、Yahoo 連結等都原樣保留），
+// 不奪走任何既有點擊行為；stkBtn 本體與委派處理器在下方「個股摘要側欄」節。
+const nameCell = r => `<span class="code">${esc(r.c)}</span>${stkBtn(r.c)}<span class="nm">${esc(r.n||"")}</span>`;
 const cleanSub = s => String(s||"").replace(/^.*?·/,"");
 
 // 通用表格：cols=[{h,f,cls?}]，包在可橫向捲動的卡片裡；每欄可點表頭排序
@@ -1145,7 +1195,8 @@ function bkResultTableHtml(res){
   const isBranch = res.kind === "branch";
   const cols = [
     {h:isBranch?"代號":"券商代號",cls:"l",f:r=>`<span class="code">${esc(r.id)}</span>`},
-    {h:isBranch?"個股名稱":"分點名稱",cls:"l",f:r=>esc(r.name||"")},
+    // 側欄鈕掛在名稱欄而非代號欄：代號欄是 .mtable-s2 的 62px 凍結欄（nowrap+overflow:hidden），塞不下會被裁掉
+    {h:isBranch?"個股名稱":"分點名稱",cls:"l",f:r=>esc(r.name||"")+(isBranch?stkBtn(r.id):"")},
     {h:"買(張)",f:r=>zhF(r.b_sh),sortVal:r=>r.b_sh},
     {h:"賣(張)",f:r=>zhF(r.s_sh),sortVal:r=>r.s_sh},
     {h:"買賣超(張)",f:r=>zhS(r.b_sh-r.s_sh),sortVal:r=>r.b_sh-r.s_sh},
@@ -1345,6 +1396,7 @@ function render(){
     else if (state.tab !== "summary") ensurePm();
     renderPM();
   }
+  renderStockDrawer();   // 側欄獨立於 #main，資料懶載完成觸發的重繪也會一併補上內容
   syncHash();  // 每次重繪後把 tab／子狀態寫回 location.hash（replaceState，不觸發 hashchange）
 }
 function renderTabs(){
@@ -1486,6 +1538,7 @@ document.addEventListener("click", e=>{
     state.openSub = state.openSub===v ? null : v; render();
     if (state.openSub){ const x=document.getElementById("subdd"); if(x)x.scrollIntoView({behavior:"smooth",block:"start"}); } return; }
   const el3 = e.target.closest(".clk[data-lend]");
+  if (el3 && e.target.closest("[data-stk]")) return;   // 側欄鈕包在 .clk 裡，點它不連帶展開/收合該列
   if (el3){ state.openLend = state.openLend===el3.dataset.lend ? null : el3.dataset.lend; render();
     if (state.openLend){ const x=document.getElementById("lenddd"); if(x)x.scrollIntoView({behavior:"smooth",block:"start"}); } }
 });
@@ -2970,7 +3023,7 @@ function renderScreen(){
     `<div class="subtab ${state.screenMin === m ? "active" : ""}" data-scrmin="${m}">明年EPS ≥ ${m}</div>`).join("")
     + `<div class="stat" style="margin-left:auto">顯示 <b>${rows.length}</b> / 共 ${all.length} 檔</div></div>`;
   const fy = y => y != null ? "FY" + esc(String(y).slice(2)) : "";
-  const yahoo = c => `<a class="slink" href="https://tw.stock.yahoo.com/quote/${esc(c)}/technical-analysis" target="_blank" rel="noopener"><span class="code">${esc(c)}</span></a>`;
+  const yahoo = c => `<a class="slink" href="https://tw.stock.yahoo.com/quote/${esc(c)}/technical-analysis" target="_blank" rel="noopener"><span class="code">${esc(c)}</span></a>${stkBtn(c)}`;
   const upside = r => {
     const px = scrNum(r.px), md = r.tp ? scrNum(r.tp.median) : null;
     return (px != null && px > 0 && md != null) ? (md / px - 1) * 100 : null;
@@ -3421,7 +3474,7 @@ function diagCardHtml(hd){
   const open = state.diagOpen === c;
   let h = `<div class="mcard" style="padding:11px 14px">`;
   h += `<div class="clk" data-diag-open="${esc(c)}" style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center">`;
-  h += `<span><span class="code">${esc(c)}</span> ${esc(diagStockName(c))}</span>`;
+  h += `<span><span class="code">${esc(c)}</span>${stkBtn(c)} ${esc(diagStockName(c))}</span>`;
   if (p){
     const chg = p.chg == null ? "" : sgn(p.chg, `（${p.chg>0?"+":""}${(+p.chg).toFixed(2)}%）`);
     h += `<span>${p.px}${chg}<span class="mut" style="font-size:.72rem;margin-left:4px">${p.live?"即時":"前收（盤後）"}</span></span>`;
@@ -3562,6 +3615,7 @@ document.addEventListener("click", e => {
   const aiB = e.target.closest("[data-diag-ai]");
   if (aiB){ runDiagAI(aiB.dataset.diagAi); return; }
   const op = e.target.closest("[data-diag-open]");
+  if (op && e.target.closest("[data-stk]")) return;   // 同上：卡片標題內的側欄鈕不連帶開合卡片
   if (op){ state.diagOpen = state.diagOpen === op.dataset.diagOpen ? null : op.dataset.diagOpen; render(); return; }
   if (e.target.closest("[data-diag-rules]")){ state.diagRulesOpen = !state.diagRulesOpen; render(); return; }
 });
@@ -3576,6 +3630,251 @@ document.addEventListener("change", e => {
   hd[f.dataset.diagF] = isNaN(v) ? null : v;
   diagSaveHoldings(hs); render();
 });
+
+// ---------- 個股摘要側欄（2026-09-07 批次三 #15 後半） ----------
+// 定位：從任一個股列表按代號旁的「▤」小鈕開側欄，一眼看完該檔在本站「已載入資料集」裡的關鍵數字，
+// 再一鍵深連到姊妹站看新聞脈絡——即「從任一個股列表 ≤2 次操作看到同日期脈絡的新聞與基本面」。
+//
+// 不可破壞的四點：
+// 1. **開側欄不發任何網路請求**（不重抓）。內容一律只讀已在記憶體的 state（pm／diag／screen／aetf／
+//    diagLive），某資料集尚未載入就整段不出現，絕不為了補齊而觸發 ensure*()／fetch。stkOpen() 也
+//    刻意只呼叫 renderStockDrawer() 而非 render()（render 會替當前 tab 觸發 ensure*）。
+//    跨站一律純導覽 <a target="_blank" rel="noopener">，不 fetch，故**不需要新增 CSP connect-src**。
+// 2. **每段自帶自己的資料日**（docs/date-semantics.md §4）：postmkt.json 各 dataset 的 date、
+//    diag.json 的 date、screen.json 的 date、aetf latest.run_date／diff.generated_dates。
+//    各段資料日本來就可能不同（date_mismatch 就是在講這件事），所以逐段標、不共用一個標題日期。
+//    即時報價段標的是「最後成交時戳」——依 date-semantics.md，/live 的 ts **不是資料日**，不可混用。
+// 3. **跨站深連結只用實查確認支援的格式**（2026-09-07 curl 三站線上 index.html 實查）：
+//    taiwan-stock-news 有 hash 路由（HASH_TABS 含 track、code 走 4-6 位大寫英數、q 為關鍵字），
+//    故 #tab=track&code= 與 #tab=news&q= 可用；taiwan-flows 與 taiwan-flow-live-v2 全檔
+//    grep `location.hash` **零命中**＝沒有 hash 路由，只連首頁並在說明列標「需自行搜尋該檔」。
+//    **不得編造不存在的深連結格式**；日後那兩站有了路由再回來補。
+// 4. 持股清單（localStorage pm_holdings）不進側欄的網址、也不進任何請求（約定 6）；hash 只放單一代號。
+const STK_URL_NEWS = "https://shihpc.github.io/taiwan-stock-news/";
+const STK_URL_FLOWS = "https://shihpc.github.io/taiwan-flows/";
+const STK_URL_LIVE = "https://shihpc.github.io/taiwan-flow-live-v2/";
+// 代號旁的側欄鈕。獨立元素、不吃掉任何既有互動（融借券展開列、選股 tab 的 Yahoo 連結、
+// 持股診斷卡開合都原樣保留），外層若是 .clk 由該處理器自行讓路（見 data-lend／data-diag-open 兩處）。
+const stkBtn = c => {
+  const v = String(c == null ? "" : c).toUpperCase();
+  if (!HASH_CODE_RE.test(v)) return "";
+  return `<button type="button" class="stkbtn" data-stk="${esc(v)}" title="${esc(v)} 個股摘要" aria-label="開啟 ${esc(v)} 個股摘要側欄">▤</button>`;
+};
+const stkDash = '<span class="mut">—</span>';
+const stkFindC = (arr, c) => Array.isArray(arr) ? arr.find(r => r && r.c === c) : null;
+const stkScreenRow = c => { const rs = (state.screen || {}).rows; return Array.isArray(rs) ? rs.find(r => r && r.code === c) : null; };
+const stkKV = (label, val) => `<div class="stk-kv"><span>${esc(label)}</span><b>${val}</b></div>`;
+const stkSec = (title, dateTxt, body) => body
+  ? `<div class="stk-sec"><div class="stk-st">${esc(title)}<span class="stk-dt">資料日 ${esc(dateTxt || "不明")}</span></div>${body}</div>` : "";
+const stkPct = v => v == null ? stkDash : sgn(v, (v > 0 ? "+" : "") + (+v).toFixed(2) + "%");
+const stkPctP = v => v == null ? stkDash : (+v).toFixed(2) + "%";
+// 名稱來源優先序：postmkt 代號→名稱對照(BK_NM，零股全市場最完整) → 診斷素材庫 → 選股 → 主動ETF 加減碼
+function stkName(c){
+  if (BK_NM && BK_NM[c]) return BK_NM[c];
+  const s = state.diag && state.diag.stocks ? state.diag.stocks[c] : null;
+  if (s && s.n) return s.n;
+  const sc = stkScreenRow(c);
+  if (sc && sc.name) return sc.name;
+  const a = stkFindC((((state.aetf || {}).diff) || {}).stocks, c);
+  return (a && a.n) || "";
+}
+// 報價：沿用 diag tab 的 diagPrice()（即時快照優先、否則素材庫前收），不另外抓
+function stkSecPrice(c){
+  const p = diagPrice(c);
+  if (!p) return "";
+  const body = stkKV("收盤／現價", esc(String(p.px)))
+    + stkKV("漲跌幅", p.chg == null ? stkDash : sgn(p.chg, (p.chg > 0 ? "+" : "") + (+p.chg).toFixed(2) + "%"));
+  if (!p.live) return stkSec("報價（前收，盤後）", (state.diag || {}).date || "", body);
+  // ⚠ /live 的 ts 是「上游最後成交時戳」，不是資料日（date-semantics.md），故不寫成「資料日」
+  return `<div class="stk-sec"><div class="stk-st">報價（即時快照）`
+    + `<span class="stk-dt" title="ts＝上游最後成交時戳，不是資料日">最後成交 ${esc(String(p.ts || "").slice(0, 16))}</span></div>${body}</div>`;
+}
+// 診斷素材庫（data/diag/diag.json）：欄位語意與 diagFacts() 同一份，取其中最常看的幾條
+function stkSecDiag(c){
+  const dg = state.diag;
+  const s = dg && dg.stocks ? dg.stocks[c] : null;
+  if (!s) return "";
+  const lots = v => v == null ? stkDash : sgn(v, (v > 0 ? "+" : "") + Math.round(v).toLocaleString("en-US") + "張");
+  const days = v => v == null ? stkDash : v > 0 ? `連買${v}日` : v < 0 ? `連賣${-v}日` : "中性";
+  const b = stkKV("距 MA5／MA20／MA60", [s.ma5, s.ma20, s.ma60].map(stkPct).join("　"))
+    + stkKV("20日報酬／RS vs 大盤", stkPct(s.r20) + "　" + stkPct(s.rs))
+    + stkKV("60日高點回撤", stkPct(s.dd60))
+    + stkKV("20日日均成交值", s.av20 == null ? stkDash : (s.av20 / 1e5).toFixed(1) + "億")
+    + stkKV("外資 連買賣／近5日", days(s.fd) + "　" + lots(s.f5))
+    + stkKV("投信 連買賣／近5日", days(s.td) + "　" + lots(s.t5))
+    + stkKV("當沖比／券資比", stkPctP(s.dt) + "　" + stkPctP(s.cr))
+    + stkKV(`月營收 YoY／MoM${s.rym ? `（${s.rym}）` : ""}`, stkPct(s.yoy) + "　" + stkPct(s.mom))
+    + stkKV("PER／PBR／殖利率", `${s.pe == null ? "—" : esc(String(s.pe))}　${s.pb == null ? "—" : esc(String(s.pb))}　${stkPctP(s.dy)}`)
+    + stkKV("產業／次產業", esc((s.ind || "—") + "／" + ((s.sub || []).slice(0, 3).join("、") || "—")))
+    + stkKV("產業鏈", esc((s.ch || []).join("、") || "—"));
+  return stkSec("價量・籌碼・基本面（診斷素材庫）", dg.date || "", b);
+}
+// 融借券整合（postmkt.json lending）：單位與「融借券」tab 完全同口徑（張／千元→億）
+function stkSecLending(c){
+  const l = (state.pm || {}).lending;
+  const r = l && stkFindC(l.rows, c);
+  if (!r) return "";
+  const yiK = v => v == null ? stkDash : yiAbs(v * 1000);
+  const yiCK = v => v == null ? stkDash : yi(v * 1000);
+  const b = stkKV("借券餘額 TSE／券商(張)", num(r.sys_bal) + "　" + num(r.otc_bal))
+    + stkKV("借券賣出餘額／異動(張)", num(r.sbl_short_bal) + "　" + zh(r.sbl_short_chg))
+    + stkKV("融券餘額／異動(張)", num(r.margin_short_bal) + "　" + zh(r.margin_short_chg))
+    + stkKV("融資餘額／異動(張)", num(r.margin_bal) + "　" + zh(r.margin_chg))
+    + stkKV("融資使用率／借賣使用率", stkPctP(r.margin_usage) + "　" + stkPctP(r.usage_ratio))
+    + stkKV("當沖金額", yiK(r.dt_amt))
+    + stkKV("三大法人買賣超 外／投／自(億)", yiCK(r.foreign_net) + "　" + yiCK(r.trust_net) + "　" + yiCK(r.dealer_net))
+    + stkKV("外資持股比", stkPctP(r.foreign_ratio));
+  return stkSec("融借券整合", l.date || "", b);
+}
+function stkSecDaytrade(c){
+  const t = (state.pm || {}).daytrading;
+  const r = t && stkFindC(t.by_amount, c);
+  if (!r) return "";
+  const b = stkKV("當沖量／金額", num(r.vol / 1000) + "張　" + yiAbs(r.amt))
+    + stkKV("當沖比重", r.ratio == null ? stkDash : (+r.ratio).toFixed(1) + "%")
+    + stkKV("漲跌幅／振幅", stkPct(r.chg_pct) + "　" + stkPctP(r.amp_pct));
+  return stkSec("當沖排行（本檔在榜）", t.date || "", b);
+}
+function stkSecMargin(c){
+  const m = (state.pm || {}).margin;
+  if (!m) return "";
+  let b = "";
+  for (const [label, arr] of [["融資增加榜", m.increase], ["融資減少榜", m.decrease], ["融資使用率榜", m.usage]]){
+    const r = stkFindC(arr, c);
+    if (r) b += stkKV(label, `餘額 ${num(r.bal)} 張　異動 ${zh(r.chg)}${r.usage == null ? "" : `　使用率 ${(+r.usage).toFixed(2)}%`}`);
+  }
+  return stkSec("融資排行（本檔在榜）", m.date || "", b);
+}
+function stkSecShort(c){
+  const sb = (state.pm || {}).short_balance;
+  if (!sb) return "";
+  let b = "";
+  const a = stkFindC(sb.margin_short, c);
+  if (a) b += stkKV("融券餘額榜", `餘額 ${num(a.bal)} 張　異動 ${zh(a.chg)}`);
+  const s2 = stkFindC(sb.sbl, c);
+  if (s2) b += stkKV("借券賣出餘額榜", `餘額 ${num(s2.bal)} 張　異動 ${zh(s2.chg)}`);
+  return stkSec("短部位排行（本檔在榜）", sb.date || "", b);
+}
+function stkSecBlock(c){
+  const bt = (state.pm || {}).blocktrade;
+  if (!bt) return "";
+  const rows = (bt.rows || []).filter(r => r && r.c === c);
+  if (!rows.length) return "";
+  const b = stkKV("筆數", rows.length + " 筆")
+    + stkKV("該股總張數／總金額", num((rows[0].stock_vol || 0) / 1000) + "張　" + yiAbs(rows[0].stock_money));
+  return stkSec("鉅額交易（當日有成交）", bt.date || "", b);
+}
+function stkSecOddlot(c){
+  const o = (state.pm || {}).oddlot;
+  if (!o) return "";
+  let out = "";
+  for (const [k, label] of [["intraday", "零股（盤中）"], ["after", "零股（盤後）"]]){
+    const cur = o[k];
+    const r = cur && stkFindC(cur.rows, c);
+    if (r) out += stkSec(label, cur.date || "",
+      stkKV("成交股數／筆數", num(r.sh) + "　" + num(r.deals)) + stkKV("成交金額(元)", num(r.amt)));
+  }
+  return out;
+}
+function stkSecAetf(c){
+  const a = state.aetf;
+  if (!a) return "";
+  let out = "";
+  const df = a.diff, dr = df && stkFindC(df.stocks, c);
+  if (dr){
+    const b = stkKV("主動純額（排除申贖）", zh(dr.zh) + "　" + yi(dr.val))
+      + stkKV("含申贖（原始）", zh(dr.rzh) + "　" + yi(dr.rval))
+      + stkKV("各 ETF 明細（主動張）", byChips(dr.by) || stkDash);
+    out += stkSec("主動ETF 加減碼", (df.generated_dates || []).join("、"), b);
+  }
+  const lt = a.latest;
+  if (lt && lt.etfs){
+    const holders = [];
+    for (const code of Object.keys(lt.etfs)){
+      const e = lt.etfs[code];
+      const v = e && e.stocks && e.stocks[c];
+      if (!v) continue;
+      const w = Array.isArray(v) ? v[2] : (v && v.weight);
+      holders.push(code + (w == null ? "" : `(${(+w).toFixed(2)}%)`));
+    }
+    if (holders.length) out += stkSec("主動ETF 持有", lt.run_date || "",
+      stkKV(`被 ${holders.length} 檔主動ETF 持有`, esc(holders.join("、"))));
+  }
+  return out;
+}
+function stkSecScreen(c){
+  const sc = state.screen, r = stkScreenRow(c);
+  if (!sc || !r) return "";
+  const y0 = scrYear(sc), y1 = y0 != null ? y0 + 1 : null;
+  const px = scrNum(r.px), md = r.tp ? scrNum(r.tp.median) : null;
+  const up = (px != null && px > 0 && md != null) ? (md / px - 1) * 100 : null;
+  const rt = scrRating(r);
+  const fy = y => y == null ? "" : "FY" + String(y).slice(2) + " ";
+  const b = stkKV(`${fy(y0)}預估 EPS`, scrF2(scrEstMean(r, y0)))
+    + stkKV(`${fy(y1)}預估 EPS`, scrF2(scrEstMean(r, y1)))
+    + stkKV("目標價中位／潛在漲幅", scrF2(md) + "　" + (up == null ? stkDash : sgn(up, (up > 0 ? "+" : "") + up.toFixed(1) + "%")))
+    + stkKV("評等分布", rt ? esc(`買${rt.b}／持${rt.h}／賣${rt.s}`) : stkDash);
+  return stkSec("分析師預估（選股）", sc.date || "", b);
+}
+// 連結段：站內走 hash（點了由 hashchange → applyHash 接手，沒有 stock= 即自動關閉側欄）；
+// 跨站一律 target=_blank rel=noopener 的純導覽，不 fetch。
+function stkSecLinks(c){
+  const q = encodeURIComponent(c);
+  const a = (href, label, blank) => `<a href="${esc(href)}"${blank ? ` target="_blank" rel="noopener"` : ""}>${esc(label)}</a>`;
+  const inSite = a(`#tab=lending&code=${q}`, "融借券完整明細") + a(`#tab=diag&code=${q}`, "持股診斷")
+    + a(`#tab=broker&sub=stock&code=${q}`, "分點進出");
+  const cross = a(`${STK_URL_NEWS}#tab=track&code=${q}`, "新聞晨報 · 個股追蹤", true)
+    + a(`${STK_URL_NEWS}#tab=news&q=${q}`, "新聞晨報 · 該檔新聞", true)
+    + a(`https://tw.stock.yahoo.com/quote/${q}/technical-analysis`, "Yahoo 股市 · 技術分析", true)
+    + a(STK_URL_FLOWS, "盤後法人動態（首頁）", true)
+    + a(STK_URL_LIVE, "即時類股動態（首頁）", true);
+  return `<div class="stk-sec"><div class="stk-st">本站</div><div class="stk-links">${inSite}</div></div>`
+    + `<div class="stk-sec"><div class="stk-st">其他站</div><div class="stk-links">${cross}</div>`
+    + `<div class="stk-note">盤後法人動態與即時類股動態目前沒有個股網址參數，只能連首頁後自行搜尋該檔；`
+    + `兩站有了個股路由再改成深連結。以上皆為純導覽連結，側欄本身不向任何站抓資料。</div></div>`;
+}
+function stockDrawerHtml(c){
+  const secs = stkSecPrice(c) + stkSecDiag(c) + stkSecLending(c) + stkSecDaytrade(c)
+    + stkSecMargin(c) + stkSecShort(c) + stkSecBlock(c) + stkSecOddlot(c)
+    + stkSecAetf(c) + stkSecScreen(c);
+  const none = `<div class="stk-note">目前已載入的資料集裡沒有 ${esc(c)} 的數字——可能是該資料集還沒載入`
+    + `（各 tab 是懶載的），或這檔不在該榜單／診斷宇宙內。側欄刻意不為此另外抓資料，`
+    + `切到對應 tab 讓資料載入後再開即可。</div>`;
+  return (secs || none) + stkSecLinks(c);
+}
+function renderStockDrawer(){
+  const mask = document.getElementById("stkMask"), panel = document.getElementById("stkPanel");
+  if (!mask || !panel) return;
+  const c = state.stkOpen;
+  if (!c){ mask.hidden = true; panel.hidden = true; panel.innerHTML = ""; return; }
+  panel.innerHTML = `<div class="stkhead"><span class="t code">${esc(c)}</span>`
+    + `<span class="n">${esc(stkName(c) || "（已載入資料查無名稱）")}</span>`
+    + `<button type="button" class="stkclose" data-stkclose aria-label="關閉個股摘要">✕</button></div>`
+    + `<div class="stkbody">${stockDrawerHtml(c)}</div>`;
+  mask.hidden = false; panel.hidden = false;
+}
+function stkOpen(c){
+  const v = String(c == null ? "" : c).toUpperCase();
+  if (!HASH_CODE_RE.test(v)) return;
+  state.stkOpen = v;
+  renderStockDrawer();   // 只重繪側欄，不呼叫 render()：render 會替當前 tab 觸發 ensure*()＝網路請求
+  syncHash();            // replaceState，不塞歷史堆疊
+  const b = document.querySelector("[data-stkclose]");
+  if (b) b.focus({ preventScroll: true });
+}
+function stkClose(){
+  if (!state.stkOpen) return;
+  state.stkOpen = null;
+  renderStockDrawer();
+  syncHash();
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-stk]");
+  if (b){ stkOpen(b.dataset.stk); return; }
+  if (e.target.closest("[data-stkclose]")){ stkClose(); return; }
+  if (e.target.id === "stkMask"){ stkClose(); return; }
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && state.stkOpen) stkClose(); });
 
 // ---------- JSON 載入（快取策略，2026-09-06 批次二） ----------
 // 舊行為＝每個 URL 掛 ?t=Date.now() 逐次繞過快取，每次都是全新 200 傳輸（postmkt.json 逾 1.6MB）。

@@ -3,6 +3,38 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-09-07 個股摘要側欄 v1（批次三 #15 後半）
+
+批次三 #15 的完成判準是「URL 狀態（hash 路由）→ 個股摘要側欄 v1（摘要＋跨站深連結，**不重抓**）」，
+hash 路由那半已於同日先行（commit 9812437），本次補上側欄。
+
+**入口**：個股列表的代號旁多一個 `▤` 小鈕（`stkBtn`，掛在共用 `nameCell` 與選股／分點／持股診斷三處），
+**不奪走任何既有互動**——融借券點列本體照樣展開明細、選股 tab 的 Yahoo 連結照樣可點、持股診斷卡標題照樣開合
+（兩個外層 `.clk` 處理器加了「點到 `[data-stk]` 就讓路」的守衛）。分點「單點」結果的鈕掛在名稱欄而非代號欄，
+因為代號欄是 `.mtable-s2` 的 62px 凍結欄（`nowrap`+`overflow:hidden`），塞進去會被裁掉。
+
+**內容**：只讀**已在記憶體**的資料集，**開側欄不發任何網路請求**（Playwright 監看 `page.on('request')`
+實測新增請求數＝0）。段落＝報價／診斷素材庫（價量・籌碼・基本面）／融借券整合／當沖排行／融資排行／
+短部位排行／鉅額／零股盤中盤後／主動ETF 加減碼與持有／分析師預估，**每段自帶自己的資料日**
+（各 dataset 的 date 本來就會不同，見 `date_mismatch`）。未載入的資料集整段不出現、不為此補抓；
+`stkOpen()` 刻意只重繪側欄而非呼叫 `render()`（`render()` 會替當前 tab 觸發 `ensure*()`）。
+
+**跨站深連結**（純導覽 `<a target="_blank" rel="noopener">`，不 fetch，**故不需新增 CSP `connect-src`**）：
+只用 2026-09-07 curl 線上 index.html 實查確認支援的格式——taiwan-stock-news 有 hash 路由，
+`#tab=track&code=`／`#tab=news&q=` 可用；**taiwan-flows 與 taiwan-flow-live-v2 全檔 grep
+`location.hash` 零命中＝沒有 hash 路由**，故只連首頁並在說明列註明「需自行搜尋該檔」，
+不編造不存在的深連結格式。另附 Yahoo 技術分析與三條本站 hash 深連結（融借券／持股診斷／分點）。
+
+**URL 狀態**：新 hash key `stock=`，**刻意與既有 `code=` 分家**——`code=` 的語意已被 lending（展開列）／
+broker（查詢 id）／diag（聚焦持股卡）三個 tab 各自佔用，而側欄跨 tab 都能開，混用會讓同一把 key 有兩種意思；
+兩者可並存（例 `#tab=lending&code=2330&stock=2454`）。讀入同樣白名單＋型別檢查（4–6 位大寫英數），
+寫出走 `history.replaceState`（實測開關側欄 `history.length` 不變）。ESC 與點遮罩可關閉；
+本站深連結不帶 `stock=`，`applyHash` 因此順帶關閉側欄。持股清單絕不進 hash 或任何請求（約定 6 不變）。
+
+驗收（Playwright 本機 `http.server`）：13 tab 逐一點擊 console error 0／pageerror 0；開側欄新增請求 0；
+375px 六個 tab `scrollWidth <= innerWidth`；股名／產業名注入 `<img src=x onerror>` 後 `window.__xss`
+未定義、側欄 `<img>` 數 0、以字面文字顯示。
+
 ## 2026-09-07 持股清單匯出／匯入／清除（批次三 #2）
 
 持股診斷 tab「我的持股」區塊新增三個按鈕（`index.html` 的 `diagInputHtml`），**全部在本機瀏覽器完成、

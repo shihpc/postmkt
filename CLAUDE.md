@@ -45,6 +45,21 @@
     （`:358`／`:371`）於 `load()` 套用，`syncHash()`（`:405`）掛在 `render()` 結尾以
     `history.replaceState` 寫回（**不塞歷史、不觸發 hashchange**），外部改網址走
     `hashchange`（`:410`）。讀入一律白名單＋型別檢查，非法值靜默退回預設。
+  - **個股摘要側欄（2026-09-07 批次三 #15 後半）**：`index.html:3634-3872`。代號旁 `▤` 鈕
+    （`stkBtn`／`:3658`，掛在共用 `nameCell`／`:473`、選股 tab 代號欄、分點「單點」結果的名稱欄、
+    持股診斷卡標題）開側欄；`renderStockDrawer()`（`:3845`）／`stkOpen()`（`:3856`）／
+    `stkClose()`（`:3865`），DOM 是 `.wrap` 外的 `#stkMask`／`#stkPanel`（`:338-339`，position:fixed）。
+    **硬約束：開側欄不發任何網路請求**——只讀已在記憶體的 `state.pm`／`diag`／`screen`／`aetf`／
+    `diagLive`，未載入的資料集整段不出現；`stkOpen()` 刻意只呼叫 `renderStockDrawer()` 而非
+    `render()`（後者會替當前 tab 觸發 `ensure*()`）。**每段自帶自己的資料日**（`stkSec()`），
+    因為各 dataset 的 date 本來就會不同（見 `date_mismatch`）。跨站一律純導覽 `<a target="_blank"
+    rel="noopener">`，**不 fetch → 不需新增 CSP `connect-src`**；深連結只用實查確認支援的格式
+    （`stkSecLinks`／`:3821`）：taiwan-stock-news `#tab=track&code=`／`#tab=news&q=` 可用，
+    **taiwan-flows 與 taiwan-flow-live-v2 沒有 hash 路由**（2026-09-07 curl 線上 index.html
+    grep `location.hash` 零命中），只連首頁並在說明列註明需自行搜尋，不得編造深連結格式。
+    hash key 用 **`stock=`**（`parseHash`／`:412`、`applyHash`／`:419`、`currentHash`／`:450`），
+    **刻意與 `code=` 分家**——`code=` 已被 lending／broker／diag 三個 tab 各自佔用，側欄跨 tab 都能開；
+    兩者可並存。ESC 與點遮罩關閉、走 `history.replaceState` 不塞歷史。持股清單不進 hash（約定 6 不變）。
   - **持股清單匯出／匯入／清除（2026-09-07）**：`holdExportPayload`／`holdParseImport`／
     `holdExport`／`holdImportFile`（`:3025-3070`）。**仍只走 localStorage `pm_holdings`
     與使用者本機檔案，不進任何網路 payload**（約定 6 不變）；匯入走 `holdParseImport`
