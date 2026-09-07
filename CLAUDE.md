@@ -42,10 +42,10 @@
 - `index.html`：13 個 tab 全部前端（CSS/JS 內嵌）。`render()` 分派各 tab；共用表格框架 `tbl()`
   （排序/分組表頭/凍結欄/虛擬捲動，sticky 的坑記在 `<style>` 註解）。
   - **hash 路由（2026-09-07）**：`#tab=&code=&sub=`，只放非預設值。`parseHash()`／`applyHash()`
-    （`:358`／`:371`）於 `load()` 套用，`syncHash()`（`:405`）掛在 `render()` 結尾以
+    （`:402`／`:417`）於 `load()` 套用，`syncHash()`（`:453`）掛在 `render()` 結尾以
     `history.replaceState` 寫回（**不塞歷史、不觸發 hashchange**），外部改網址走
-    `hashchange`（`:410`）。讀入一律白名單＋型別檢查，非法值靜默退回預設。
-  - **個股摘要側欄（2026-09-07 批次三 #15 後半）**：`index.html:3634-3872`。代號旁 `▤` 鈕
+    `hashchange`（`:458`）。讀入一律白名單＋型別檢查，非法值靜默退回預設。
+  - **個股摘要側欄（2026-09-07 批次三 #15 後半）**：`index.html:3634-3877`（含末尾兩個 document 級 listener）。代號旁 `▤` 鈕
     （`stkBtn`／`:3658`，掛在共用 `nameCell`／`:473`、選股 tab 代號欄、分點「單點」結果的名稱欄、
     持股診斷卡標題）開側欄；`renderStockDrawer()`（`:3845`）／`stkOpen()`（`:3856`）／
     `stkClose()`（`:3865`），DOM 是 `.wrap` 外的 `#stkMask`／`#stkPanel`（`:338-339`，position:fixed）。
@@ -61,7 +61,7 @@
     **刻意與 `code=` 分家**——`code=` 已被 lending／broker／diag 三個 tab 各自佔用，側欄跨 tab 都能開；
     兩者可並存。ESC 與點遮罩關閉、走 `history.replaceState` 不塞歷史。持股清單不進 hash（約定 6 不變）。
   - **持股清單匯出／匯入／清除（2026-09-07）**：`holdExportPayload`／`holdParseImport`／
-    `holdExport`／`holdImportFile`（`:3025-3070`）。**仍只走 localStorage `pm_holdings`
+    `holdExport`／`holdImportFile`（`:3078-3130`）。**仍只走 localStorage `pm_holdings`
     與使用者本機檔案，不進任何網路 payload**（約定 6 不變）；匯入走 `holdParseImport`
     的結構與型別檢查，壞檔整包拒收、不半套。
 - `build_postmkt.py` → `data/postmkt.json`（主資料，五個盤後 tab）
