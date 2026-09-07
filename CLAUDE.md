@@ -41,6 +41,14 @@
 
 - `index.html`：13 個 tab 全部前端（CSS/JS 內嵌）。`render()` 分派各 tab；共用表格框架 `tbl()`
   （排序/分組表頭/凍結欄/虛擬捲動，sticky 的坑記在 `<style>` 註解）。
+  - **hash 路由（2026-09-07）**：`#tab=&code=&sub=`，只放非預設值。`parseHash()`／`applyHash()`
+    （`:358`／`:371`）於 `load()` 套用，`syncHash()`（`:405`）掛在 `render()` 結尾以
+    `history.replaceState` 寫回（**不塞歷史、不觸發 hashchange**），外部改網址走
+    `hashchange`（`:410`）。讀入一律白名單＋型別檢查，非法值靜默退回預設。
+  - **持股清單匯出／匯入／清除（2026-09-07）**：`holdExportPayload`／`holdParseImport`／
+    `holdExport`／`holdImportFile`（`:3025-3070`）。**仍只走 localStorage `pm_holdings`
+    與使用者本機檔案，不進任何網路 payload**（約定 6 不變）；匯入走 `holdParseImport`
+    的結構與型別檢查，壞檔整包拒收、不半套。
 - `build_postmkt.py` → `data/postmkt.json`（主資料，五個盤後 tab）
 - `build_summary.py` → `data/summary/`（AI 彙總自動場；含資料齊全輪詢閘門與假日判斷）。
   **2026-08-29 起：每頁 1 份共 3 份摘要（原 6 份）、`MIN_OK_FOR_SYNTH=2` 才彙總、共振強度口徑 N/3；
