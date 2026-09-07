@@ -3,6 +3,27 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-09-07 URL 狀態（hash 路由，批次三 #1）
+
+原本無任何 hash／pushState 路由，重新整理一律回「摘要分析」。現在 `location.hash`＝
+`#tab=<13 tab 之一>&code=<代號>&sub=<子分頁>`，只放非預設值（預設 insight 時 hash 為空）。
+程式在 `index.html` 的 `// ---------- URL 狀態（hash 路由` 區塊：`parseHash`（白名單／型別檢查：
+tab 必在 `TABS`、sub 必在該 tab 允許值、code 為 4–6 位大寫英數，非法值靜默退回預設）→
+`applyHash`（載入與 `hashchange` 時套進 state）→ `currentHash`／`syncHash`（每次 `render()` 末尾
+以 `history.replaceState` 寫回，不塞歷史堆疊、不觸發 hashchange）。
+
+| tab | 子狀態 | 行為 |
+|-----|--------|------|
+| oddlot | `sub=intraday\|after` | 盤中／盤後子分頁 |
+| broker | `sub=branch\|stock\|list`＋`code=` | 有 code 無 sub 視為股票走「個股」；查詢框預填 `state.bkPending`，`state.pm` 就緒且有 FinMind token 才自動送出一次（無 token 只預填、不 alert） |
+| lending | `code=` | 展開該檔明細（`state.openLend`） |
+| diag | `code=` | 在持股→展開該卡並捲到位（入口站「我的異動」連 `#tab=diag&code=<代號>`）；不在持股→提示＋預填新增欄，不炸。持股清單本身絕不進 hash |
+
+與批次二懶載相容（切到需要資料的 tab 仍由 `render()` 觸發 `ensurePm()` 等）。Playwright 驗過：
+`#tab=lending` 直落借券且表格有資料、`#tab=broker&code=2330` 帶入並送出（FinMind mock）、
+`#tab=diag&code=2330` 聚焦／不在持股提示、切 tab 與子分頁 hash 更新且 reload 保留、`hashchange`＋
+goBack、非法值退回預設、13 tab pageerror 零、375px 不溢出。
+
 ## 2026-08-30 自動彙總場補寫 `synthesis.model`（費用估算最後一塊缺口）
 
 上一則記錄的「未補的一項」——`data/summary/*.json` 的 `synthesis` 只有 `{text, usage, via}`、
