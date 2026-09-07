@@ -3,6 +3,21 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-09-07 持股清單匯出／匯入／清除（批次三 #2）
+
+持股診斷 tab「我的持股」區塊新增三個按鈕（`index.html` 的 `diagInputHtml`），**全部在本機瀏覽器完成、
+不送往任何網路端點**（CLAUDE.md 約定 6；Playwright 監看全部 request 的 URL／body 無持股代號）：
+
+| 按鈕 | 做法 | 程式 |
+|------|------|------|
+| ⬇ 匯出 | `Blob`→`<a download>`，檔名 `pm_holdings_YYYYMMDD.json`，內容 `{schema:"pm_holdings/1", exported_at:ISO, holdings:[{c,sh,cost}]}` | `holdExportPayload`／`holdExport` |
+| ⬆ 匯入 | `<input type=file>` 讀本機檔 → `holdParseImport` 純函式嚴格驗證（頂層物件、`schema` 必等於 `pm_holdings/1`、`holdings` 為陣列、每筆 `c` 4–6 位英數、`sh`／`cost` 為 null 或 ≥0 有限數、代號不重複）；任一不合即整檔拒絕、顯示原因、**既有清單不覆蓋**；成功則取代清單並立即重繪 | `holdParseImport`／`holdImportFile` |
+| ✕ 清除 | `confirm()` 後清空 `pm_holdings`（取消不動） | click handler `[data-hold-clear]` |
+
+順手修：持股表 5 欄在 375px 超寬（既有問題，拿掉新按鈕列仍溢出），包一層 `overflow-x:auto`。
+Playwright 驗過：假持股→匯出（攔 download 讀內容）→清除→匯入同檔恢復且 diag 卡片重繪；六種壞檔
+（schema 錯／代號含 `<`／非 JSON／股數型別錯／頂層陣列／代號重複）皆顯示錯誤且原持股不變；pageerror 零。
+
 ## 2026-09-07 URL 狀態（hash 路由，批次三 #1）
 
 原本無任何 hash／pushState 路由，重新整理一律回「摘要分析」。現在 `location.hash`＝

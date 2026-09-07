@@ -3016,6 +3016,60 @@ function diagHoldings(){
 }
 function diagSaveHoldings(hs){ localStorage.setItem(HOLD_KEY, JSON.stringify(hs)); }
 
+// 持股清單匯出／匯入／清除（2026-09-07 批次三 #2）：全部在本機完成——匯出走 Blob→<a download>、
+// 匯入走 <input type=file> 讀本機檔，**不送往任何網路端點**（CLAUDE.md 約定 6）。
+// 檔案格式 {schema:"pm_holdings/1", exported_at:ISO, holdings:[{c, sh, cost}]}；匯入嚴格驗 schema 與
+// 欄位型別（c 為 4–6 位英數、sh/cost 為 null 或 ≥0 有限數），任何一筆不合即整檔拒絕、不覆蓋既有清單。
+const HOLD_SCHEMA = "pm_holdings/1";
+const HOLD_CODE_RE = /^[0-9A-Z]{4,6}$/;
+function holdExportPayload(hs){
+  return { schema: HOLD_SCHEMA, exported_at: new Date().toISOString(),
+           holdings: hs.map(h => ({ c: h.c, sh: h.sh == null ? null : h.sh, cost: h.cost == null ? null : h.cost })) };
+}
+// 回 { ok:true, holdings:[...] } 或 { ok:false, err:"原因" }；純函式、不碰 localStorage
+function holdParseImport(text){
+  let j;
+  try{ j = JSON.parse(text); }catch(e){ return { ok:false, err:"不是合法 JSON" }; }
+  if (!j || typeof j !== "object" || Array.isArray(j)) return { ok:false, err:"檔案頂層必須是物件" };
+  if (j.schema !== HOLD_SCHEMA) return { ok:false, err:`schema 不符（需為 ${HOLD_SCHEMA}，實際 ${JSON.stringify(j.schema)}）` };
+  if (!Array.isArray(j.holdings)) return { ok:false, err:"holdings 必須是陣列" };
+  const numOk = v => v === null || v === undefined || (typeof v === "number" && isFinite(v) && v >= 0);
+  const out = [], seen = new Set();
+  for (let i = 0; i < j.holdings.length; i++){
+    const h = j.holdings[i];
+    if (!h || typeof h !== "object") return { ok:false, err:`第 ${i+1} 筆不是物件` };
+    const c = typeof h.c === "string" ? h.c.trim().toUpperCase() : "";
+    if (!HOLD_CODE_RE.test(c)) return { ok:false, err:`第 ${i+1} 筆代號不合法：${JSON.stringify(h.c)}` };
+    if (!numOk(h.sh)) return { ok:false, err:`第 ${i+1} 筆（${c}）股數須為 ≥0 的數字或 null` };
+    if (!numOk(h.cost)) return { ok:false, err:`第 ${i+1} 筆（${c}）成本須為 ≥0 的數字或 null` };
+    if (seen.has(c)) return { ok:false, err:`代號 ${c} 重複` };
+    seen.add(c);
+    out.push({ c, sh: h.sh == null ? null : h.sh, cost: h.cost == null ? null : h.cost });
+  }
+  return { ok:true, holdings: out };
+}
+function holdExport(){
+  const hs = diagHoldings();
+  if (!hs.length){ state.diagMsg = "沒有持股可匯出"; render(); return; }
+  const blob = new Blob([JSON.stringify(holdExportPayload(hs), null, 2)], { type:"application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `pm_holdings_${twNow().slice(0,10).replace(/-/g,"")}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  state.diagMsg = `已匯出 ${hs.length} 檔`; render();
+}
+async function holdImportFile(file){
+  if (!file) return;
+  let text = "";
+  try{ text = await file.text(); }catch(e){ state.diagMsg = "匯入失敗：讀檔失敗"; render(); return; }
+  const r = holdParseImport(text);
+  if (!r.ok){ state.diagMsg = `匯入失敗：${r.err}（既有清單未變動）`; render(); return; }
+  diagSaveHoldings(r.holdings);
+  state.diagOpen = null; state.diagAI = null; state.diagMsg = `已匯入 ${r.holdings.length} 檔（取代原清單）`;
+  render();
+}
+
 // 即時現價（v2 /live，全市場快照）：失敗降級 raw live.json，再失敗只顯示前收
 async function fetchDiagLive(){
   state.diagLive = "loading";
@@ -3275,7 +3329,7 @@ function diagInputHtml(hs){
   let h = sec("我的持股", "僅存於本機瀏覽器 localStorage，不上傳任何伺服器");
   h += `<div class="mcard" style="padding:10px 14px">`;
   if (hs.length){
-    h += `<table style="border-collapse:collapse;width:100%;font-size:.85rem"><tr>`
+    h += `<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:.85rem"><tr>`
       + ["代號","名稱","股數","成本價(可空)",""].map(x=>`<th style="text-align:left;padding:4px 8px 6px;color:var(--muted);font-weight:400">${x}</th>`).join("") + `</tr>`;
     hs.forEach((hd, i) => {
       h += `<tr>`
@@ -3286,7 +3340,7 @@ function diagInputHtml(hs){
         + `<td style="padding:3px 8px"><span class="clk" data-diag-del="${i}" title="刪除" style="color:var(--muted)">✕</span></td>`
         + `</tr>`;
     });
-    h += `</table>`;
+    h += `</table></div>`;  // 5 欄在 375px 會超寬，包一層橫向捲動避免整頁溢出
   } else {
     h += `<div class="mut" style="font-size:.84rem;padding:2px 0 8px">尚未輸入持股。下方新增：代號＋股數（成本價可空）。</div>`;
   }
@@ -3296,6 +3350,14 @@ function diagInputHtml(hs){
     + `<input id="diagNewCost" class="diag-in" type="number" min="0" step="0.01" placeholder="成本價(可空)">`
     + `<button class="dbtn" data-diag-add="1">＋ 新增</button>`
     + (state.diagMsg ? `<span class="dwarn" style="font-size:.8rem">${esc(state.diagMsg)}</span>` : "")
+    + `</div>`;
+  // 匯出／匯入／清除：全在本機（Blob 下載／file input），不經任何網路端點
+  h += `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">`
+    + `<button class="dbtn" data-hold-export="1" title="下載 JSON（含 schema 與匯出時間）">⬇ 匯出</button>`
+    + `<label class="dbtn" style="cursor:pointer" title="讀取先前匯出的 JSON，取代目前清單；格式不符不會覆蓋">⬆ 匯入`
+    + `<input id="holdImport" type="file" accept="application/json,.json" hidden></label>`
+    + `<button class="dbtn" data-hold-clear="1" title="清空持股清單（會先確認）">✕ 清除</button>`
+    + `<span class="mut" style="font-size:.74rem">匯出／匯入只在本機瀏覽器進行，不上傳</span>`
     + `</div></div>`;
   return h;
 }
@@ -3474,6 +3536,13 @@ document.addEventListener("click", e => {
     const hs = diagHoldings(); hs.splice(+del.dataset.diagDel, 1);
     diagSaveHoldings(hs); state.diagMsg = ""; render(); return;
   }
+  if (e.target.closest("[data-hold-export]")){ holdExport(); return; }
+  if (e.target.closest("[data-hold-clear]")){
+    const n = diagHoldings().length;
+    if (!n){ state.diagMsg = "清單已是空的"; render(); return; }
+    if (!confirm(`確定清除全部 ${n} 檔持股？此動作無法復原（建議先匯出備份）。`)) return;
+    diagSaveHoldings([]); state.diagOpen = null; state.diagAI = null; state.diagMsg = "已清除持股清單"; render(); return;
+  }
   if (e.target.closest("[data-diag-add]")){
     const c = (document.getElementById("diagNewC").value || "").trim().toUpperCase();
     const sh = parseFloat(document.getElementById("diagNewSh").value);
@@ -3497,6 +3566,7 @@ document.addEventListener("click", e => {
   if (e.target.closest("[data-diag-rules]")){ state.diagRulesOpen = !state.diagRulesOpen; render(); return; }
 });
 document.addEventListener("change", e => {
+  if (e.target.id === "holdImport"){ const file = e.target.files && e.target.files[0]; e.target.value = ""; holdImportFile(file); return; }
   const f = e.target.closest("[data-diag-f]");
   if (!f) return;
   const hs = diagHoldings();
