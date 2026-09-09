@@ -68,6 +68,8 @@ RE_MARKET_CODE = re.compile(r"^\d[0-9A-Z]{2,7}$")
 RE_MARKET_EXCLUDE = re.compile(r"^(?:0[3-9]\d{3}[0-9A-Z]|7\d{4}[0-9A-Z])$")
 # 宇宙健全性下限：全市場個股＋ETF 常態 2600+ 檔，低於此值多半是 TaiwanStockInfo 對照
 # 殘缺或 TaiwanStockPrice 只回了部分市場——只印警告不中斷（有資料比沒資料好），但要看得見。
+# **上游整包為空（price_rows 或 nm 為空）另有一條分支會示警**（2026-09-09 補；原條件把它濾掉了，
+# 等於最該示警的情況反而靜默）。前端對應的必要條件見 README「前端消費 market_daily 的必要條件」。
 MARKET_DAILY_MIN_ROWS = 2000
 
 
@@ -532,6 +534,9 @@ def build_market_daily(date: str, price_rows: list, inst_rows: list, inst_date: 
       無法區分「不在底表」與「這檔證券不存在」，因此**前端不得把「代號不在 `rows` 裡」
       一律呈現成「查無此代號（已下市／停牌／代號有誤）」**——那對持有權證的使用者是說錯話。
       涵蓋／不涵蓋的完整清單與原文寫在 README「前端消費 `market_daily` 的必要條件」。
+      同節另有兩條前端必要條件：**`f`／`t` 為 null ≠ 無異動**（見下段）、**`rows` 為空／殘缺時
+      前端要整段顯示「無法取得異動資料」**，不得逐檔說成「查無此代號」（管線端對應的示警見
+      `MARKET_DAILY_MIN_ROWS` 下方那兩條分支）。
     - 只留基準日那天的列並依代號去重：正常情況 price_rows 是單日查詢（start=end），
       這道是防「哪天改成多日切片」時把不同天的同一檔重複寫進來（列有 `date` 才比對，
       沒有就當同日）。
@@ -571,7 +576,15 @@ def build_market_daily(date: str, price_rows: list, inst_rows: list, inst_date: 
         ])
     print(f"  market_daily：宇宙 {len(rows_out)} 檔"
           f"（TaiwanStockPrice {len(price_rows)} 列、TaiwanStockInfo {len(nm)} 檔對照）", flush=True)
-    if price_rows and nm and len(rows_out) < MARKET_DAILY_MIN_ROWS:
+    # 2026-09-09 放寬：原條件是 `price_rows and nm and len(rows_out) < MIN`，於是**上游整包為空
+    # （price_rows 或 nm 為空）時連警告都不印**，區塊照樣以 rows: [] 靜默輸出——那正是最該示警的
+    # 情況（前端若沿用「不在 rows ＝查無此代號」，會把使用者每一檔持股都說成已下市／停牌／代號有誤）。
+    # 兩條分支的訊息刻意不同：整包為空＝上游掛了，列數不足＝上游殘缺。
+    if not price_rows or not nm:
+        print(f"  ⚠ market_daily：上游輸入為空（TaiwanStockPrice {len(price_rows)} 列、"
+              f"TaiwanStockInfo {len(nm)} 檔對照），rows 只有 {len(rows_out)} 檔，"
+              f"前端須整段顯示「無法取得異動資料」而非逐檔「查無此代號」，請查上游", flush=True)
+    elif len(rows_out) < MARKET_DAILY_MIN_ROWS:
         print(f"  ⚠ market_daily：宇宙只有 {len(rows_out)} 檔（低於 {MARKET_DAILY_MIN_ROWS}），"
               f"疑似 TaiwanStockInfo 對照或 TaiwanStockPrice 殘缺，請查上游", flush=True)
     # c=代號、chg=漲跌%、f=外資買賣超(張)、t=投信買賣超(張)；欄名短是因為這區塊逐檔重複 2600+ 次

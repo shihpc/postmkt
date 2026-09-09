@@ -464,6 +464,34 @@ def test_market_daily_inst_date_mismatch_blanks_f_t():
     assert {r[0]: r[1] for r in out["rows"]}["2330"] == 2.0
 
 
+def test_market_daily_warns_when_upstream_input_is_empty(capsys):
+    """**上游整包為空時必須示警**（2026-09-09 補的守門）。
+
+    原告警條件是 `if price_rows and nm and len(rows_out) < MIN`——`price_rows`（或 `nm`）為空時
+    前兩個條件就短路，**最該示警的情況反而靜默**，區塊照樣以 `rows: []` 輸出。前端若沿用
+    「不在 `rows` ＝查無此代號」，會把使用者**每一檔**持股都說成「已下市/停牌/代號有誤」
+    （README「前端消費 `market_daily` 的必要條件」）。故三種空輸入都必須印出 `⚠ market_daily`。
+    """
+    for label, kwargs in (
+        ("price_rows 為空", {"price": []}),
+        ("nm 為空", {"nm": {}}),
+        ("兩者皆空", {"price": [], "nm": {}}),
+    ):
+        out = _md_build(**kwargs)
+        err = capsys.readouterr().out
+        assert out["rows"] == [], f"{label}：宇宙應為空"
+        assert out["cols"] == ["c", "chg", "f", "t"] and "date" in out, f"{label}：區塊形狀不變"
+        assert "⚠ market_daily" in err, f"{label}：必須示警，不可靜默輸出 rows: []"
+        assert "無法取得異動資料" in err, f"{label}：訊息要指出前端該顯示的文案"
+
+    # 對照組：輸入非空時走的是另一條分支（fixture 只有數十檔，會命中列數不足那條），
+    # 不得誤報成「上游輸入為空」——兩種故障的處置不同，訊息必須分得開。
+    _md_build()
+    err = capsys.readouterr().out
+    assert "上游輸入為空" not in err
+    assert f"低於 {bp.MARKET_DAILY_MIN_ROWS}" in err
+
+
 def test_market_daily_does_not_touch_lending():
     """新區塊不得改到 lending：同一份輸入，先後呼叫 build_market_daily 前後 lending 逐位相同。"""
     before = _lending_fixture()
