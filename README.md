@@ -19,7 +19,7 @@
 | 輪動雷達 | taiwan-flow-live-v2 `data/chain_daily/series.json`（跨 repo 唯讀，594KB 懶載，283 交易日 × 47 條產業鏈日頻序列，每交易日夜間增量更新） | 盤後日頻 RRG（B-ew 軸：等權報酬相對大盤等權基準，n=12 z-score／k=10 動能）：47 鏈散點＋成交額 Top10 錨點軌跡尾巴、日期回看、候補清單（改善／領先象限，持續性 N=3 完整列出）、新鮮度提示；描述語氣、附成員重疊揭露與盤中版互連 |
 | 選股 | `data/screen/screen.json`（`src/build_screen.py` 盤後管線：TradingView scanner 批次初篩「明年預估 EPS≥20」→ 鉅亨網 marketinfo API 逐檔補 FactSet 多年度預估 EPS 分佈/目標價/券商評等 → 合併 diag.json 籌碼/營收欄） | 分析師預估選股表：現價、FY 今年/明年預估 EPS（錨定資料日日曆年）、forward PER（自算）、EPS 預估家數（明年，表內附預估日與樣本數）、目標價中位與潛在漲幅、營收 YoY/連 N 月、PER-TTM、評等濃縮；門檻鈕（明年 EPS ≥30/50/100）＋全欄排序；固定標注 FactSet/鉅亨網來源與「預估非保證」免責 |
 | 日期 | 即時 fetch 八個資料源的 date/generated_at | 全專案資料日期總覽：各源資料日/產出時間(台北,到分)/新鮮度狀態（最新/落後N個交易日，僅排除週末、國定假日不扣），一眼看清哪些資料到今天 |
-| 持股異動 | `data/postmkt.json` 的 `market_daily`（全市場逐檔 {代號, 漲跌%, 外資張, 投信張}，走既有 `ensurePm()`，**本 tab 零新增網路請求**；畫面上的隱私承諾一律寫「持股代號不進任何網路請求」，**不可寫「本 tab 不發任何網路請求」**——`ensurePm()` 本身就會抓 `data/postmkt.json`，那句是假的） | 拿本機持股清單（localStorage `pm_holdings`）比對全市場逐檔資料，只列達門檻者（法人 ±100 張或漲跌 ±3%，最多 5 檔）；**六種「說錯話」分開講**：本表不涵蓋（權證／偽代號）／該資料日法人資料未到（`f`／`t` 為 null，非 0）／該資料日完全沒有資料（`chg`／`f`／`t` 三欄全 null，**不是**「未達門檻」）／查無此代號，整表殘缺（`rows` 空或 <2000 列）則整段「無法取得異動資料」；**第五軸＝主語一律綁 `market_daily.date`、不寫「今天／今日／當日」**（該日期是價格／借券資料日，與頂列的 `pm.date` 語意不同、實測系統性差一天），落後 ≥2 個交易日或缺失時另出一段與免責卡同重量的說明（**不新增紅黃綠判級**）；**第六軸＝整表不可用時頂列徽章不得報成「N 檔涵蓋」**（徽章與內文共用 `myChgUnusable()`）。點個股跳「持股診斷」是全站唯一**刻意塞歷史**的 hash 寫出（`location.hash =`，讓 Back 退得回來；其餘 hash 寫出一律 `replaceState`）。門檻為顯示用可調常數、無回測依據，不是買賣訊號。**2026-09-09 由入口站 shihpc.github.io「我的異動」搬遷而來**（該站表格 6 欄、手機只看得到前 2 欄；持股清單本來就是本站寫入的） |
+| 持股異動 | `data/postmkt.json` 的 `market_daily`（全市場逐檔 {代號, 漲跌%, 外資張, 投信張}，走既有 `ensurePm()`，**本 tab 零新增網路請求**；畫面上的隱私承諾一律寫「持股代號不進任何網路請求」，**不可寫「本 tab 不發任何網路請求」**——`ensurePm()` 本身就會抓 `data/postmkt.json`，那句是假的） | 拿本機持股清單（localStorage `pm_holdings`）比對全市場逐檔資料，只列達門檻者（法人 ±100 張或漲跌 ±3%，最多 5 檔）；**六種「說錯話」分開講**（與本檔「前端消費 `market_daily` 的必要條件」六軸、`index.html` 該段註解 ①–⑥ 為同一組）：本表不涵蓋（權證／偽代號，**不可說成「查無此代號」**）／該資料日法人資料未到（`f`／`t` 為 null，非 0）／該資料日完全沒有資料（`chg`／`f`／`t` 三欄全 null，**不是**「未達門檻」）／整表殘缺（`rows` 空或 <2000 列）整段「無法取得異動資料」、**不得逐檔說成「查無此代號」**（2026-09-09 更正：此列原把「查無此代號」列成六項之一、把「整表殘缺」擺到六項之外，與同檔下方「前四軸／另外三軸」的算法互相矛盾）；**第五軸＝主語一律綁 `market_daily.date`、不寫「今天／今日／當日」**（該日期是價格／借券資料日，與頂列的 `pm.date` 語意不同、實測系統性差一天），落後 ≥2 個交易日或缺失時另出一段與免責卡同重量的說明（**不新增紅黃綠判級**）；**第六軸＝整表不可用時頂列徽章不得報成「N 檔涵蓋」**（徽章與內文共用 `myChgUnusable()`）。點個股跳「持股診斷」是全站唯一**刻意塞歷史**的 hash 寫出（`location.hash =`，讓 Back 退得回來；其餘 hash 寫出一律 `replaceState`）。門檻為顯示用可調常數、無回測依據，不是買賣訊號。**2026-09-09 由入口站 shihpc.github.io「我的異動」搬遷而來**（該站表格 6 欄、手機只看得到前 2 欄；持股清單本來就是本站寫入的） |
 | 持股診斷 | `data/diag/diag.json`（`src/build_diag.py` 夜間管線）＋ v2 `/live` 現價＋ taiwan-stock-news 新聞 | 輸入持股（僅存 localStorage）→ 逐檔五面向（籌碼/價量/題材/基本面/系統）紅黃綠燈號＋事實清單＋組合層檢查＋近3日新聞命中＋可選 AI 解讀 |
 
 原「融資」「融券借券賣出餘額」兩 tab 於 2026-07-11 併入「融資券借券」整合排行（該 tab 為個股層級排行）；
@@ -114,7 +114,7 @@
 
 ### 前端消費 `market_daily` 的必要條件（2026-09-09 訂，改前端前必讀）
 
-**現行消費端＝本站 `index.html` 的「持股異動」tab**（2026-09-09 上線，grep `function myChgHtml`／`MYCHG_MIN_ROWS`）。下列四軸在該 tab 都有對應的實作與文案，改那段程式前先讀完本節；改本節判準（含 `RE_MARKET_CODE`／`RE_MARKET_EXCLUDE`／`MARKET_DAILY_MIN_ROWS`）要回頭同步該 tab 的 `MYCHG_WARRANT_RE`／`MYCHG_SEC_RE`／`MYCHG_MIN_ROWS`。
+**現行消費端＝本站 `index.html` 的「持股異動」tab**（2026-09-09 上線，grep `function myChgHtml`／`const MYCHG_MIN_ROWS`——裸名 `MYCHG_MIN_ROWS` 在 `index.html` 有 4 處命中，宣告式才唯一）。下列**六軸**（軸1～軸4 接在本段之後，第五／第六軸在本節末尾兩則；2026-09-09 更正，原寫「四軸」是在補上第五、第六軸時漏改的計數）在該 tab 都有對應的實作與文案，改那段程式前先讀完本節；改本節判準（含 `RE_MARKET_CODE`／`RE_MARKET_EXCLUDE`／`MARKET_DAILY_MIN_ROWS`）要回頭同步該 tab 的 `MYCHG_WARRANT_RE`／`MYCHG_SEC_RE`／`MYCHG_MIN_ROWS`。
 
 **`market_daily.rows` 刻意不是全宇宙**。前端拿使用者的持股代號去查這張表時，
 **「代號不在 `rows` 裡」不可一律呈現為「查無此代號（已下市／停牌／代號有誤）」**——
@@ -137,7 +137,9 @@
 - **判別方式（前端可自行做，不需新資料）**：代號**非數字開頭**＝偽代號／不是證券；
   代號符合 `^0[3-9]\d{3}[0-9A-Z]$` 或 `^7\d{4}[0-9A-Z]$`＝權證。這兩類走「本表不涵蓋」文案；
   其餘查不到才是真的「查無此代號」（已下市／停牌／代號有誤）。判準正本在
-  `build_postmkt.py` 的 `RE_MARKET_CODE`／`RE_MARKET_EXCLUDE`（grep 唯一命中），
+  `build_postmkt.py` 的 `RE_MARKET_CODE`／`RE_MARKET_EXCLUDE`（**錨點用宣告式**
+  `RE_MARKET_CODE = `／`RE_MARKET_EXCLUDE = `，在該檔各唯一命中；裸名各有 5 處，
+  另散見 `index.html` 與 `tests/test_postmkt_build.py`），
   **改那兩條 regex 要回頭改這張表**。
 - **由來**：入口站 shihpc.github.io 的「我的異動」明文要求三種狀態（達門檻／未達門檻／
   查無此代號）**必須分得開**，理由是「缺資料卻呈現成正常」會讓使用者無從分辨。
@@ -147,7 +149,7 @@
 
 - **`f`／`t` 為 `null` ≠ 無異動——不得當成 0，也不得說成「無顯著異動」**。
   `build_market_daily()` 在**法人資料日 ≠ 基準日**時會把整欄 `f`／`t` 寫成 `null`
-  （寧缺勿混；`build_postmkt.py` grep `法人資料日`，守門測試
+  （寧缺勿混；`build_postmkt.py` grep `法人資料日與本區塊基準日`——**裸名 `法人資料日` 有 2 處命中**，守門測試
   `test_market_daily_inst_date_mismatch_blanks_f_t`），單檔查無法人資料時同樣寫 `null` 而非 0
   （`test_market_daily_missing_inst_is_null_not_zero`）。**前端把 `null` 讀成 0 或「無顯著異動」，
   等於原封不動複製本節開頭引用的那個舊坑**（入口站「我的異動」舊版只讀 `latest.json`，
@@ -191,7 +193,8 @@
   `{"date": …, "cols": …, "rows": []}`（有半份資料比整包不產出好），**但前端若沿用
   「不在 `rows` ＝查無此代號」，會把使用者的每一檔持股都說成「已下市／停牌／代號有誤」**——
   這是上述幾種說錯話裡最嚴重的一種。**前端必須先看整表健康度**：`rows` 為空、或
-  `len(rows) < 2000`（同管線端的 `MARKET_DAILY_MIN_ROWS`，grep 唯一命中）時，**整段顯示
+  `len(rows) < 2000`（同管線端的 `MARKET_DAILY_MIN_ROWS`，**錨點用宣告式**
+  `MARKET_DAILY_MIN_ROWS = ` 在 `build_postmkt.py` 唯一命中；裸名 4 處）時，**整段顯示
   「無法取得異動資料」**——這句文案沿用自入口站 `shihpc.github.io/index.html` 舊「我的異動」區塊
   `loadMyChanges()` 的失敗路徑（`body.textContent = "無法取得異動資料"`）。**出處已不存在**：
   該區塊隨本 tab 搬遷而於 2026-09-09 從入口站移除（`shihpc.github.io` commit `a30d5fa`），

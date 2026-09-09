@@ -55,9 +55,14 @@
     （**不塞歷史、不觸發 hashchange**），外部改網址走 `hashchange`
     （grep `addEventListener("hashchange"`）。讀入一律白名單＋型別檢查，非法值靜默退回預設。
     **唯一刻意例外（2026-09-09）**：「持股異動」列點個股跳「持股診斷」走 `location.hash = …`
-    （grep `'location.hash = '`＝帶等號的賦值，全站唯一命中；**`grep data-mychg` 則有 4 處**
-    ——兩段註解＋表格欄屬性＋handler 的 `closest(".clk[data-mychg]")`，2026-09-09 更正），
-    **會塞一筆歷史**——那是使用者主動的下鑽導覽、不是 `render()`
+    ——**全站唯一的「賦值」是它**（在 `myChgHtml()` 的點擊 handler 內），但
+    `grep 'location.hash = '` 在 `index.html` 有 **3 處命中**（兩行註解＋這一處賦值）：
+    **「唯一賦值」為真、「唯一命中」為假**，兩者不可混講。同理 `grep data-mychg` 在
+    `index.html` 有 **5 處**（不是 4）：註解 3 行（其中一行就是 `index.html` 自己那句
+    「則有 4 處」的宣稱——**宣稱句本身也算一次命中**，那正是上一版少算的那一次）
+    ＋`myChgHtml()` 表格欄的屬性＋handler 的 `closest(".clk[data-mychg]")`。
+    **`index.html` 那兩行註解仍寫舊數字，屬程式檔註解、本批不動**（見 CHANGELOG 待辦）。
+    此處**會塞一筆歷史**——那是使用者主動的下鑽導覽、不是 `render()`
     的狀態寫回，Back 要能退回持股異動。除此之外全站 hash 寫出一律 `replaceState`。
   - **個股摘要側欄（2026-09-07 批次三 #15 後半）**：`index.html` grep `// ---------- 個股摘要側欄`
     起，至該節末尾兩個 document 級 listener（`[data-stk]` 委派點擊與 grep `Escape" && state.stkOpen`
@@ -79,16 +84,25 @@
     **刻意與 `code=` 分家**——`code=` 已被 lending／broker／diag 三個 tab 各自佔用，側欄跨 tab 都能開；
     兩者可並存。ESC 與點遮罩關閉、走 `history.replaceState` 不塞歷史。持股清單不進 hash（約定 6 不變）。
   - **持股異動 tab（2026-09-09）**：`index.html` grep `function myChgHtml`／`function renderMyChg`／
-    `MYCHG_MIN_ROWS`／`function myChgDateInfo`。資料源＝`state.pm.market_daily`（走既有 `ensurePm()`，
+    `const MYCHG_MIN_ROWS`（**裸名 `MYCHG_MIN_ROWS` 有 4 處命中，宣告式才唯一**）／
+    `function myChgDateInfo`。資料源＝`state.pm.market_daily`（走既有 `ensurePm()`，
     **零新增網路請求**，持股代號不進任何 URL／header／body——畫面承諾只能寫「持股代號不進任何網路
     請求」，**不可寫「本 tab 不發任何網路請求」**，`ensurePm()` 自己就會抓 `data/postmkt.json`）。
-    **六種「說錯話」不可混講**（正本＝README「前端消費 `market_daily` 的必要條件」）：本表不涵蓋
-    （權證／偽代號）／該資料日法人資料未到（`f`／`t` 為 `null`，不得讀成 0；**同列 `chg` 只有在它
-    自己不是 `null` 時才仍然有效**——`chg` 也可能是 `null`，**不得無條件宣稱「同列漲跌% 仍然有效」**）／
-    該資料日完全沒有資料（`chg`／`f`／`t` 三欄全 `null`，**不是**「未達門檻」）／查無此代號
-    （在本表涵蓋範圍內、但該代號不在 `rows` 裡）／**資料日不是「今天」**（第五軸）／
-    **整表不可用時頂列徽章不得報成「N 檔涵蓋」**（第六軸；徽章與內文共用 `myChgUnusable()`）。
-    整表殘缺（`rows` 空或 <2000 列）是另一層：整段顯示「無法取得異動資料」，**不進**上述逐檔分類。
+    **六種「說錯話」不可混講**（正本＝README「前端消費 `market_daily` 的必要條件」的六軸，
+    與 `index.html` 該段註解的 ①–⑥ 是**同一組六項**，三方必須逐項對得上）：
+    本表不涵蓋（權證／偽代號，**不可說成「查無此代號」**）／該資料日法人資料未到（`f`／`t` 為
+    `null`，不得讀成 0；**同列 `chg` 只有在它自己不是 `null` 時才仍然有效**——`chg` 也可能是
+    `null`，**不得無條件宣稱「同列漲跌% 仍然有效」**）／該資料日完全沒有資料（`chg`／`f`／`t`
+    三欄全 `null`，**不是**「未達門檻」）／**整表殘缺**（`rows` 空或 <2000 列）整段顯示
+    「無法取得異動資料」、**不得逐檔說成「查無此代號」**、也不得靜默當成沒有異動／
+    **資料日不是「今天」**（第五軸）／**整表不可用時頂列徽章不得報成「N 檔涵蓋」**
+    （第六軸；徽章與內文共用 `myChgUnusable()`）。
+    **「查無此代號」不另計為一軸**：它是第一軸與整表殘缺軸的**對照項**（代號在涵蓋範圍內、
+    確實不在 `rows` 裡才是它），三方都把它寫成「不可說錯成這個」而不是獨立一軸——
+    `index.html` 的 ①③④ 與 README 的軸1／軸4 皆然。
+    （**2026-09-09 二次更正**：`26e3a73` 那版把「查無此代號」提成六項之一、又把「整表殘缺」
+    踢出六軸另立一層，與 `index.html` ③ 和 README「前四軸／另外三軸」直接相反，
+    把原本三方一致的清單改成互相矛盾，本批已改回。教訓見 CHANGELOG。）
     資料日徽章取 **`market_daily.date`，不是 `pm.date`**（前者＝價格／借券資料日，後者＝全檔基準日，
     線上實測系統性差一天）。**第五軸（2026-09-09）**：畫面主語一律寫出實際日期，
     **不得用「今天／今日／當日」代稱**；落後 ≥`MYCHG_STALE_LAG`（2）個交易日、晚於今日或缺失時
