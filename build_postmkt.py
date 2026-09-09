@@ -558,7 +558,13 @@ def build_market_daily(date: str, price_rows: list, inst_rows: list, inst_date: 
     2026-09-09T20:55:42+08:00 那版）：date_mismatch 的融資／借券成交／三大法人／當沖四項全為
     2026-09-09（＝基準被 d_short 拖在 2026-09-08），本區塊 date=2026-09-08、rows 2,757 檔、
     **f 非 null 0 檔、t 非 null 0 檔**（chg 非 null 2,711 檔）。脫鉤後常態下 date == inst_date、
-    守門不會觸發；**守門本身仍保留**，供退回分支與上游真的錯亂時把關。
+    守門不會觸發。**守門本身仍保留，但要誠實說清楚它現在的地位**：從 `main()` 呼叫時它已是
+    **恆假的死碼**——`date`（＝`md_date`）與 `inst_date` 都由 `d_inst` 決定，`d_inst` 為真則
+    `date == inst_date`、條件不成立；`d_inst` 為假（退回分支）則 `inst_date` 為空、第一個條件
+    就短路，兩路窮盡。退回分支之所以安全，是因為 `r_inst` 同時為空、`inst_by_c` 自然是 `{}`，
+    **與這道守門無關**。保留的理由是本函式作為獨立函式仍可能被其他呼叫端／未來重構以不同的
+    `date`／`inst_date` 組合呼叫（現行單元測試 `test_market_daily_inst_date_mismatch_blanks_f_t`
+    就是這樣直接呼叫它的），屆時仍需寧缺勿混。
     對照：`lending.date` 仍是 lend_date，所以本區塊的 date **可能與 lending.date 不同**，
     消費端一律讀區塊自己的 date（見 docs/date-semantics.md）。
     """
@@ -784,7 +790,11 @@ def main() -> None:
     # 2026-09-08），market_daily.date = 2026-09-08、rows 2,757 檔，**f 非 null 0 檔、t 非 null 0 檔**
     # （chg 非 null 2,711 檔）。使用者從約 21:00 到隔日 01:xx 那班短賣餘額補上前，「持股異動」整晚
     # 都顯示「當日法人資料未到」——功能不是壞掉，是每天有好幾個小時是廢的。
-    # 守門本身**保留**（退回分支與上游異常時仍需要它，寧缺勿混），這裡只是不再自己製造不一致。
+    # 守門本身**保留**，但**從這裡呼叫時它已恆假**：date（＝md_date）與 inst_date 都由 d_inst 決定
+    # ——d_inst 為真則兩者相等，d_inst 為假則 inst_date 為空、條件第一項就短路，兩路窮盡。退回分支
+    # 安全是因為 r_inst 同時為空、inst_by_c 自然是 {}，與守門無關。保留是為了 build_market_daily()
+    # 作為獨立函式被其他呼叫端／未來重構以不同 date／inst_date 組合呼叫時仍能寧缺勿混（現行單元測試
+    # test_market_daily_inst_date_mismatch_blanks_f_t 就是直接這樣呼叫的）。這裡只是不再自己製造不一致。
     md_date = d_inst or lend_date
     # 價格沿用同一天、已在手的那份：d_inst == d_dt 是常態（兩者都約 21:00 更新），
     # 其次是 d_inst == lend_date；三者都不同才多打一次全市場查詢（實務上不該發生）。

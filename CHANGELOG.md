@@ -32,8 +32,13 @@
 `lend_date` 為基準，三處衍生欄公式約定不變；`git diff -U0` 的 hunk 與該函式行範圍零重疊）；
 `date_mismatch` 的組成與語意不動（那是借券 tab 的徽章）；`out["date"]` 仍是 `latest`；
 `build_market_daily()` 的宇宙過濾、null 語意、示警分支不動。
-**`inst_date != date` 守門保留**——脫鉤後常態不會觸發，但退回分支與上游真的錯亂時仍需要它，
-拿掉等於把「寧缺勿混」拆了。README「前端消費 `market_daily` 的必要條件」**六軸一字未改**：
+**`inst_date != date` 守門保留，但地位要說清楚**——**從 `main()` 呼叫時它已是恆假的死碼**：
+`date`（＝`md_date`）與 `inst_date` 都由 `d_inst` 決定，`d_inst` 為真則兩者相等、條件不成立；
+`d_inst` 為假（退回分支）則 `inst_date` 為空、條件第一項就短路，兩路窮盡。退回分支之所以安全，
+是因為 `r_inst` 同時為空、`inst_by_c` 自然是 `{}`，**與這道守門無關**。保留的理由是
+`build_market_daily()` 作為獨立函式仍可能被其他呼叫端／未來重構以不同的 `date`／`inst_date`
+組合呼叫（現行單元測試 `test_market_daily_inst_date_mismatch_blanks_f_t` 就是這樣直接呼叫它的），
+屆時仍需寧缺勿混；拿掉等於把「寧缺勿混」拆了。README「前端消費 `market_daily` 的必要條件」**六軸一字未改**：
 六軸講的是前端不可說錯的話，脫鉤不改變任何一軸（`f`／`t` 仍可能為 null）。
 
 ### 驗證
