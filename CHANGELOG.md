@@ -3,6 +3,78 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-09-09（同日修正）`market_daily` 宇宙收斂：`TaiwanStockPrice` 單日就含 4.5 萬列權證
+
+**症狀**：帶真實 `FINMIND_TOKEN` 的第一次真實建置（CI run `34315933248`，ref 為本分支，
+build 步驟 success）輸出 `data/postmkt.json` **2,719,486 bytes**，而 main 上同期檔案約
+1,652,000 bytes ——實際增量 **+1,067,000 bytes（+65%）**，與下一節估算的 +56KB／+3.4% 差 19 倍。
+
+**成因（已判定：非重複列，而是宇宙本身就含非個股商品）**：
+
+- 同一份 log 印出 `TaiwanStockPrice -> 45675 筆`（`fetch_daytrading()` 的 print）。台股權證／ETN
+  數以萬計，**FinMind `TaiwanStockPrice` 單日全市場切片本來就包含它們**；同 log 的
+  `TaiwanStockInfo: 3147 檔對照` 則只有 3,147 檔 —— 兩者差的 4 萬多列就是權證等非個股商品。
+- **不是「抓了多天」造成的重複**：`r_price_lend` 只會是 `fetch_daytrading()` 內
+  `api_get("TaiwanStockPrice", start_date=d, end_date=d)` 的結果，或 `main()` 內同樣
+  `start_date=end_date=lend_date` 的單日查詢（`build_postmkt.py` 該兩處），而 `src/fmclient.py`
+  的 `api_get()` 是單次請求、沒有分頁也沒有日期迴圈。算術也對不上：`45675 / 2650 ≈ 17.2`，
+  而回退上限只有 5 天。**每列約 23.4 bytes ×45,675 ≒ 1.07MB**，與實測增量相符 →
+  45,675 列**全部**進了 `market_daily.rows`。
+- 上一節的體積估算方法本身沒錯（拿 taiwan-flows 2,650 檔重建同形狀區塊），**錯在程式的宇宙
+  從來就不是那個母體**——估算與實作用了不同的宇宙，才會差 19 倍。
+
+**修法（沿用家族既有機制，不自創）**：`build_market_daily()` 的宇宙改成
+**當日 `TaiwanStockPrice` ∩ `TaiwanStockInfo`（本管線既有的 `nm`，3,147 檔對照、不含權證）
+∩ `RE_MARKET_CODE`**。`RE_MARKET_CODE` 沿用 taiwan-flows `src/build_meta.py` 的母體定義
+（`RE_STOCK`／`RE_ETF`）＋`pipeline.build_rows()` 的「只收母體，排除權證等」，唯一放寬處是
+一般股 4 位數後允許單一字母後綴（特別股／存託憑證，例如 `2887Y`）——那些是真的可以被持有的
+個股，不該從「任一持股都查得到」的底表消失。兩道一起用：Info 白名單擋權證，代號型態擋 ETN
+（6 碼＋U）與代號型態不對的商品，任一道單獨都可能有漏。另加「只留基準日那列＋依代號去重」
+（列有 `date` 才比對），防日後改成多日切片時把不同天的同一檔重複寫進來。
+
+- **ETF 完整保留**（這個區塊存在的唯一理由就是全市場覆蓋，不是為了縮小體積）：`00` 開頭含字母
+  後綴（`00637L`／`00981A`）全在母體內，測試逐檔釘住。權證／ETN 排除。
+- **健全性觀測**：建置時印 `market_daily：宇宙 N 檔（TaiwanStockPrice M 列、TaiwanStockInfo K 檔對照）`，
+  低於 `MARKET_DAILY_MIN_ROWS`（2000）另印警告但不中斷（有資料比沒資料好，但要看得見）。
+- **體積重估（估算，非真實建置產出）**：以 taiwan-flows `data/daily/20260907.json` 的 2,650 檔
+  重建同形狀區塊 → 區塊 raw **53,511 B**（每列 20.19 B）／gzip 16,891 B；併進現行
+  `data/postmkt.json`（1,652,453 B）後 raw **1,705,980 B（+3.24%）**、gzip 269,942 → 287,509 B。
+  宇宙若到 2,950 檔則區塊約 59.6KB。**對真實建置的預測**：`market_daily` 約 **2,600–2,950 檔**、
+  區塊 **53–62KB**，全檔約 **1.70–1.76MB**（其餘區塊本來就有逐日變動，故給區間）。
+  真實建置落在 2.7MB 或 1.65MB 附近都代表修法沒生效。
+
+**同批補上獨立驗收指出的 5 項必修**：
+
+1. **檔頭契約守門測試**（原本 104 支測試對「把 `market_daily` 移到 `out` 第一個 key」**全數通過**）：
+   新增 `test_output_head_contract_date_and_generated_at_first`，以離線 fixture 跑真正的 `main()`，
+   斷言 `list(out)[:2] == ["date","generated_at"]`，並對 `json.dumps` 後的**前 2048 bytes** 跑與兩個
+   消費端**逐字相同**的 regex（taiwan-flow-live-v2 `worker/src/index.js` 的 `extractHeadFields`＋
+   `fetchStatusHead(bytes = 2048)`、claude-harness `tools/freshness_watchdog.py` 的
+   `HEAD_BYTES = 2048`），比對結果須等於 `out["date"]`／`out["generated_at"]`。
+2. **「不截斷、全市場」守門測試**（原本 fixture 只有 6 檔，遠低於 `TOP_N = 50`，
+   「改成 `rows_out[:TOP_N]`」的突變**全數通過**）：fixture 補到 **67 檔（> TOP_N）**，
+   `test_market_daily_is_not_a_ranking_no_truncation` 斷言 `len(rows) == 宇宙檔數`（不是 `> 0`），
+   並另有一支跑完整 `main()` 的版本。
+3. **`docs/date-semantics.md` 補 `market_daily.date`**（該檔是跨五站唯一對照表）：其值＝
+   `lending.date`（`lend_date`），**與最上層 `date`（各段取 max）語意不同、值可能不同**，
+   消費端一律讀區塊自己的 `date`。
+4. **`README.md` 的「（見「外部消費者」）」指向不存在的章節**：改成明寫該契約本身（兩個消費端、
+   Range 檔頭 2048 bytes、regex 撈第一個 `date`／`generated_at`、守門測試名稱），並指出它與
+   `CLAUDE.md`「不可破壞的約定」第 7 條屬同一組跨 repo 依賴——**第 7 條只寫了 Worker 輪詢
+   raw main 鏈式觸發下游，沒有涵蓋這條檔頭契約**。
+5. **`lending.foreign_vol` 與 `market_daily.f` 的刻意不一致（本節即為書面紀錄）**：
+   `build_lending()` 對法人資料**沒有**日期守門（無條件用 `inst_by_c`），`build_market_daily()`
+   有（法人資料日 ≠ 基準日 → `f`／`t` 整欄 `null`）。**所以法人資料落後的那一天，融借券 tab 會
+   顯示某檔外資 +N 張，持股異動同一檔顯示「—」。這是刻意的（新區塊較嚴、寧缺勿混），不是 bug。**
+   `build_lending` 的舊行為不改：它的欄位受「三處一致」約定與 parity 測試綁死，改它是另一件事。
+   程式端 `build_market_daily()` docstring 亦有原地註解。
+
+**`lending` 逐位未受影響**（本次未動它一行）：以同一份 fixture 跑改前（`e96c5d8`）／改後，
+`PYTHONHASHSEED` 取 0／1／2 各跑一次，輸出（列序以代號排序後）逐位相同（2,447 bytes）。
+
+**突變測試（自測，四種都會紅）**：①`market_daily` 移到 `out` 第一個 key → 2 紅；
+②`rows_out[:TOP_N]` → 6 紅；③拿掉宇宙過濾（權證全收）→ 5 紅；④拿掉基準日過濾 → 1 紅。
+
 ## 2026-09-09 `postmkt.json` 新增 `market_daily` 全市場逐檔精簡區塊（管線階段）
 
 入口站 `shihpc.github.io` 的「我的異動」要搬進本站成為新 tab，它需要**任一持股**的三個數字：

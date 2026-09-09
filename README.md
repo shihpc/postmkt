@@ -45,12 +45,27 @@
   找不到最新交易日資料時自動往前回退最多 5 天；TWSE 端點失敗重試一次後降級（缺欄警示）。
   **`market_daily` 區塊（2026-09-09 新增，供「持股異動」用）**：全市場逐檔精簡底表，
   形狀比照 taiwan-flows `data/daily/<d>.json` 的 `{date, cols, rows}` 欄式二維陣列，
-  `cols` ＝ `["c","chg","f","t"]`（代號／漲跌%／外資買賣超張／投信買賣超張）。宇宙＝
-  當日全市場 `TaiwanStockPrice`（建置時已在手，零額外 API 呼叫），漲跌%與當沖 tab 共用
-  `_chg_pct()`。**查不到法人資料寫 `null` 不寫 0**（刻意與 `lending.rows` 的
-  `foreign_vol`/`trust_vol` 不同——後者把「沒資料」寫成 0，兩者無法區分），法人資料日
-  ≠ 基準日時 `f`/`t` 全留 `null`（寧缺勿混）。**此區塊必須排在 `out` 最後**：Worker
-  `/status` 用 Range 只取檔頭 regex 撈第一個 `date`／`generated_at`（見「外部消費者」）。
+  `cols` ＝ `["c","chg","f","t"]`（代號／漲跌%／外資買賣超張／投信買賣超張），
+  `date` ＝ `lending.date`（與最上層 `date` 語意不同，見 `docs/date-semantics.md`）。
+  **宇宙＝當日 `TaiwanStockPrice` ∩ `TaiwanStockInfo` ∩ 母體代號型態**（`RE_MARKET_CODE`：
+  一般股 4 位數可帶單一字母後綴＋`00` 開頭 ETF，沿用 taiwan-flows `src/build_meta.py` 的
+  母體定義），兩者建置時都已在手、零額外 API 呼叫；**不能直接用整包 `TaiwanStockPrice`**
+  ——它單日全市場就有 4.5 萬列（2026-09-09 CI 實測 45,675 列，權證／ETN 佔絕大多數），
+  照單全收會讓全檔從 ~1.65MB 變成 2,719,486 bytes（實測）。收斂後約 2,600–2,950 檔
+  （個股＋ETF 全保留，含 `00637L`／`00981A` 這類字母後綴），區塊約 55KB。
+  漲跌%與當沖 tab 共用 `_chg_pct()`。**查不到法人資料寫 `null` 不寫 0**（刻意與
+  `lending.rows` 的 `foreign_vol`/`trust_vol` 不同——後者把「沒資料」寫成 0，兩者無法
+  區分），法人資料日 ≠ 基準日時 `f`/`t` 全留 `null`（寧缺勿混；`build_lending` 沒有這道
+  守門，兩邊那天會不一致——刻意的，見 CHANGELOG 2026-09-09）。
+  **此區塊必須排在 `out` 最後（跨 repo 檔頭契約）**：taiwan-flow-live-v2 的 Worker
+  `/status`（`fetchStatusHead`，`bytes = 2048`）與 claude-harness
+  `tools/freshness_watchdog.py`（`HEAD_BYTES = 2048`）都對本檔走 Range 只取**檔頭
+  2048 bytes**，再 regex 撈**第一個** `"date"`／`"generated_at"`；任何區塊插到那兩個
+  key 之前，兩站會**靜默**撈到錯的日期或撈不到。守門測試＝
+  `tests/test_postmkt_build.py::test_output_head_contract_date_and_generated_at_first`
+  （對 `json.dumps` 後前 2048 bytes 跑與那兩個消費端逐字相同的 regex）。此契約與
+  `CLAUDE.md`「不可破壞的約定」第 7 條「外部消費者」屬同一組跨 repo 依賴——第 7 條
+  只寫了 Worker 輪詢 raw main 鏈式觸發下游，**沒有**涵蓋這條檔頭 Range 契約。
 - `.github/workflows/build.yml`：平日 21:53 台北（13:53 UTC）排程＋手動觸發
   （2026-07-14 起由 21:30 延後：FinMind 當沖量值約 21:30 後才更新，留緩衝＋
   冷門分鐘避開壅塞），跑完自動 commit `data/postmkt.json`。

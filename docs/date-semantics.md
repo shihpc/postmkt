@@ -129,9 +129,12 @@
 | `margin/lending/short_balance/daytrading/blocktrade.date` | 各 dataset 的交易日 | — | 交易日 |
 | `oddlot.intraday.date` / `oddlot.after.date` | 零股盤中／盤後交易日 | — | 交易日 |
 | `brokers.date` | 分點查詢預設日（與當沖對齊） | — | 交易日 |
+| `market_daily.date` | 全市場逐檔精簡表（持股異動 tab）的基準日 ＝ `lending.date`（`lend_date`，取短餘額表日）。**與最上層 `date` 語意不同**（那個是各段 date 取 max），兩者值可能不同 | — | 交易日 |
 | `date_mismatch` | P5 新增：借券 tab 落後偵測 `[{name,date}]`，非空＝有 dataset 落後於 `lending.date` 基準 | — | 交易日 |
 
 > `lending.date` 是借券 tab 多 dataset 的對齊基準（取短餘額表日）；某 dataset 與之不同即進 `date_mismatch`。
+
+> `market_daily.date` 與 `lending.date` 同一個基準日（同一批 `TaiwanStockPrice` 收盤價），**消費端一律讀區塊自己的 `date`、不要拿最上層 `date` 當它的資料日**。區塊內 `f`／`t`（外資／投信買賣超張數）另有守門：法人資料日 ≠ 本區塊 `date` 時整欄寫 `null`（寧缺勿混），所以「有 `date` 但 `f`／`t` 全 null」是合法狀態、不是壞檔。
 
 > **前端頂列（2026-09-06 起）**「資料日｜本站更新｜狀態」直接取上表 `date`／`generated_at`（後者走 `fmtGenTaipei` 轉台北到分）。
 > 狀態四值（`index.html` `pmStatus()`，台北時區、交易日只排週末）：**正常**＝資料日為今日，或為上一交易日且未過 22:30；

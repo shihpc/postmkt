@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -22,6 +23,17 @@ from twseclient import RETRY_BACKOFFS, resolve_cols, throttled_get  # noqa: E402
 
 TOP_N = 50
 MAX_BACK_DAYS = 5
+
+# market_daily 的市場母體代號型態：一般股 4 位數（可帶單一字母後綴＝特別股／存託憑證）
+# ＋ 00 開頭 ETF（含 00637L／00981A 這類字母後綴）。沿用 taiwan-flows
+# `src/build_meta.py` 的母體定義（`RE_STOCK = ^[1-9]\d{3}$`／`RE_ETF = ^00\d{2,4}[A-Z]?$`
+# ＋ `pipeline.build_rows` 的「只收母體，排除權證等」），差別只在多放行 4 位數後的單一字母
+# （特別股如 2887Y、存託憑證），那些是真的可以被持有的個股，不該從「任一持股都查得到」的
+# 底表消失。**為什麼需要這道過濾見 build_market_daily() 的 docstring。**
+RE_MARKET_CODE = re.compile(r"^(?:[1-9]\d{3}[A-Z]?|00\d{2,4}[A-Z]?)$")
+# 宇宙健全性下限：全市場個股＋ETF 常態 2600+ 檔，低於此值多半是 TaiwanStockInfo 對照
+# 殘缺或 TaiwanStockPrice 只回了部分市場——只印警告不中斷（有資料比沒資料好），但要看得見。
+MARKET_DAILY_MIN_ROWS = 2000
 
 
 def fetch_latest(dataset: str, base_date: dt.date) -> tuple[str, list]:
@@ -459,15 +471,25 @@ def build_daytrading(date: str, rows: list, price_rows: list, nm: dict) -> dict:
     return {"date": date, "by_amount": by_amount}
 
 
-def build_market_daily(date: str, price_rows: list, inst_rows: list, inst_date: str) -> dict:
+def build_market_daily(date: str, price_rows: list, inst_rows: list, inst_date: str, nm: dict) -> dict:
     """全市場逐檔精簡表（「持股異動」tab 用）：任一持股都查得到漲跌%與外資/投信買賣超張數。
 
     為什麼不擴充 lending.rows：那是依借券餘額排序的排行、宇宙是「有借券／融資融券活動」的
     聯集（純現股會缺席），且欄位與 augmentLending()／_augment_lending() 三處一致的約定綁死。
     故另立獨立區塊，改用 taiwan-flows `data/daily/<d>.json` 同款欄式二維陣列（{date, cols,
-    rows}），2600+ 檔只多約 80KB。
+    rows}），2600+ 檔只多約 55KB（估算，見 CHANGELOG 2026-09-09）。
 
-    宇宙＝當日 TaiwanStockPrice 全市場（此管線建置時已在手，零額外 API 呼叫）。
+    **宇宙＝當日 TaiwanStockPrice ∩ TaiwanStockInfo ∩ RE_MARKET_CODE**（此管線建置時兩者
+    都已在手，零額外 API 呼叫）：
+    - `TaiwanStockPrice` **單日全市場就有 4.5 萬列**（2026-09-09 CI 實測 45,675 列），
+      因為它含權證／ETN 等非個股商品；直接照單全收會讓區塊從 ~55KB 膨脹成 ~1.07MB
+      （實測全檔 2,719,486 bytes），且塞一堆沒人會持有的權證進來。
+    - `nm`（TaiwanStockInfo，實測 3,147 檔對照）只收錄上市櫃證券、**不含權證**，是本管線
+      既有、零成本的白名單；`RE_MARKET_CODE` 再擋掉 ETN（6 碼＋U）等代號型態不對的東西。
+      兩道一起用：任一道單獨都可能有漏（Info 若哪天收錄了新商品／代號型態若有例外）。
+    - 只留基準日那天的列並依代號去重：正常情況 price_rows 是單日查詢（start=end），
+      這道是防「哪天改成多日切片」時把不同天的同一檔重複寫進來（列有 `date` 才比對，
+      沒有就當同日）。
 
     **刻意與 build_lending 不同：查不到法人資料寫 null、不寫 0。** build_lending 用
     `inst_by_c.get(c, {"foreign": 0, ...})` 把「沒有這檔的法人資料」與「法人真的沒買賣」
@@ -475,17 +497,26 @@ def build_market_daily(date: str, price_rows: list, inst_rows: list, inst_date: 
     「無異動」正是入口站舊版踩過的坑，故一律 null。
 
     法人資料日與本區塊基準日不一致時，f/t 一律留 null（寧缺勿混，同 build_lending 的
-    dt_* 處理），避免把別天的買賣超錯配到今天。
+    dt_* 處理），避免把別天的買賣超錯配到今天。**build_lending 沒有這道日期守門**（無條件
+    用 inst_by_c），所以法人資料落後的那天，融借券 tab 會顯示外資 +N 張、而本區塊同一檔
+    顯示 null——**這是刻意的（新區塊較嚴），不是 bug**，見 CHANGELOG 2026-09-09。
     """
     inst_by_c = _agg_inst_net(inst_rows)
     if inst_date and date and inst_date != date:
         print(f"  ⚠ market_daily：法人資料日 {inst_date} ≠ 基準日 {date}，f/t 欄一律留空（寧缺勿混）", flush=True)
         inst_by_c = {}
-    rows_out = []
+    rows_out: list = []
+    seen: set = set()
     for r in sorted(price_rows, key=lambda x: str(x.get("stock_id") or "")):
         c = r.get("stock_id")
-        if not c:
+        if not c or c in seen:
             continue
+        row_date = r.get("date")
+        if date and row_date and row_date != date:
+            continue
+        if not RE_MARKET_CODE.match(c) or c not in nm:
+            continue  # 權證／ETN／代號型態不對的商品：不是「持股」，也是體積爆炸的來源
+        seen.add(c)
         it = inst_by_c.get(c)
         rows_out.append([
             c,
@@ -493,6 +524,11 @@ def build_market_daily(date: str, price_rows: list, inst_rows: list, inst_date: 
             round(it["foreign"] / 1000) if it else None,
             round(it["trust"] / 1000) if it else None,
         ])
+    print(f"  market_daily：宇宙 {len(rows_out)} 檔"
+          f"（TaiwanStockPrice {len(price_rows)} 列、TaiwanStockInfo {len(nm)} 檔對照）", flush=True)
+    if price_rows and nm and len(rows_out) < MARKET_DAILY_MIN_ROWS:
+        print(f"  ⚠ market_daily：宇宙只有 {len(rows_out)} 檔（低於 {MARKET_DAILY_MIN_ROWS}），"
+              f"疑似 TaiwanStockInfo 對照或 TaiwanStockPrice 殘缺，請查上游", flush=True)
     # c=代號、chg=漲跌%、f=外資買賣超(張)、t=投信買賣超(張)；欄名短是因為這區塊逐檔重複 2600+ 次
     return {"date": date, "cols": ["c", "chg", "f", "t"], "rows": rows_out}
 
@@ -690,7 +726,7 @@ def main() -> None:
         # 預設 2048 bytes）再 regex 撈第一個 "date" 與 "generated_at"，任何新區塊插到那兩個
         # key 之前都會讓它撈到錯的日期或撈不到。r_price_lend 與 lending 同基準日（lend_date），
         # 建置時已在手，不需額外 API 呼叫。
-        "market_daily": build_market_daily(lend_date, r_price_lend, r_inst, d_inst),
+        "market_daily": build_market_daily(lend_date, r_price_lend, r_inst, d_inst, nm),
     }
 
     dst = ROOT / "data" / "postmkt.json"
