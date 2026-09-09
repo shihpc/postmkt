@@ -2,7 +2,10 @@
 # 當沖 by_ratio 停產。date 傳空字串可跳過所有網路呼叫（TWSE/分點推估）。
 import datetime as dt
 import json
+import pathlib
 import re
+
+import pytest
 
 import build_postmkt as bp
 
@@ -189,29 +192,70 @@ def _md_bulk_price_rows():
     return [{"stock_id": str(1200 + i), "close": 100.0 + i, "spread": 1.0} for i in range(_MD_BULK_N)]
 
 
+# 真實可持有、但 2026-09-09 舊版「代號型態白名單」誤擋的證券（獨立驗收以 postmkt 自己的
+# data/postmkt.json 反查出來的 7 檔，全部逐一實打過 FinMind 確認存在）：
+#   91xxxx DR：在 lending.rows 且 n 非空（＝在 nm 內）、px 來自同一份 price_rows
+#   01xxxT REIT／2887Z1 雙字元後綴特別股：實打 TaiwanStockPrice data_id 2026-09-08 皆有價
+_MD_FALSE_REJECTS = [
+    ("910322", "康師傅-DR"), ("910861", "神州-DR"),
+    ("911868", "同方友友-DR"), ("912000", "晨訊科-DR"),
+    ("01002T", "土銀國泰R1"), ("01004T", "土銀富邦R2"),
+    ("2887Z1", "台新新光己特"),
+    # 同一檔金控的單字元後綴特別股，舊版通過、新版也要通過（白名單破口的對照組）
+    ("2887F", "台新新光戊特二"),
+]
+
+
+def _md_holdable_price_rows():
+    return [{"stock_id": c, "close": 20.0, "spread": 0.2} for c, _ in _MD_FALSE_REJECTS]
+
+
 def _md_noise_price_rows():
-    """TaiwanStockPrice 單日全市場實測 45,675 列（2026-09-09 CI），絕大多數是這類非個股商品。"""
+    """TaiwanStockPrice 單日全市場實測 45,675 列（2026-09-09 CI），絕大多數是這類非個股商品。
+
+    ETN 兩種寫法都放：FinMind `TaiwanStockInfo`／`TaiwanStockPrice` 實際用的是**不帶 U**
+    的 `020041`／`02001L`（2026-09-09 逐檔實打確認），`020019U` 是另一種來源的寫法。
+    """
     return [
-        {"stock_id": "030018", "close": 1.2, "spread": 0.1},     # 認購權證（6 碼）
+        {"stock_id": "030018", "close": 1.2, "spread": 0.1},     # 認購權證（6 碼，03 開頭）
         {"stock_id": "715001", "close": 0.8, "spread": -0.05},   # 認售權證（7 開頭 6 碼）
-        {"stock_id": "020019U", "close": 20.0, "spread": 0.2},   # ETN（6 碼＋U）
+        {"stock_id": "710553", "close": 0.46, "spread": -0.05},  # 上櫃權證，**實測在 nm 裡**（見下）
+        {"stock_id": "73107P", "close": 0.3, "spread": 0.0},     # 上櫃權證（5 碼＋字母）
+        {"stock_id": "020019U", "close": 20.0, "spread": 0.2},   # ETN（6 碼＋U 寫法）
+        {"stock_id": "020041", "close": 20.87, "spread": 0.1},   # ETN（FinMind 實際寫法）
+        {"stock_id": "02001L", "close": 138.8, "spread": 1.0},   # ETN（字母後綴）
+        {"stock_id": "TAIEX", "close": 25000.0, "spread": 1.0},  # 大盤偽代號（nm 裡真的有）
         {"stock_id": "009800", "close": 3.3, "spread": 0.1},     # 代號型態像 ETF、但不在 TaiwanStockInfo
         {"stock_id": "7654", "close": 50.0, "spread": 1.0},      # 代號型態合法、但不在 TaiwanStockInfo
     ]
 
 
 def _md_price_rows():
-    return _md_edge_price_rows() + _md_bulk_price_rows() + _md_noise_price_rows()
+    return (_md_edge_price_rows() + _md_bulk_price_rows()
+            + _md_holdable_price_rows() + _md_noise_price_rows())
 
 
 def _md_nm():
-    """TaiwanStockInfo 對照（本管線既有的 nm）：只收錄母體，不含權證／ETN。"""
+    """TaiwanStockInfo 對照（本管線既有的 nm）。
+
+    **它不是乾淨的白名單**：2026-09-09 實測 3,147 檔裡混了 industry_category 為
+    「所有證券」的權證 36 檔（例 `710553`／`73107P`）、ETN 48 檔、`Index`／`大盤` 偽代號
+    32 筆（`TAIEX`…）。fixture 照這個事實把它們放進 nm，才測得出黑名單真的有作用。
+    """
     codes = [r["stock_id"] for r in _md_edge_price_rows() + _md_bulk_price_rows()]
-    return {c: f"名{c}" for c in codes}
+    nm = {c: f"名{c}" for c in codes}
+    nm.update(dict(_MD_FALSE_REJECTS))
+    nm.update({"710553": "穩懋統一9B購03", "73107P": "原相國票9B售02",
+               "020019U": "某ETN", "020041": "兆豐半導體氣候N", "02001L": "富邦蘋果正二N",
+               "TAIEX": "TAIEX"})
+    return nm
 
 
 def _md_universe():
-    return sorted(_md_nm())
+    """預期宇宙＝price_rows ∩ nm − 黑名單（權證／ETN／指數偽代號）。
+    **刻意不寫成 sorted(_md_nm())**：nm 本身就含權證／ETN／偽代號（見 _md_nm docstring）。"""
+    codes = [r["stock_id"] for r in _md_edge_price_rows() + _md_bulk_price_rows()]
+    return sorted(codes + [c for c, _ in _MD_FALSE_REJECTS])
 
 
 def _md_inst_rows():
@@ -251,27 +295,86 @@ def test_market_daily_is_not_a_ranking_no_truncation():
 
 
 def test_market_daily_universe_excludes_warrants_and_etn():
-    """宇宙收斂（2026-09-09 修）：TaiwanStockPrice 單日含權證／ETN，全收會讓區塊膨脹 19 倍。"""
+    """宇宙收斂（2026-09-09 修）：TaiwanStockPrice 單日含權證／ETN，全收會讓區塊膨脹 19 倍。
+
+    **這些代號全部同時被放進 fixture 的 nm**（`TaiwanStockInfo` 真的收了 36 檔權證、
+    48 檔 ETN、32 筆指數/產業別偽代號），所以擋下它們的必然是黑名單、不是 nm 閘門。
+    """
     codes = {r[0] for r in _md_build()["rows"]}
-    for c in ("030018", "715001", "020019U"):
-        assert c not in codes, f"{c} 是權證/ETN，不該進母體"
+    for c in ("030018", "715001", "710553", "73107P"):
+        assert c not in codes, f"{c} 是權證，不該進母體"
+    for c in ("020019U", "020041", "02001L"):
+        assert c not in codes, f"{c} 是 ETN，不該進母體"
+    assert "TAIEX" not in codes, "TAIEX 是大盤偽代號，不是證券"
     # ETF（含字母後綴）一檔都不能少——這是這個區塊存在的理由
     for c in ("00637L", "00981A"):
         assert c in codes, f"{c} 是 ETF，必須保留"
 
 
-def test_market_daily_universe_requires_stock_info_and_code_shape():
-    """兩道過濾各自有作用：TaiwanStockInfo 白名單擋掉不在對照裡的代號，
-    代號型態擋掉在對照裡但型態不對的（兩道任一單獨都可能有漏）。"""
+def test_market_daily_universe_keeps_dr_reit_and_preferred_shares():
+    """**必修 1（2026-09-09 獨立驗收）**：舊版把代號型態當白名單，誤擋 DR／REIT／雙字元後綴
+    特別股——它們是真的可以被持有的證券，被擋掉會在前端呈現成「查無此代號」（＝已下市/停牌/
+    代號有誤），而不是「資料源不涵蓋」。這是相對 e96c5d8（全收）的覆蓋率退步。"""
     codes = {r[0] for r in _md_build()["rows"]}
-    assert "7654" not in codes and "009800" not in codes   # 型態合法但不在 Info
-    # 反向：把 ETN 塞進 Info 對照，仍要被代號型態擋下
-    nm = dict(_md_nm(), **{"020019U": "某ETN"})
-    codes2 = {r[0] for r in _md_build(nm=nm)["rows"]}
-    assert "020019U" not in codes2
-    # 反向：代號型態合法但 Info 沒有 → 仍被擋下（上面的 7654 已證，這裡確認加進 Info 就會收）
+    for c, n in _MD_FALSE_REJECTS:
+        assert c in codes, f"{c}（{n}）是可持有的證券，不得被宇宙過濾誤擋"
+    # 型態相鄰的反向對照：6 碼 00/01 開頭（ETF／REIT）要留，02–09 開頭（ETN／權證）要擋
+    assert bp.RE_MARKET_EXCLUDE.match("030018") and not bp.RE_MARKET_EXCLUDE.match("006201")
+    assert not bp.RE_MARKET_EXCLUDE.match("00637L") and not bp.RE_MARKET_EXCLUDE.match("01004T")
+
+
+def test_market_daily_universe_gate_is_stock_info_then_blacklist():
+    """兩道過濾的分工（2026-09-09 反轉）：**nm 是主閘門**（45,675 → ≤3,147，體積由它解決），
+    代號型態只當黑名單（擋 nm 自己混進來的權證／ETN／偽代號）。"""
+    codes = {r[0] for r in _md_build()["rows"]}
+    assert "7654" not in codes and "009800" not in codes   # 型態合法但不在 Info → nm 閘門擋下
+    # 反向：代號型態合法但 Info 沒有 → 加進 Info 就會收（證明擋它的是 nm、不是型態）
     nm3 = dict(_md_nm(), **{"7654": "某股"})
     assert "7654" in {r[0] for r in _md_build(nm=nm3)["rows"]}
+    # 反向：把新商品塞進 Info，只要不在黑名單就一律放行（寧可多放、不可少放）
+    nm4 = dict(_md_nm(), **{"1234X9": "某新型態證券"})
+    price = _md_price_rows() + [{"stock_id": "1234X9", "close": 10.0, "spread": 0.1}]
+    assert "1234X9" in {r[0] for r in _md_build(price=price, nm=nm4)["rows"]}
+
+
+def test_market_daily_universe_no_false_reject_on_real_postmkt_corpus():
+    """**回歸母體＝postmkt 自己 data/postmkt.json 各區塊代號的聯集**（2026-09-09 實測 2,284 檔）。
+
+    刻意**不用** taiwan-flows 的 2,650 檔當母體：那份母體是用幾乎同一把尺
+    （`build_meta.py` 的 `RE_STOCK`／`RE_ETF`）篩出來的，拿它驗本 regex 是循環論證，
+    必然回報 0 誤擋。用本站自己的資料才有鑑別力——舊規則在這份母體上誤擋 7 檔。
+
+    斷言分兩層：①**形狀閘門 `RE_MARKET_CODE` 不得擋掉任何一檔**（它只負責「數字開頭」）；
+    ②被擋下的只能是黑名單命中的商品類（權證／ETN），且要把清單印出來，日後真的出現時
+    是「看得見的取捨」而不是靜默消失。
+    """
+    path = pathlib.Path(__file__).resolve().parents[1] / "data" / "postmkt.json"
+    if not path.exists():
+        pytest.skip("data/postmkt.json 不在（本測試用它當真實回歸母體）")
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    corpus: set = set()
+
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if k in ("c", "code", "stock_id") and isinstance(v, str):
+                    corpus.add(v)
+                else:
+                    walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    for blk in ("margin", "lending", "short_balance", "daytrading", "blocktrade", "oddlot"):
+        walk(doc.get(blk))
+    assert len(corpus) > 1500, f"母體只有 {len(corpus)} 檔，data/postmkt.json 疑似殘缺"
+
+    shape_rejects = sorted(c for c in corpus if not bp.RE_MARKET_CODE.match(c))
+    assert shape_rejects == [], f"形狀閘門誤擋了自家資料裡的代號：{shape_rejects}"
+    blacklisted = sorted(c for c in corpus if bp.RE_MARKET_EXCLUDE.match(c))
+    # 2026-09-09 實測為空；若日後 ETN 在零股表出現會列在這裡（屬已知取捨，見 docstring）
+    assert all(re.match(r"^(?:0[2-9]|7)", c) for c in blacklisted), \
+        f"黑名單擋到了非權證/ETN 型態的代號：{blacklisted}"
 
 
 def test_market_daily_dedupes_and_keeps_basis_date_only():

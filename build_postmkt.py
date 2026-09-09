@@ -24,13 +24,35 @@ from twseclient import RETRY_BACKOFFS, resolve_cols, throttled_get  # noqa: E402
 TOP_N = 50
 MAX_BACK_DAYS = 5
 
-# market_daily 的市場母體代號型態：一般股 4 位數（可帶單一字母後綴＝特別股／存託憑證）
-# ＋ 00 開頭 ETF（含 00637L／00981A 這類字母後綴）。沿用 taiwan-flows
-# `src/build_meta.py` 的母體定義（`RE_STOCK = ^[1-9]\d{3}$`／`RE_ETF = ^00\d{2,4}[A-Z]?$`
-# ＋ `pipeline.build_rows` 的「只收母體，排除權證等」），差別只在多放行 4 位數後的單一字母
-# （特別股如 2887Y、存託憑證），那些是真的可以被持有的個股，不該從「任一持股都查得到」的
-# 底表消失。**為什麼需要這道過濾見 build_market_daily() 的 docstring。**
-RE_MARKET_CODE = re.compile(r"^(?:[1-9]\d{3}[A-Z]?|00\d{2,4}[A-Z]?)$")
+# market_daily 的市場母體：**主閘門是 `nm`（TaiwanStockInfo），代號型態只當黑名單**。
+# 2026-09-09 獨立驗收實證：舊版把代號型態當「白名單」（`^(?:[1-9]\d{3}[A-Z]?|00\d{2,4}[A-Z]?)$`，
+# 沿用 taiwan-flows `src/build_meta.py` 的 `RE_STOCK`／`RE_ETF`），會誤殺真的可以被持有的證券——
+# 以 postmkt 自己的 `data/postmkt.json` 反查（lending／oddlot 等區塊代號聯集 2,284 檔），
+# 誤擋 7 檔：`910322`／`910861`／`911868`／`912000`（存託憑證 DR，且都在 `lending.rows`、
+# `n` 非空＝在 `nm` 內、`px` 來自同一份 price_rows）、`01002T`／`01004T`（REIT 受益證券）、
+# `2887Z1`（雙字元後綴特別股；同一檔金控的 `2887F` 卻通過——白名單本身的破口）。
+# 這些會在前端被呈現成「查無此代號（已下市/停牌/代號有誤）」，而不是「資料源不涵蓋」。
+#
+# 2026-09-09 以 FinMind `TaiwanStockInfo` 全表（3,147 檔）實測新舊規則：新規則多放行 34 檔
+# ＝存託憑證 25＋受益證券 8＋`2887Z1` 1，且**沒有任何一檔由通過變成被擋**。
+#
+# 黑名單為什麼還是必要（`nm` 單獨當閘門不夠）：`TaiwanStockInfo` 自己就混了非個股條目——
+# `industry_category` 為「所有證券」的權證 36 檔（實測 `710553` 2026-09-08 在
+# `TaiwanStockPrice` 有價，會真的漏進來）、ETN 48 檔（「ETN」＋「指數投資證券(ETN)」）、
+# 以及 `Index`／`大盤` 這種產業別／指數偽代號 32 筆（`TAIEX`、`Semiconductor`…）。
+# 黑名單只擋這三類，其餘一律放行——**寧可多放幾檔（多幾十列、幾 KB），不可少放一檔**
+# （少放＝使用者的持股在底表消失）。**為什麼需要這道過濾見 build_market_daily() 的 docstring。**
+#
+# RE_MARKET_CODE：證券代號的字面型態＝數字開頭的英數（擋掉 Index／大盤 偽代號）。
+RE_MARKET_CODE = re.compile(r"^\d[0-9A-Z]{2,7}$")
+# RE_MARKET_EXCLUDE：非「可持有個股」的商品代號型態黑名單。
+#   0[2-9]\d{3}[0-9A-Z] ＝ 6 碼且首兩碼 02–09：ETN（02xxxx／0200xL 等）與上市權證（03xxxx–09xxxx）；
+#                          **刻意不含 00（ETF：0050／006201／00637L）與 01（REIT：01002T）**
+#   7\d{4}[0-9A-Z]      ＝ 上櫃權證（710553／73107P）；4 碼的 7 開頭個股（7718）長度不同不受影響
+#   \d{6}U              ＝ 帶 U 後綴的 ETN 寫法
+# 註：FinMind 實際用的 ETN 代號是 `020041`／`02001L` 這種**不帶 U**的寫法（2026-09-09 實打
+#     `TaiwanStockPrice` data_id 逐檔確認），`\d{6}U` 是另一種來源的寫法，兩種都擋。
+RE_MARKET_EXCLUDE = re.compile(r"^(?:0[2-9]\d{3}[0-9A-Z]|7\d{4}[0-9A-Z]|\d{6}U)$")
 # 宇宙健全性下限：全市場個股＋ETF 常態 2600+ 檔，低於此值多半是 TaiwanStockInfo 對照
 # 殘缺或 TaiwanStockPrice 只回了部分市場——只印警告不中斷（有資料比沒資料好），但要看得見。
 MARKET_DAILY_MIN_ROWS = 2000
@@ -479,14 +501,21 @@ def build_market_daily(date: str, price_rows: list, inst_rows: list, inst_date: 
     故另立獨立區塊，改用 taiwan-flows `data/daily/<d>.json` 同款欄式二維陣列（{date, cols,
     rows}），2600+ 檔只多約 55KB（估算，見 CHANGELOG 2026-09-09）。
 
-    **宇宙＝當日 TaiwanStockPrice ∩ TaiwanStockInfo ∩ RE_MARKET_CODE**（此管線建置時兩者
-    都已在手，零額外 API 呼叫）：
+    **宇宙＝當日 TaiwanStockPrice ∩ TaiwanStockInfo −（權證／ETN／指數偽代號黑名單）**
+    （此管線建置時 price_rows 與 nm 都已在手，零額外 API 呼叫）：
     - `TaiwanStockPrice` **單日全市場就有 4.5 萬列**（2026-09-09 CI 實測 45,675 列），
       因為它含權證／ETN 等非個股商品；直接照單全收會讓區塊從 ~55KB 膨脹成 ~1.07MB
       （實測全檔 2,719,486 bytes），且塞一堆沒人會持有的權證進來。
-    - `nm`（TaiwanStockInfo，實測 3,147 檔對照）只收錄上市櫃證券、**不含權證**，是本管線
-      既有、零成本的白名單；`RE_MARKET_CODE` 再擋掉 ETN（6 碼＋U）等代號型態不對的東西。
-      兩道一起用：任一道單獨都可能有漏（Info 若哪天收錄了新商品／代號型態若有例外）。
+    - **主閘門是 `nm`（TaiwanStockInfo，實測 3,147 檔對照）**：45,675 → ≤3,147 這一刀
+      是它砍的，**體積問題由它解決**，代號型態不需要、也不應該當白名單（當白名單就會
+      誤殺 DR／REIT／雙字元後綴特別股，見 RE_MARKET_CODE 上方的實證清單）。
+    - **代號型態只當黑名單**（`RE_MARKET_CODE` 要求數字開頭、`RE_MARKET_EXCLUDE` 擋權證與
+      ETN）：因為 `nm` 自己就混了非個股條目（權證 36 檔、ETN 48 檔、產業別／指數偽代號 32 筆，
+      2026-09-09 實測），`nm` 單獨當閘門擋不住。取捨方向固定：**寧可多放幾檔，不可少放一檔**。
+    - **已知代價（需前端配合，管線端不打算解決）**：ETN 是可以被持有的證券，被本黑名單排除後，
+      持有 ETN 的使用者在前端會看到「查無此代號」，而那個文案的語意是「已下市／停牌／代號有誤」
+      ——與事實不符。管線端無法區分「不在底表」與「不存在」，**前端必須另備「資料源不涵蓋」
+      的說法**（見 CHANGELOG 2026-09-09 同日修正之二）。
     - 只留基準日那天的列並依代號去重：正常情況 price_rows 是單日查詢（start=end），
       這道是防「哪天改成多日切片」時把不同天的同一檔重複寫進來（列有 `date` 才比對，
       沒有就當同日）。
@@ -514,8 +543,8 @@ def build_market_daily(date: str, price_rows: list, inst_rows: list, inst_date: 
         row_date = r.get("date")
         if date and row_date and row_date != date:
             continue
-        if not RE_MARKET_CODE.match(c) or c not in nm:
-            continue  # 權證／ETN／代號型態不對的商品：不是「持股」，也是體積爆炸的來源
+        if c not in nm or not RE_MARKET_CODE.match(c) or RE_MARKET_EXCLUDE.match(c):
+            continue  # 權證／ETN／指數偽代號：不是「持股」，權證更是體積爆炸的來源
         seen.add(c)
         it = inst_by_c.get(c)
         rows_out.append([
