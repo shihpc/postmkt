@@ -53,6 +53,9 @@
     （`:402`／`:417`）於 `load()` 套用，`syncHash()`（`:453`）掛在 `render()` 結尾以
     `history.replaceState` 寫回（**不塞歷史、不觸發 hashchange**），外部改網址走
     `hashchange`（`:458`）。讀入一律白名單＋型別檢查，非法值靜默退回預設。
+    **唯一刻意例外（2026-09-09）**：「持股異動」列點個股跳「持股診斷」走 `location.hash = …`
+    （grep `data-mychg` 唯一命中），**會塞一筆歷史**——那是使用者主動的下鑽導覽、不是 `render()`
+    的狀態寫回，Back 要能退回持股異動。除此之外全站 hash 寫出一律 `replaceState`。
   - **個股摘要側欄（2026-09-07 批次三 #15 後半）**：`index.html:3634-3877`（含末尾兩個 document 級 listener）。代號旁 `▤` 鈕
     （`stkBtn`／`:3658`，掛在共用 `nameCell`／`:473`、選股 tab 代號欄、分點「單點」結果的名稱欄、
     持股診斷卡標題）開側欄；`renderStockDrawer()`（`:3845`）／`stkOpen()`（`:3856`）／

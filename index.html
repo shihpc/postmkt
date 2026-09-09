@@ -396,6 +396,9 @@ const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQu
 // 側欄跨 tab 都可開，混用會讓同一把 key 有兩種意思。兩者可並存（例 #tab=lending&code=2330&stock=2454）。
 // 讀入一律白名單／型別檢查：tab 必在 TABS、sub 必在該 tab 允許值、code 為 4–6 位大寫英數；非法值靜默退回預設。
 // 寫出走 history.replaceState（不塞歷史堆疊、不觸發 hashchange）；hashchange 只在外部改網址（返回鍵／貼連結）時進入。
+// **唯一的刻意例外**：「持股異動」列點個股跳「持股診斷」是使用者主動導覽（不是 render() 的狀態寫回），
+// 走 `location.hash = …` 寫入，**會塞一筆歷史**，好讓 Back 能退回持股異動；grep `data-mychg` 唯一命中。
+// 這條例外是刻意的、有紀錄的（README「持股異動」列與 CLAUDE.md hash 路由段同步註明），不要「順手改成 replaceState」。
 // 持股清單本身絕不進 hash（只有單一代號），與 CLAUDE.md 約定 6 一致。
 const HASH_TABS = new Set(TABS.map(t => t[0]));
 const HASH_SUBS = { oddlot:["intraday","after"], broker:["branch","stock","list"] };
@@ -1142,10 +1145,15 @@ function renderPM(){
 //   本 tab **零新增請求**——資料全部取自已在記憶體的 state.pm.market_daily（走既有 ensurePm()），
 //   比對完全在瀏覽器端完成。
 // 資料源：data/postmkt.json 的 market_daily（全市場逐檔 {c 代號, chg 漲跌%, f 外資張, t 投信張}）。
-// **三種「缺資料」不可混為一談**（正本＝README「前端消費 market_daily 的必要條件」，改本段前必讀）：
+// **四種「缺資料」不可混為一談**（正本＝README「前端消費 market_daily 的必要條件」，改本段前必讀）：
 //   ① 代號不在 rows 且屬權證／偽代號 → 「本表不涵蓋」，**不可**說成「查無此代號（已下市／停牌／代號有誤）」
-//   ② f／t 為 null → 「當日法人資料未到」，**不可**讀成 0 或「無顯著異動」（同列 chg 仍有效，不得整檔靜音）
+//   ② f／t 為 null → 「當日法人資料未到」，**不可**讀成 0 或「無顯著異動」（同列 chg 若有值仍有效，不得整檔靜音）
 //   ③ rows 為空或列數 < MYCHG_MIN_ROWS → 整段「無法取得異動資料」，**不可**逐檔說成「查無此代號」
+//   ④ chg 也可能是 null（線上 44ef7e7 版 46/2757 列，多為匯率避險型 ETF 與 ETN）。**chg／f／t 三欄全 null
+//      ＝該檔當日完全沒有資料**，必須自成一類，**不可**併進「未達門檻（查得到但變化小）」——那是把「沒有資料」
+//      說成「有資料且正常」，與本段其餘三軸同型的說錯話；也不可說成「查無此代號」（它確實在 rows 裡）。
+//      只缺一部分時（只缺 chg 或只缺 f／t）**只講缺的那部分**，不得把部分缺講成全缺、也不得無條件宣稱
+//      「同列漲跌% 仍然有效」（該列的 chg 可能本來就是 null）。
 const MYCHG_LOT_TH = 100;      // 張：任一法人淨買賣達 ±此值即列入
 const MYCHG_CHG_PCT_TH = 3;    // %：漲跌達 ±此值即列入
 const MYCHG_MAX_ROWS = 5;      // 最多列幾檔
@@ -1188,8 +1196,8 @@ const myChgSig = r => (r.f != null && Math.abs(r.f) >= MYCHG_LOT_TH)
   || (r.t != null && Math.abs(r.t) >= MYCHG_LOT_TH)
   || (r.chg != null && Math.abs(r.chg) >= MYCHG_CHG_PCT_TH);
 // 張數欄：缺值＝「當日法人資料未到」（title 寫明成因），不是 0、不是「無顯著異動」
-const myChgLots = v => v == null ? '<span class="mut" title="當日法人資料未到（來源法人資料日與基準日不一致時整欄留空），不是 0">—</span>' : zh(v);
-const myChgPct = v => v == null ? '<span class="mut" title="當日無漲跌資料">—</span>' : sgn(v, (v > 0 ? "+" : "") + v.toFixed(2));
+const myChgLots = v => v == null ? '<span class="mut" title="當日法人資料未到（法人資料日與基準日不一致時整欄留空；單檔查無法人資料時該檔留空），不是 0">—</span>' : zh(v);
+const myChgPct = v => v == null ? '<span class="mut" title="當日無漲跌%資料（價格資料缺），不是 0%">—</span>' : sgn(v, (v > 0 ? "+" : "") + v.toFixed(2));
 
 function myChgHtml(){
   const disc = `<div class="diag-disc">本頁只描述「持股今天有沒有相對明顯的變化」，`
@@ -1220,12 +1228,21 @@ function myChgHtml(){
     else if (MYCHG_WARRANT_RE.test(c)) warrants.push(c);
     else unknown.push(c);
   });
-  const sig = found.filter(myChgSig).sort((a, b) => {
+  // 查得到的列再分兩類（互斥）：**三欄全 null＝當日完全沒有資料**，不可併進「未達門檻」（README 第四軸）；
+  // 其餘至少有一欄有值者才判得動門檻（myChgSig 對兩者都回 false，差別在「判過」還是「無從判起」）。
+  const isBlank = r => r.chg == null && r.f == null && r.t == null;
+  const blank = found.filter(isBlank);
+  const rated = found.filter(r => !isBlank(r));
+  const sig = rated.filter(myChgSig).sort((a, b) => {
     const m = r => Math.max(Math.abs(r.f || 0), Math.abs(r.t || 0));
     return (m(b) - m(a)) || (Math.abs(b.chg || 0) - Math.abs(a.chg || 0)) || (a.c < b.c ? -1 : 1);
   });
   const shown = sig.slice(0, MYCHG_MAX_ROWS);
-  const instNull = found.filter(r => r.f == null && r.t == null).length;
+  // 部分缺值只講缺的那部分：instMiss＝有值的列裡法人欄仍缺（其中 instMissPx 檔的漲跌%才真的有效），
+  // pxMiss＝只缺漲跌%、法人欄有值。兩者都**不含** blank（那類已整檔另外講）。
+  const instMiss = rated.filter(r => r.f == null || r.t == null);
+  const instMissPx = instMiss.filter(r => r.chg != null).length;
+  const pxMiss = rated.filter(r => r.chg == null).length;
 
   let h = disc;
   h += sec("達門檻持股", `持股 ${codes.length} 檔 · 門檻 法人 ±${MYCHG_LOT_TH} 張或漲跌 ±${MYCHG_CHG_PCT_TH}% · 最多列 ${MYCHG_MAX_ROWS} 檔`);
@@ -1239,11 +1256,14 @@ function myChgHtml(){
   } else {
     h += `<div class="empty" style="padding:22px 14px">持股中今日沒有任何一檔達門檻。</div>`;
   }
-  // 三種狀態各自一句、分行呈現，**不可合併成同一個字串**（合併＝使用者無從分辨缺資料與無異動）
+  // 各狀態各自一句、分行呈現，**不可合併成同一個字串**（合併＝使用者無從分辨缺資料與無異動）
   const notes = [];
-  const quiet = found.length - sig.length;
-  if (quiet > 0) notes.push(`${shown.length ? "其餘 " : ""}${quiet} 檔未達門檻（當日資料查得到，只是變化不到門檻）`);
-  if (instNull > 0) notes.push(`${instNull} 檔的外資／投信欄是「當日法人資料未到」（來源法人資料日與本區塊基準日不一致時整欄留空）——不是 0、也不是「無顯著異動」；同列漲跌% 當日仍然有效`);
+  const quiet = rated.length - sig.length;
+  if (quiet > 0) notes.push(`${shown.length ? "其餘 " : ""}${quiet} 檔未達門檻（當日查得到的欄位變化都不到門檻）`);
+  // 第四軸：三欄全 null＝完全沒有資料。**不可**說成「查得到但變化小」，也不是「查無此代號」（它在表內）。
+  if (blank.length) notes.push(`${blank.length} 檔（${blank.slice(0, 5).map(r => r.c).join("／")}${blank.length > 5 ? " 等" : ""}）當日漲跌%／外資／投信三欄全部缺值——這幾檔確實在本表內，但當日完全沒有資料可比對，既不是「查得到但變化不到門檻」，也不是「查無此代號」`);
+  if (instMiss.length) notes.push(`${instMiss.length} 檔的外資／投信欄是「當日法人資料未到」（法人資料日與本區塊基準日不一致時整欄留空；單檔查無法人資料時該檔留空）——不是 0、也不是「無顯著異動」${instMissPx === instMiss.length ? "；這些列的漲跌% 當日仍然有效" : instMissPx > 0 ? `；其中 ${instMissPx} 檔的漲跌% 當日仍然有效` : ""}`);
+  if (pxMiss > 0) notes.push(`${pxMiss} 檔當日沒有漲跌%（價格資料缺，顯示「—」不是 0%）——該列的法人欄仍有值，照常判讀`);
   if (warrants.length) notes.push(`${warrants.length} 檔是權證，本表不涵蓋（權證全市場約 4.5 萬檔，納入會讓資料檔體積倍增，故刻意排除）——不是查無此代號`);
   if (pseudo.length) notes.push(`${pseudo.length} 檔不是證券代號（非數字開頭，如指數／大盤代碼），本表不涵蓋`);
   if (unknown.length) notes.push(`${unknown.length} 檔在當日資料中查無此代號（已下市／停牌／代號有誤），不代表沒有異動`);
@@ -1263,6 +1283,8 @@ function renderMyChg(){
   main.innerHTML = myChgHtml();
 }
 // 點個股 → 同站切到「持股診斷」並聚焦該檔（走內部 hash 路由，不開新分頁）
+// **刻意塞一筆歷史**（全站唯一：其餘 hash 寫出都走 syncHash() 的 replaceState）——這是使用者主動的
+// 下鑽導覽，Back 要能退回「持股異動」原地；例外的理由與位置同步記在 hash 路由區塊註解與 README。
 document.addEventListener("click", e => {
   const el = e.target.closest(".clk[data-mychg]");
   if (!el) return;
