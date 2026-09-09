@@ -3,7 +3,7 @@
 台股盤後資料的靜態儀表板（單一 `index.html`，無 build 工具），
 是[股市雷達 Hub](https://shihpc.github.io/) 的子站之一。
 
-## 十三個 Tab（2026-08-12 加「選股」後）
+## 十四個 Tab（2026-09-09 加「持股異動」後）
 
 | Tab | 資料源 | 內容 |
 |---|---|---|
@@ -19,6 +19,7 @@
 | 輪動雷達 | taiwan-flow-live-v2 `data/chain_daily/series.json`（跨 repo 唯讀，594KB 懶載，283 交易日 × 47 條產業鏈日頻序列，每交易日夜間增量更新） | 盤後日頻 RRG（B-ew 軸：等權報酬相對大盤等權基準，n=12 z-score／k=10 動能）：47 鏈散點＋成交額 Top10 錨點軌跡尾巴、日期回看、候補清單（改善／領先象限，持續性 N=3 完整列出）、新鮮度提示；描述語氣、附成員重疊揭露與盤中版互連 |
 | 選股 | `data/screen/screen.json`（`src/build_screen.py` 盤後管線：TradingView scanner 批次初篩「明年預估 EPS≥20」→ 鉅亨網 marketinfo API 逐檔補 FactSet 多年度預估 EPS 分佈/目標價/券商評等 → 合併 diag.json 籌碼/營收欄） | 分析師預估選股表：現價、FY 今年/明年預估 EPS（錨定資料日日曆年）、forward PER（自算）、EPS 預估家數（明年，表內附預估日與樣本數）、目標價中位與潛在漲幅、營收 YoY/連 N 月、PER-TTM、評等濃縮；門檻鈕（明年 EPS ≥30/50/100）＋全欄排序；固定標注 FactSet/鉅亨網來源與「預估非保證」免責 |
 | 日期 | 即時 fetch 八個資料源的 date/generated_at | 全專案資料日期總覽：各源資料日/產出時間(台北,到分)/新鮮度狀態（最新/落後N個交易日，僅排除週末、國定假日不扣），一眼看清哪些資料到今天 |
+| 持股異動 | `data/postmkt.json` 的 `market_daily`（全市場逐檔 {代號, 漲跌%, 外資張, 投信張}，走既有 `ensurePm()`，**本 tab 零新增網路請求**） | 拿本機持股清單（localStorage `pm_holdings`）比對全市場當日資料，只列達門檻者（法人 ±100 張或漲跌 ±3%，最多 5 檔）；**三種缺資料分開講**：本表不涵蓋（權證／偽代號）／當日法人資料未到（`f`／`t` 為 null，非 0）／查無此代號，整表殘缺（`rows` 空或 <2000 列）則整段「無法取得異動資料」。門檻為顯示用可調常數、無回測依據，不是買賣訊號。**2026-09-09 由入口站 shihpc.github.io「我的異動」搬遷而來**（該站表格 6 欄、手機只看得到前 2 欄；持股清單本來就是本站寫入的） |
 | 持股診斷 | `data/diag/diag.json`（`src/build_diag.py` 夜間管線）＋ v2 `/live` 現價＋ taiwan-stock-news 新聞 | 輸入持股（僅存 localStorage）→ 逐檔五面向（籌碼/價量/題材/基本面/系統）紅黃綠燈號＋事實清單＋組合層檢查＋近3日新聞命中＋可選 AI 解讀 |
 
 原「融資」「融券借券賣出餘額」兩 tab 於 2026-07-11 併入「融資券借券」整合排行（該 tab 為個股層級排行）；
@@ -112,6 +113,8 @@
 本節只留接手需要的常青內容（各 tab 口徑、資料流、教訓、維護約定）。
 
 ### 前端消費 `market_daily` 的必要條件（2026-09-09 訂，改前端前必讀）
+
+**現行消費端＝本站 `index.html` 的「持股異動」tab**（2026-09-09 上線，grep `function myChgHtml`／`MYCHG_MIN_ROWS`）。下列三軸在該 tab 都有對應的實作與文案，改那段程式前先讀完本節；改本節判準（含 `RE_MARKET_CODE`／`RE_MARKET_EXCLUDE`／`MARKET_DAILY_MIN_ROWS`）要回頭同步該 tab 的 `MYCHG_WARRANT_RE`／`MYCHG_SEC_RE`／`MYCHG_MIN_ROWS`。
 
 **`market_daily.rows` 刻意不是全宇宙**。前端拿使用者的持股代號去查這張表時，
 **「代號不在 `rows` 裡」不可一律呈現為「查無此代號（已下市／停牌／代號有誤）」**——

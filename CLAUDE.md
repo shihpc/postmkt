@@ -47,7 +47,7 @@
 
 ## 佈局
 
-- `index.html`：13 個 tab 全部前端（CSS/JS 內嵌）。`render()` 分派各 tab；共用表格框架 `tbl()`
+- `index.html`：14 個 tab 全部前端（CSS/JS 內嵌）。`render()` 分派各 tab；共用表格框架 `tbl()`
   （排序/分組表頭/凍結欄/虛擬捲動，sticky 的坑記在 `<style>` 註解）。
   - **hash 路由（2026-09-07）**：`#tab=&code=&sub=`，只放非預設值。`parseHash()`／`applyHash()`
     （`:402`／`:417`）於 `load()` 套用，`syncHash()`（`:453`）掛在 `render()` 結尾以
@@ -68,6 +68,12 @@
     hash key 用 **`stock=`**（`parseHash`／`:412`、`applyHash`／`:419`、`currentHash`／`:450`），
     **刻意與 `code=` 分家**——`code=` 已被 lending／broker／diag 三個 tab 各自佔用，側欄跨 tab 都能開；
     兩者可並存。ESC 與點遮罩關閉、走 `history.replaceState` 不塞歷史。持股清單不進 hash（約定 6 不變）。
+  - **持股異動 tab（2026-09-09）**：`index.html` grep `function myChgHtml`／`function renderMyChg`／
+    `MYCHG_MIN_ROWS`。資料源＝`state.pm.market_daily`（走既有 `ensurePm()`，**零新增網路請求**，
+    持股代號不進任何 URL／header／body）。**三種「缺資料」不可混講**（正本＝README「前端消費
+    `market_daily` 的必要條件」）：本表不涵蓋（權證／偽代號）／當日法人資料未到（`f`／`t` 為
+    `null`，不得讀成 0，同列 `chg` 仍有效）／整表殘缺（`rows` 空或 <2000 列）整段「無法取得異動資料」。
+    資料日徽章取 **`market_daily.date`，不是 `pm.date`**（兩者語意不同、值常常不同）。
   - **持股清單匯出／匯入／清除（2026-09-07）**：`holdExportPayload`／`holdParseImport`／
     `holdExport`／`holdImportFile`（`:3078-3130`）。**仍只走 localStorage `pm_holdings`
     與使用者本機檔案，不進任何網路 payload**（約定 6 不變）；匯入走 `holdParseImport`
@@ -121,8 +127,8 @@
 ```bash
 python -m pytest tests/ -q        # 離線單元測試（免 token/網路）
 python src/build_diag.py --sample # diag 管線本地驗證（免 token）
-python -m http.server 8000        # 前端本機驗證；慣例＝13 個 tab 逐一點擊 console 零 error
+python -m http.server 8000        # 前端本機驗證；慣例＝14 個 tab 逐一點擊 console 零 error
 ruff check .                      # lint（設定在 pyproject.toml）
 ```
 
-改前端後務必實測 13 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
+改前端後務必實測 14 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。

@@ -345,7 +345,7 @@ const TABS = [
   ["summary","彙總分析"],
   ["aetf","主動ETF"],["lending","融借券"],["daytrade","當沖"],
   ["block","鉅額"],["oddlot","零股"],["broker","分點"],["mktbal","大盤餘額"],
-  ["rrgd","輪動雷達"],["screen","選股"],["diag","持股診斷"],["dates","日期"],
+  ["rrgd","輪動雷達"],["screen","選股"],["mychg","持股異動"],["diag","持股診斷"],["dates","日期"],
 ];
 const SUBS = {
   insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、只存本機瀏覽器。非投資建議、非預測，僅描述歷史統計傾向。",
@@ -360,6 +360,7 @@ const SUBS = {
   rrgd:"盤後日頻產業輪動雷達（RRG-Daily）：47 條產業鏈的相對輪動圖。X 軸 RS-Ratio＝鏈等權報酬指數相對大盤等權基準的相對強度（12 日窗 z-score 標準化，100 為中性）；Y 軸 RS-Momentum＝RS-Ratio 的 10 日變化率再做同法標準化。資料源 taiwan-flow-live-v2 data/chain_daily（每交易日夜間增量更新）。僅描述各鏈相對大盤的歷史位置與變化；回測顯示象限轉換對未來報酬無顯著預測力，非投資建議。",
   dates:"各資料源目前的資料日與產出時間；判斷哪些已是最新交易日、哪些尚未更新。資料為排程產出，當日盤後資料通常於當晚 21:00 後才更新，故白天多半看到前一交易日。",
   screen:"選股：以分析師預估（FactSet 經鉅亨網／TradingView）篩選明年預估 EPS 達門檻之個股，並列今明年預估 EPS／本益比、目標價中位數與潛在漲幅、營收動能與評等分布。預估值為券商共識、隨時修訂，屬 AI 彙整之市場預期而非買賣建議與保證。",
+  mychg:"持股異動：拿本機持股清單比對全市場逐檔當日資料（外資／投信買賣超張數、漲跌%），只列達門檻者，一眼看完再決定要不要進「持股診斷」細看。門檻為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒。持股清單只存本機瀏覽器，比對全在瀏覽器端完成，本 tab 不發任何網路請求。",
   diag:"持股診斷：輸入持股後逐檔彙整籌碼／價量／題材／基本面／系統五面向事實與紅黃綠風險燈號，附近3日新聞命中與可選的 AI 解讀（按了才呼叫、token 自備）。證據彙整工具、非投資建議，不輸出買賣指令；持股資料僅存於本機瀏覽器（localStorage），不上傳任何伺服器。素材庫每交易日約 22:10 更新（全市場通用資料）。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
@@ -1132,6 +1133,145 @@ function renderPM(){
   if (state.tab === "broker" && state.bkPending && state.bkSub !== "list" && fmToken() && !BK_LOADING) bkQuery(state.bkSub);
 }
 
+// ---------- 持股異動 tab（2026-09-09，自入口站 shihpc.github.io「我的異動」搬遷） ----------
+// 目的：一眼看完「我持有的股票今天有沒有相對明顯的變化」，再決定要不要進「持股診斷」細看。
+// 搬家的兩個理由：①持股清單（localStorage pm_holdings）本來就由本站寫入，本站才是擁有者；
+// ②入口站那張表 6 欄，手機只看得到前 2 欄，三個關鍵數字全在畫面外——本 tab 改用共用 tbl()
+//   的 4 欄（個股／外資／投信／漲跌%），資料日改走頂列徽章（renderStats）不佔欄位。
+// 隱私（CANON 第 1 條＋CLAUDE.md 約定 6）：持股代號絕不進任何網路請求的 URL／header／body。
+//   本 tab **零新增請求**——資料全部取自已在記憶體的 state.pm.market_daily（走既有 ensurePm()），
+//   比對完全在瀏覽器端完成。
+// 資料源：data/postmkt.json 的 market_daily（全市場逐檔 {c 代號, chg 漲跌%, f 外資張, t 投信張}）。
+// **三種「缺資料」不可混為一談**（正本＝README「前端消費 market_daily 的必要條件」，改本段前必讀）：
+//   ① 代號不在 rows 且屬權證／偽代號 → 「本表不涵蓋」，**不可**說成「查無此代號（已下市／停牌／代號有誤）」
+//   ② f／t 為 null → 「當日法人資料未到」，**不可**讀成 0 或「無顯著異動」（同列 chg 仍有效，不得整檔靜音）
+//   ③ rows 為空或列數 < MYCHG_MIN_ROWS → 整段「無法取得異動資料」，**不可**逐檔說成「查無此代號」
+const MYCHG_LOT_TH = 100;      // 張：任一法人淨買賣達 ±此值即列入
+const MYCHG_CHG_PCT_TH = 3;    // %：漲跌達 ±此值即列入
+const MYCHG_MAX_ROWS = 5;      // 最多列幾檔
+const MYCHG_MIN_ROWS = 2000;   // 整表健康度下限（同管線端 build_postmkt.py 的 MARKET_DAILY_MIN_ROWS）
+// 代號型態判別（判準正本＝build_postmkt.py 的 RE_MARKET_CODE／RE_MARKET_EXCLUDE，改那兩條要回頭改這裡）
+const MYCHG_WARRANT_RE = /^(?:0[3-9]\d{3}[0-9A-Z]|7\d{4}[0-9A-Z])$/;  // 權證：上市 03–09 開頭／上櫃 7 開頭，皆 6 碼
+const MYCHG_SEC_RE = /^\d[0-9A-Z]{2,7}$/;                             // 證券代號字面型態＝數字開頭；不符＝偽代號
+
+// 持股代號（去重、大寫）；壞資料一律當成沒有持股，不拋錯
+function myChgCodes(){
+  const out = [], seen = {};
+  diagHoldings().forEach(h => {
+    const c = String((h && h.c) || "").trim().toUpperCase();
+    if (!c || seen[c]) return;
+    seen[c] = 1; out.push(c);
+  });
+  return out;
+}
+// market_daily → code → {f,t,chg}；**只留持股代號，沒被收錄的代號不會有 key**（呼叫端據此三分）。
+// cols 缺任一欄＝形狀不符，回 null 讓呼叫端走「無法取得異動資料」，不逐檔誤判。
+function myChgIndex(md, codes){
+  const cols = Array.isArray(md && md.cols) ? md.cols : [];
+  const rows = Array.isArray(md && md.rows) ? md.rows : [];
+  const iC = cols.indexOf("c"), iP = cols.indexOf("chg"), iF = cols.indexOf("f"), iT = cols.indexOf("t");
+  if (iC < 0 || iP < 0 || iF < 0 || iT < 0) return null;
+  const want = {}; codes.forEach(c => { want[c] = 1; });
+  const n = v => (typeof v === "number" && isFinite(v)) ? v : null;   // null／字串／NaN 一律當缺值，不當 0
+  const idx = {};
+  rows.forEach(r => {
+    if (!Array.isArray(r)) return;
+    const c = typeof r[iC] === "string" ? r[iC].trim().toUpperCase() : "";
+    if (!c || !want[c] || idx[c]) return;
+    idx[c] = { f: n(r[iF]), t: n(r[iT]), chg: n(r[iP]) };
+  });
+  return idx;
+}
+// 是否達門檻。**null 不當 0**：法人資料未到時，該欄既不判「有異動」也不判「無異動」，
+// 但同列的 chg 仍照常判讀（不整檔靜音）。
+const myChgSig = r => (r.f != null && Math.abs(r.f) >= MYCHG_LOT_TH)
+  || (r.t != null && Math.abs(r.t) >= MYCHG_LOT_TH)
+  || (r.chg != null && Math.abs(r.chg) >= MYCHG_CHG_PCT_TH);
+// 張數欄：缺值＝「當日法人資料未到」（title 寫明成因），不是 0、不是「無顯著異動」
+const myChgLots = v => v == null ? '<span class="mut" title="當日法人資料未到（來源法人資料日與基準日不一致時整欄留空），不是 0">—</span>' : zh(v);
+const myChgPct = v => v == null ? '<span class="mut" title="當日無漲跌資料">—</span>' : sgn(v, (v > 0 ? "+" : "") + v.toFixed(2));
+
+function myChgHtml(){
+  const disc = `<div class="diag-disc">本頁只描述「持股今天有沒有相對明顯的變化」，`
+    + `門檻為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒。`
+    + `持股資料僅存於本機瀏覽器（localStorage），不上傳任何伺服器，本 tab 也不發任何網路請求。</div>`;
+  const codes = myChgCodes();
+  if (!codes.length){
+    return disc + `<div class="empty">尚未設定持股。<br>請到 <a class="slink" href="#tab=diag">持股診斷</a> tab 新增代號與股數（只存本機瀏覽器，不上傳）。</div>`;
+  }
+  // 整表健康度（README 必要條件第三軸）：整包缺失／形狀不符／列數殘缺一律整段「無法取得異動資料」，
+  // 不得進入逐檔三分狀態、也不得靜默當成「今天沒有異動」。
+  const md = (state.pm || {}).market_daily;
+  const rows = Array.isArray(md && md.rows) ? md.rows : null;
+  const idx = md ? myChgIndex(md, codes) : null;
+  if (!md || !rows || !idx || rows.length < MYCHG_MIN_ROWS){
+    const why = !md ? "本次資料檔沒有 market_daily 區塊（管線版本較舊）"
+      : !rows || !idx ? "market_daily 形狀不符（cols／rows 缺欄位）"
+      : !rows.length ? "market_daily 沒有任何一列（上游整包抓取失敗）"
+      : `market_daily 只有 ${rows.length} 檔（低於健康度下限 ${MYCHG_MIN_ROWS}），上游疑似殘缺`;
+    return disc + `<div class="empty">無法取得異動資料<br><span class="mut" style="font-size:.8rem">${esc(why)}</span></div>`;
+  }
+  // 逐檔三分：查得到／本表不涵蓋（權證、偽代號）／真的查無此代號
+  const found = [], warrants = [], pseudo = [], unknown = [];
+  codes.forEach(c => {
+    const r = idx[c];
+    if (r){ found.push({ c, n: stkName(c), f: r.f, t: r.t, chg: r.chg }); return; }
+    if (!MYCHG_SEC_RE.test(c)) pseudo.push(c);
+    else if (MYCHG_WARRANT_RE.test(c)) warrants.push(c);
+    else unknown.push(c);
+  });
+  const sig = found.filter(myChgSig).sort((a, b) => {
+    const m = r => Math.max(Math.abs(r.f || 0), Math.abs(r.t || 0));
+    return (m(b) - m(a)) || (Math.abs(b.chg || 0) - Math.abs(a.chg || 0)) || (a.c < b.c ? -1 : 1);
+  });
+  const shown = sig.slice(0, MYCHG_MAX_ROWS);
+  const instNull = found.filter(r => r.f == null && r.t == null).length;
+
+  let h = disc;
+  h += sec("達門檻持股", `持股 ${codes.length} 檔 · 門檻 法人 ±${MYCHG_LOT_TH} 張或漲跌 ±${MYCHG_CHG_PCT_TH}% · 最多列 ${MYCHG_MAX_ROWS} 檔`);
+  if (shown.length){
+    h += tbl([
+      {h:"個股",cls:"l",f:r=>`<span class="clk" data-mychg="${esc(r.c)}" title="到持股診斷看這一檔">${nameCell(r)}</span>`},
+      {h:"外資(張)",f:r=>myChgLots(r.f),sortVal:r=>r.f},
+      {h:"投信(張)",f:r=>myChgLots(r.t),sortVal:r=>r.t},
+      {h:"漲跌%",f:r=>myChgPct(r.chg),sortVal:r=>r.chg},
+    ], shown);
+  } else {
+    h += `<div class="empty" style="padding:22px 14px">持股中今日沒有任何一檔達門檻。</div>`;
+  }
+  // 三種狀態各自一句、分行呈現，**不可合併成同一個字串**（合併＝使用者無從分辨缺資料與無異動）
+  const notes = [];
+  const quiet = found.length - sig.length;
+  if (quiet > 0) notes.push(`${shown.length ? "其餘 " : ""}${quiet} 檔未達門檻（當日資料查得到，只是變化不到門檻）`);
+  if (instNull > 0) notes.push(`${instNull} 檔的外資／投信欄是「當日法人資料未到」（來源法人資料日與本區塊基準日不一致時整欄留空）——不是 0、也不是「無顯著異動」；同列漲跌% 當日仍然有效`);
+  if (warrants.length) notes.push(`${warrants.length} 檔是權證，本表不涵蓋（權證全市場約 4.5 萬檔，納入會讓資料檔體積倍增，故刻意排除）——不是查無此代號`);
+  if (pseudo.length) notes.push(`${pseudo.length} 檔不是證券代號（非數字開頭，如指數／大盤代碼），本表不涵蓋`);
+  if (unknown.length) notes.push(`${unknown.length} 檔在當日資料中查無此代號（已下市／停牌／代號有誤），不代表沒有異動`);
+  const extra = sig.length - shown.length;
+  if (extra > 0) notes.push(`另 ${extra} 檔已達門檻但未列出（最多列 ${MYCHG_MAX_ROWS} 檔）`);
+  // ↓ 誠實原則（CANON 第 8 條）：語意一字不可弱化，改門檻要連這句一起改
+  notes.push(`門檻：法人淨買賣 ±${MYCHG_LOT_TH} 張或漲跌 ±${MYCHG_CHG_PCT_TH}%，為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒`);
+  notes.push(`資料源：data/postmkt.json 的 market_daily（全市場逐檔 ${rows.length} 檔，資料日 ${md.date || "—"}）；股名取自本站既有代號對照，查不到就顯示代號。持股比對全在瀏覽器端完成，代號不進任何請求`);
+  h += `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px;line-height:1.7">${notes.map(esc).join("<br>")}</div>`;
+  return h;
+}
+function renderMyChg(){
+  const main = document.getElementById("main");
+  // 資料檔本身載入失敗＝整段「無法取得異動資料」（不得靜默當成無異動）
+  if (state.pmErr){ main.innerHTML = `<div class="empty">無法取得異動資料<br><span class="mut" style="font-size:.8rem">data/postmkt.json 未產生或載入失敗；每交易日 21:53 排程更新（含延遲約 22:10–23:50 完成）。</span></div>`; return; }
+  if (!state.pm){ main.innerHTML = `<div class="empty">載入中…</div>`; return; }
+  main.innerHTML = myChgHtml();
+}
+// 點個股 → 同站切到「持股診斷」並聚焦該檔（走內部 hash 路由，不開新分頁）
+document.addEventListener("click", e => {
+  const el = e.target.closest(".clk[data-mychg]");
+  if (!el) return;
+  if (e.target.closest("[data-stk]")) return;   // 側欄鈕包在 .clk 裡，點它只開側欄、不跳頁
+  const c = String(el.dataset.mychg || "").toUpperCase();
+  if (!HASH_CODE_RE.test(c)) return;
+  location.hash = "#tab=diag&code=" + encodeURIComponent(c);   // hashchange → applyHash() → render()
+});
+
 // ---------- 分點 tab（單點/個股/清單） ----------
 // 個股/單點是互動查詢：靜態站無法預產「所有分點×所有個股」組合（1010分點×2215檔），
 // 由前端直呼FinMind專屬endpoint（CORS開放）。token由使用者自行輸入一次、只存瀏覽器
@@ -1360,6 +1500,12 @@ function renderStats(){
     const sc = state.screen;
     el.innerHTML = sc ? `<div class="stat">資料日 <b>${esc(sc.date||"—")}</b></div>`
       + `<div class="stat"><b>${sc.n||0}</b> 檔</div>` : "";
+  } else if (state.tab === "mychg"){
+    // 同 mktbal/rrgd/screen/diag：本 tab 有自己的資料日，**取 market_daily.date 而不是 pm.date**
+    //（兩者語意不同、值常常不同——market_daily 以價格資料日為基準，pm.date 是全檔基準日）
+    const md = state.pm && state.pm.market_daily;
+    el.innerHTML = md ? `<div class="stat">資料日 <b>${esc(md.date||"—")}</b></div>`
+      + `<div class="stat"><b>${(md.rows||[]).length}</b> 檔涵蓋</div>` : "";
   } else if (state.tab === "diag"){
     const dg = state.diag;
     el.innerHTML = dg ? `<div class="stat">素材庫資料日 <b>${esc(dg.date||"—")}</b></div>`
@@ -1389,6 +1535,9 @@ function render(){
   else if (state.tab === "mktbal"){ ensureMktbal(); renderMktbal(); }
   else if (state.tab === "rrgd"){ ensureChainDaily(); renderRrgd(); }
   else if (state.tab === "screen"){ ensureScreen(); renderScreen(); }
+  // 持股異動：吃 state.pm.market_daily（走既有 ensurePm()，本 tab 零新增請求）。**必須有自己的分支**
+  //（下方 else 是 fallback 到 renderPM()，沒加分支會掉進去而顯示「無資料」）
+  else if (state.tab === "mychg"){ ensurePm(); renderMyChg(); }
   // insight 的標題資料日與五個盤後 tab 都吃 state.pm；summary／diag 不需要（各自的一鍵流程再 await ensure*）
   else {
     if (state.tab === "diag") ensureDiag();

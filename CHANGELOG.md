@@ -3,6 +3,35 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-09-09 新增第 14 個 tab「持股異動」（由入口站「我的異動」搬遷，第一階段：只做 postmkt 前端）
+
+**入口站 `shihpc.github.io` 這階段零改動**（移除是下一階段）。搬家的兩個理由：①持股清單
+（localStorage `pm_holdings`）本來就由本站寫入，本站才是擁有者；②入口站那張表 6 欄，
+手機上只看得到前 2 欄，外資／投信／漲跌三個關鍵數字全在畫面外。
+
+- **版面**：改用共用 `tbl()` 框架的 **4 欄**（`nameCell` 代號＋名稱兩行合成一格／外資(張)／
+  投信(張)／漲跌%），資料日不佔欄位、改走 `renderStats()` 徽章——**取 `market_daily.date`
+  而不是 `pm.date`**（兩者語意不同、值常常不同，例 `44ef7e7` 是 09-09 vs 09-08）。
+- **資料源**：`data/postmkt.json` 的 `market_daily`，走既有 `ensurePm()`，**本 tab 零新增網路
+  請求**；持股代號絕不進任何請求的 URL／header／body（CANON 第 1 條＋CLAUDE.md 約定 6），
+  比對全在瀏覽器端。Playwright 逐請求稽核（URL＋body＋headers）零命中。
+- **三種「缺資料」分開講**（實作 README「前端消費 `market_daily` 的必要條件」）：
+  ①代號不在 `rows` 且屬權證（`MYCHG_WARRANT_RE`）或偽代號（非數字開頭，`MYCHG_SEC_RE`）
+  → 「本表不涵蓋」，不說「查無此代號」；②`f`／`t` 為 `null` → 「當日法人資料未到（不是 0、
+  也不是無顯著異動）」，**同列 `chg` 照常判讀、不整檔靜音**；③`rows` 為空或 `< MYCHG_MIN_ROWS`
+  (2000，同管線 `MARKET_DAILY_MIN_ROWS`) → 整段「無法取得異動資料」，不逐檔說成查無此代號。
+- **誠實原則（CANON 第 8 條）逐字保留**：「門檻：法人淨買賣 ±100 張或漲跌 ±3%，為顯示用可調
+  常數、無回測依據，不是買賣訊號，只是相對變化提醒」。
+- **動到的地方**：`TABS`／`SUBS`／`render()` 分派（**else 鏈末端是 fallback 到 `renderPM()`，
+  沒加分支會掉進去**）／`renderStats()`／新區塊 `function myChgHtml`＋`function renderMyChg`
+  ＋`.clk[data-mychg]` 委派（點個股走內部 hash `#tab=diag&code=`，同站切 tab 不開新分頁）。
+  `HASH_TABS` 由 `TABS` 自動生成，未手改。
+- **驗收（Playwright，本機 `http.server`）**：14 tab 逐一點擊 console error 0／pageerror 0；
+  三種狀態各自實測（正常有值／`f`,`t` 全 null＝線上 `44ef7e7` 天然狀態／`rows: []`＋1500 列殘缺
+  ＋`cols` 形狀不符＋整包 500）；權證 `030018` 走「本表不涵蓋」、`9999` 走「查無此代號」、
+  `TAIEX` 走「不是證券代號」；375／390／1280 三寬度 `scrollWidth == innerWidth` 不溢出；
+  代號與股名含 `<img onerror>` 未執行（`window.__xss` 為 null、`#main` 內 `img` 0 個、以字面文字顯示）。
+
 ## 2026-09-09（同日修正之四）真實建置數字回填文件＋「必要條件」補兩種「缺資料被說成別的東西」
 
 **全部是文件與告警條件，宇宙判準（`RE_MARKET_CODE`／`RE_MARKET_EXCLUDE`）與 `build_market_daily()`
