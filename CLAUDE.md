@@ -50,27 +50,32 @@
 - `index.html`：14 個 tab 全部前端（CSS/JS 內嵌）。`render()` 分派各 tab；共用表格框架 `tbl()`
   （排序/分組表頭/凍結欄/虛擬捲動，sticky 的坑記在 `<style>` 註解）。
   - **hash 路由（2026-09-07）**：`#tab=&code=&sub=`，只放非預設值。`parseHash()`／`applyHash()`
-    （`:402`／`:417`）於 `load()` 套用，`syncHash()`（`:453`）掛在 `render()` 結尾以
-    `history.replaceState` 寫回（**不塞歷史、不觸發 hashchange**），外部改網址走
-    `hashchange`（`:458`）。讀入一律白名單＋型別檢查，非法值靜默退回預設。
+    （grep `function parseHash`／`function applyHash`）於 `load()` 套用，`syncHash()`
+    （grep `function syncHash`）掛在 `render()` 結尾以 `history.replaceState` 寫回
+    （**不塞歷史、不觸發 hashchange**），外部改網址走 `hashchange`
+    （grep `addEventListener("hashchange"`）。讀入一律白名單＋型別檢查，非法值靜默退回預設。
     **唯一刻意例外（2026-09-09）**：「持股異動」列點個股跳「持股診斷」走 `location.hash = …`
     （grep `'location.hash = '`＝帶等號的賦值，全站唯一命中；**`grep data-mychg` 則有 4 處**
     ——兩段註解＋表格欄屬性＋handler 的 `closest(".clk[data-mychg]")`，2026-09-09 更正），
     **會塞一筆歷史**——那是使用者主動的下鑽導覽、不是 `render()`
     的狀態寫回，Back 要能退回持股異動。除此之外全站 hash 寫出一律 `replaceState`。
-  - **個股摘要側欄（2026-09-07 批次三 #15 後半）**：`index.html:3634-3877`（含末尾兩個 document 級 listener）。代號旁 `▤` 鈕
-    （`stkBtn`／`:3658`，掛在共用 `nameCell`／`:473`、選股 tab 代號欄、分點「單點」結果的名稱欄、
-    持股診斷卡標題）開側欄；`renderStockDrawer()`（`:3845`）／`stkOpen()`（`:3856`）／
-    `stkClose()`（`:3865`），DOM 是 `.wrap` 外的 `#stkMask`／`#stkPanel`（`:338-339`，position:fixed）。
+  - **個股摘要側欄（2026-09-07 批次三 #15 後半）**：`index.html` grep `// ---------- 個股摘要側欄`
+    起，至該節末尾兩個 document 級 listener（`[data-stk]` 委派點擊與 grep `Escape" && state.stkOpen`
+    的 ESC 關閉）止。代號旁 `▤` 鈕（grep `const stkBtn`，掛在共用 `nameCell`（grep `const nameCell`）、
+    選股 tab 代號欄、分點「單點」結果的名稱欄、持股診斷卡標題）開側欄；`renderStockDrawer()`／
+    `stkOpen()`／`stkClose()`（grep `function renderStockDrawer`／`function stkOpen`／
+    `function stkClose`），DOM 是 `.wrap` 外的 `#stkMask`／`#stkPanel`
+    （grep `id="stkMask"`／`id="stkPanel"`，position:fixed）。
     **硬約束：開側欄不發任何網路請求**——只讀已在記憶體的 `state.pm`／`diag`／`screen`／`aetf`／
     `diagLive`，未載入的資料集整段不出現；`stkOpen()` 刻意只呼叫 `renderStockDrawer()` 而非
     `render()`（後者會替當前 tab 觸發 `ensure*()`）。**每段自帶自己的資料日**（`stkSec()`），
     因為各 dataset 的 date 本來就會不同（見 `date_mismatch`）。跨站一律純導覽 `<a target="_blank"
     rel="noopener">`，**不 fetch → 不需新增 CSP `connect-src`**；深連結只用實查確認支援的格式
-    （`stkSecLinks`／`:3821`）：taiwan-stock-news `#tab=track&code=`／`#tab=news&q=` 可用，
+    （grep `function stkSecLinks`）：taiwan-stock-news `#tab=track&code=`／`#tab=news&q=` 可用，
     **taiwan-flows 與 taiwan-flow-live-v2 沒有 hash 路由**（2026-09-07 curl 線上 index.html
     grep `location.hash` 零命中），只連首頁並在說明列註明需自行搜尋，不得編造深連結格式。
-    hash key 用 **`stock=`**（`parseHash`／`:412`、`applyHash`／`:419`、`currentHash`／`:450`），
+    hash key 用 **`stock=`**（處理該 key 的三行 grep `q.get("stock")`／`state.stkOpen = h.stock`／
+    `p.push("stock="`，分別位於 `parseHash`／`applyHash`／`currentHash` 內），
     **刻意與 `code=` 分家**——`code=` 已被 lending／broker／diag 三個 tab 各自佔用，側欄跨 tab 都能開；
     兩者可並存。ESC 與點遮罩關閉、走 `history.replaceState` 不塞歷史。持股清單不進 hash（約定 6 不變）。
   - **持股異動 tab（2026-09-09）**：`index.html` grep `function myChgHtml`／`function renderMyChg`／
@@ -78,17 +83,23 @@
     **零新增網路請求**，持股代號不進任何 URL／header／body——畫面承諾只能寫「持股代號不進任何網路
     請求」，**不可寫「本 tab 不發任何網路請求」**，`ensurePm()` 自己就會抓 `data/postmkt.json`）。
     **六種「說錯話」不可混講**（正本＝README「前端消費 `market_daily` 的必要條件」）：本表不涵蓋
-    （權證／偽代號）／該資料日法人資料未到（`f`／`t` 為 `null`，不得讀成 0，同列 `chg` 仍有效）／
-    該資料日完全沒有資料（`chg`／`f`／`t` 三欄全 `null`，**不是**「未達門檻」）／整表殘缺
-    （`rows` 空或 <2000 列）整段「無法取得異動資料」／**資料日不是「今天」**／
+    （權證／偽代號）／該資料日法人資料未到（`f`／`t` 為 `null`，不得讀成 0；**同列 `chg` 只有在它
+    自己不是 `null` 時才仍然有效**——`chg` 也可能是 `null`，**不得無條件宣稱「同列漲跌% 仍然有效」**）／
+    該資料日完全沒有資料（`chg`／`f`／`t` 三欄全 `null`，**不是**「未達門檻」）／查無此代號
+    （在本表涵蓋範圍內、但該代號不在 `rows` 裡）／**資料日不是「今天」**（第五軸）／
     **整表不可用時頂列徽章不得報成「N 檔涵蓋」**（第六軸；徽章與內文共用 `myChgUnusable()`）。
+    整表殘缺（`rows` 空或 <2000 列）是另一層：整段顯示「無法取得異動資料」，**不進**上述逐檔分類。
     資料日徽章取 **`market_daily.date`，不是 `pm.date`**（前者＝價格／借券資料日，後者＝全檔基準日，
     線上實測系統性差一天）。**第五軸（2026-09-09）**：畫面主語一律寫出實際日期，
     **不得用「今天／今日／當日」代稱**；落後 ≥`MYCHG_STALE_LAG`（2）個交易日、晚於今日或缺失時
     另出一段與免責卡同重量的說明，且**不新增紅黃綠判級**。比照個股摘要側欄「每段自帶自己的資料日」。
+    **股名在本 tab 刻意不完整**：`stkName()` 的 `diag`／`screen`／`aetf` 三個來源在本 tab 都沒載，
+    只剩 `BK_NM`（只由 `oddlot`／`lending` 三張表建），查不到就顯示代號——那是「零新增網路請求」的
+    代價，**不得為了補股名而新增請求**；細節與量級見 README 同節。
   - **持股清單匯出／匯入／清除（2026-09-07）**：`holdExportPayload`／`holdParseImport`／
-    `holdExport`／`holdImportFile`（`:3078-3130`）。**仍只走 localStorage `pm_holdings`
-    與使用者本機檔案，不進任何網路 payload**（約定 6 不變）；匯入走 `holdParseImport`
+    `holdExport`／`holdImportFile`（grep `const HOLD_SCHEMA` 起至 `async function holdImportFile`
+    該函式結尾止）。**仍只走 localStorage `pm_holdings` 與使用者本機檔案，不進任何網路 payload**
+    （約定 6 不變）；匯入走 `holdParseImport`
     的結構與型別檢查，壞檔整包拒收、不半套。
 - `build_postmkt.py` → `data/postmkt.json`（主資料，五個盤後 tab）
 - `build_summary.py` → `data/summary/`（AI 彙總自動場；含資料齊全輪詢閘門與假日判斷）。
@@ -113,16 +124,18 @@
    `gather_*` 是 index.html gather 的 Python 移植副本。SYS prompt 唯一事實來源＝index.html
    `SUM_SYS_POSTMKT`，`build_summary.py SYS_POSTMKT` 為移植複本需逐字同步。
    **第五組（2026-08-27 起）**：費用估算 `insightCostText`／`INSIGHT_PRICES`／`USD_TWD`
-   （`index.html:2111-2133`）三站亦為逐字副本，改價或改算式需三站同步。
-   **另有一組「四站同步但非逐字」的 `loadSiteVer()`＋footer `#siteVer`**（`index.html:260`、
-   `:3430`）：postmkt／taiwan-flow-live-v2／taiwan-flows／taiwan-stock-news 四站都有
+   （`index.html` grep `// ---- 本次費用估算` 起至 `function insightCostText` 該函式結尾止）三站亦為
+   逐字副本，改價或改算式需三站同步。
+   **另有一組「四站同步但非逐字」的 `loadSiteVer()`＋footer `#siteVer`**（`index.html` grep
+   `async function loadSiteVer`／`id="siteVer"`）：postmkt／taiwan-flow-live-v2／taiwan-flows／
+   taiwan-stock-news 四站都有
    （入口站 shihpc.github.io 沒有），刻意不同的三處＝①各站打自己 repo 的 commits 端點
    ②sessionStorage key 各站獨立（`pm_site_ver`／`tf2_site_ver`／`tf_site_ver`／`news_site_ver`）
    ③時間格式 postmkt 走 `fmtGenTaipei`、另三站內嵌 `toLocaleString("sv-SE")`。
    改行為要四站一起改，但**不要**強求逐字。它帶來一個對外依賴
    `api.github.com/repos/shihpc/<repo>/commits/main`（免金鑰、限 60 req/hr/IP，失敗或超限
    一律靜默隱藏版本列）；本站 CSP 的 `connect-src` 早已含 `https://api.github.com`
-   （`index.html:10`），無須再加，其餘三站無 CSP meta。
+   （`index.html` grep `Content-Security-Policy`），無須再加，其餘三站無 CSP meta。
 3. **lending 衍生欄重建公式三處一致**：postmkt.json 的 lending.rows 只存基礎量＋px，
    衍生欄由 `index.html augmentLending()` 與 `build_summary.py _augment_lending()` 重建，
    改公式要同步（有 parity 測試守著）。
