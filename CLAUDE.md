@@ -54,7 +54,9 @@
     `history.replaceState` 寫回（**不塞歷史、不觸發 hashchange**），外部改網址走
     `hashchange`（`:458`）。讀入一律白名單＋型別檢查，非法值靜默退回預設。
     **唯一刻意例外（2026-09-09）**：「持股異動」列點個股跳「持股診斷」走 `location.hash = …`
-    （grep `data-mychg` 唯一命中），**會塞一筆歷史**——那是使用者主動的下鑽導覽、不是 `render()`
+    （grep `'location.hash = '`＝帶等號的賦值，全站唯一命中；**`grep data-mychg` 則有 4 處**
+    ——兩段註解＋表格欄屬性＋handler 的 `closest(".clk[data-mychg]")`，2026-09-09 更正），
+    **會塞一筆歷史**——那是使用者主動的下鑽導覽、不是 `render()`
     的狀態寫回，Back 要能退回持股異動。除此之外全站 hash 寫出一律 `replaceState`。
   - **個股摘要側欄（2026-09-07 批次三 #15 後半）**：`index.html:3634-3877`（含末尾兩個 document 級 listener）。代號旁 `▤` 鈕
     （`stkBtn`／`:3658`，掛在共用 `nameCell`／`:473`、選股 tab 代號欄、分點「單點」結果的名稱欄、
@@ -72,11 +74,18 @@
     **刻意與 `code=` 分家**——`code=` 已被 lending／broker／diag 三個 tab 各自佔用，側欄跨 tab 都能開；
     兩者可並存。ESC 與點遮罩關閉、走 `history.replaceState` 不塞歷史。持股清單不進 hash（約定 6 不變）。
   - **持股異動 tab（2026-09-09）**：`index.html` grep `function myChgHtml`／`function renderMyChg`／
-    `MYCHG_MIN_ROWS`。資料源＝`state.pm.market_daily`（走既有 `ensurePm()`，**零新增網路請求**，
-    持股代號不進任何 URL／header／body）。**三種「缺資料」不可混講**（正本＝README「前端消費
-    `market_daily` 的必要條件」）：本表不涵蓋（權證／偽代號）／當日法人資料未到（`f`／`t` 為
-    `null`，不得讀成 0，同列 `chg` 仍有效）／整表殘缺（`rows` 空或 <2000 列）整段「無法取得異動資料」。
-    資料日徽章取 **`market_daily.date`，不是 `pm.date`**（兩者語意不同、值常常不同）。
+    `MYCHG_MIN_ROWS`／`function myChgDateInfo`。資料源＝`state.pm.market_daily`（走既有 `ensurePm()`，
+    **零新增網路請求**，持股代號不進任何 URL／header／body——畫面承諾只能寫「持股代號不進任何網路
+    請求」，**不可寫「本 tab 不發任何網路請求」**，`ensurePm()` 自己就會抓 `data/postmkt.json`）。
+    **六種「說錯話」不可混講**（正本＝README「前端消費 `market_daily` 的必要條件」）：本表不涵蓋
+    （權證／偽代號）／該資料日法人資料未到（`f`／`t` 為 `null`，不得讀成 0，同列 `chg` 仍有效）／
+    該資料日完全沒有資料（`chg`／`f`／`t` 三欄全 `null`，**不是**「未達門檻」）／整表殘缺
+    （`rows` 空或 <2000 列）整段「無法取得異動資料」／**資料日不是「今天」**／
+    **整表不可用時頂列徽章不得報成「N 檔涵蓋」**（第六軸；徽章與內文共用 `myChgUnusable()`）。
+    資料日徽章取 **`market_daily.date`，不是 `pm.date`**（前者＝價格／借券資料日，後者＝全檔基準日，
+    線上實測系統性差一天）。**第五軸（2026-09-09）**：畫面主語一律寫出實際日期，
+    **不得用「今天／今日／當日」代稱**；落後 ≥`MYCHG_STALE_LAG`（2）個交易日、晚於今日或缺失時
+    另出一段與免責卡同重量的說明，且**不新增紅黃綠判級**。比照個股摘要側欄「每段自帶自己的資料日」。
   - **持股清單匯出／匯入／清除（2026-09-07）**：`holdExportPayload`／`holdParseImport`／
     `holdExport`／`holdImportFile`（`:3078-3130`）。**仍只走 localStorage `pm_holdings`
     與使用者本機檔案，不進任何網路 payload**（約定 6 不變）；匯入走 `holdParseImport`

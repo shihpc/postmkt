@@ -360,7 +360,7 @@ const SUBS = {
   rrgd:"盤後日頻產業輪動雷達（RRG-Daily）：47 條產業鏈的相對輪動圖。X 軸 RS-Ratio＝鏈等權報酬指數相對大盤等權基準的相對強度（12 日窗 z-score 標準化，100 為中性）；Y 軸 RS-Momentum＝RS-Ratio 的 10 日變化率再做同法標準化。資料源 taiwan-flow-live-v2 data/chain_daily（每交易日夜間增量更新）。僅描述各鏈相對大盤的歷史位置與變化；回測顯示象限轉換對未來報酬無顯著預測力，非投資建議。",
   dates:"各資料源目前的資料日與產出時間；判斷哪些已是最新交易日、哪些尚未更新。資料為排程產出，當日盤後資料通常於當晚 21:00 後才更新，故白天多半看到前一交易日。",
   screen:"選股：以分析師預估（FactSet 經鉅亨網／TradingView）篩選明年預估 EPS 達門檻之個股，並列今明年預估 EPS／本益比、目標價中位數與潛在漲幅、營收動能與評等分布。預估值為券商共識、隨時修訂，屬 AI 彙整之市場預期而非買賣建議與保證。",
-  mychg:"持股異動：拿本機持股清單比對全市場逐檔當日資料（外資／投信買賣超張數、漲跌%），只列達門檻者，一眼看完再決定要不要進「持股診斷」細看。門檻為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒。持股清單只存本機瀏覽器，比對全在瀏覽器端完成，本 tab 不發任何網路請求。",
+  mychg:"持股異動：拿本機持股清單比對全市場逐檔資料（外資／投信買賣超張數、漲跌%），只列達門檻者，一眼看完再決定要不要進「持股診斷」細看。講的是 market_daily 資料日那一天的狀態、不是「今天」（資料日寫在段落標題與免責卡）。門檻為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒。持股清單只存本機瀏覽器，比對全在瀏覽器端完成，持股代號不進任何網路請求（本 tab 不新增網路請求）。",
   diag:"持股診斷：輸入持股後逐檔彙整籌碼／價量／題材／基本面／系統五面向事實與紅黃綠風險燈號，附近3日新聞命中與可選的 AI 解讀（按了才呼叫、token 自備）。證據彙整工具、非投資建議，不輸出買賣指令；持股資料僅存於本機瀏覽器（localStorage），不上傳任何伺服器。素材庫每交易日約 22:10 更新（全市場通用資料）。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
@@ -401,7 +401,9 @@ const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQu
 // 讀入一律白名單／型別檢查：tab 必在 TABS、sub 必在該 tab 允許值、code 為 4–6 位大寫英數；非法值靜默退回預設。
 // 寫出走 history.replaceState（不塞歷史堆疊、不觸發 hashchange）；hashchange 只在外部改網址（返回鍵／貼連結）時進入。
 // **唯一的刻意例外**：「持股異動」列點個股跳「持股診斷」是使用者主動導覽（不是 render() 的狀態寫回），
-// 走 `location.hash = …` 寫入，**會塞一筆歷史**，好讓 Back 能退回持股異動；grep `data-mychg` 唯一命中。
+// 走 `location.hash = …` 寫入，**會塞一筆歷史**，好讓 Back 能退回持股異動。
+// 位置：`grep 'location.hash = '`（帶等號的賦值）全站唯一命中即是它；`grep data-mychg` 則有 4 處
+// （本段與例外那段註解各 1、`myChgHtml()` 表格欄的屬性、handler 的 `closest(".clk[data-mychg]")`）。
 // 這條例外是刻意的、有紀錄的（README「持股異動」列與 CLAUDE.md hash 路由段同步註明），不要「順手改成 replaceState」。
 // 持股清單本身絕不進 hash（只有單一代號），與 CLAUDE.md 約定 6 一致。
 const HASH_TABS = new Set(TABS.map(t => t[0]));
@@ -1141,27 +1143,47 @@ function renderPM(){
 }
 
 // ---------- 持股異動 tab（2026-09-09，自入口站 shihpc.github.io「我的異動」搬遷） ----------
-// 目的：一眼看完「我持有的股票今天有沒有相對明顯的變化」，再決定要不要進「持股診斷」細看。
+// 目的：一眼看完「我持有的股票在本區塊資料日那天有沒有相對明顯的變化」，再決定要不要進「持股診斷」細看。
 // 搬家的兩個理由：①持股清單（localStorage pm_holdings）本來就由本站寫入，本站才是擁有者；
 // ②入口站那張表 6 欄，手機只看得到前 2 欄，三個關鍵數字全在畫面外——本 tab 改用共用 tbl()
-//   的 4 欄（個股／外資／投信／漲跌%），資料日改走頂列徽章（renderStats）不佔欄位。
-// 隱私（CANON 第 1 條＋CLAUDE.md 約定 6）：持股代號絕不進任何網路請求的 URL／header／body。
-//   本 tab **零新增請求**——資料全部取自已在記憶體的 state.pm.market_daily（走既有 ensurePm()），
-//   比對完全在瀏覽器端完成。
+//   的 4 欄（個股／外資／投信／漲跌%），資料日改走頂列徽章（renderStats）與段落說明不佔欄位。
+// 隱私（CANON 第 1 條＋CLAUDE.md 約定 6）：**持股代號絕不進任何網路請求的 URL／header／body**。
+//   本 tab **零新增請求**——資料全部取自 state.pm.market_daily，走的是各盤後 tab 共用的既有
+//   ensurePm()（它會抓 data/postmkt.json，所以「本 tab 不發任何網路請求」是**錯的**、不可再這樣寫；
+//   精確的保證是「不新增請求」＋「持股清單不進任何請求」）。比對完全在瀏覽器端完成。
 // 資料源：data/postmkt.json 的 market_daily（全市場逐檔 {c 代號, chg 漲跌%, f 外資張, t 投信張}）。
-// **四種「缺資料」不可混為一談**（正本＝README「前端消費 market_daily 的必要條件」，改本段前必讀）：
+// **六種「說錯話」不可混為一談**（前四軸正本＝README「前端消費 market_daily 的必要條件」，改本段前必讀）：
 //   ① 代號不在 rows 且屬權證／偽代號 → 「本表不涵蓋」，**不可**說成「查無此代號（已下市／停牌／代號有誤）」
-//   ② f／t 為 null → 「當日法人資料未到」，**不可**讀成 0 或「無顯著異動」（同列 chg 若有值仍有效，不得整檔靜音）
+//   ② f／t 為 null → 「該資料日的法人資料未到」，**不可**讀成 0 或「無顯著異動」（同列 chg 若有值仍有效，不得整檔靜音）
 //   ③ rows 為空或列數 < MYCHG_MIN_ROWS → 整段「無法取得異動資料」，**不可**逐檔說成「查無此代號」
-//   ④ chg 也可能是 null（線上 44ef7e7 版 46/2757 列，多為匯率避險型 ETF 與 ETN）。**chg／f／t 三欄全 null
-//      ＝該檔當日完全沒有資料**，必須自成一類，**不可**併進「未達門檻（查得到但變化小）」——那是把「沒有資料」
-//      說成「有資料且正常」，與本段其餘三軸同型的說錯話；也不可說成「查無此代號」（它確實在 rows 裡）。
+//   ④ chg 也可能是 null。**chg／f／t 三欄全 null ＝該檔在該資料日完全沒有資料**，必須自成一類，
+//      **不可**併進「未達門檻（查得到但變化小）」——那是把「沒有資料」說成「有資料且正常」，
+//      與本段其餘各軸同型的說錯話；也不可說成「查無此代號」（它確實在 rows 裡）。
 //      只缺一部分時（只缺 chg 或只缺 f／t）**只講缺的那部分**，不得把部分缺講成全缺、也不得無條件宣稱
 //      「同列漲跌% 仍然有效」（該列的 chg 可能本來就是 null）。
+//      **觀測樣本（單日單次，n=1，不是常態分布）**：線上 `44ef7e7` 版（資料日 2026-09-08）2,757 列中
+//      chg 為 null 者 46 列。成分實查＝ETN（`02` 開頭）7 檔、`00` 開頭 ETF 6 檔（R／K／U 尾碼 3／2／1），
+//      **其餘 33 檔（72%）是一般證券代號**（31 檔純 4 位數字如 `2945`／`6210`／`8905`，另 `1312A`、
+//      `910322` 各 1）——ETF＋ETN 只佔 13/46（28%），**不可寫成「多為匯率避險型 ETF 與 ETN」**。
+//      market_daily 區塊 2026-09-09 才上線，`data/postmkt.json` 近 20 個 commit 只有這一天帶該區塊，
+//      所以這個比例與成分只有一天的觀測，不知道日常分布長什麼樣。
+//   ⑤ **資料日不是「今天」**（2026-09-09 補，第五軸）：md.date ＝管線的 lending.date（價格／借券資料日），
+//      與頂列的 pm.date（全檔基準日）**是兩個不同的日期**——實查 `build_postmkt.py` 的
+//      `build_market_daily(lend_date, …)`，且線上 44ef7e7 實測頂列 2026-09-09、本區塊 2026-09-08，
+//      系統性差一天。同一畫面擺兩個日期又用「今天」當主語＝**宣稱這是今天的狀態**，與前四軸同型。
+//      故本 tab 文案**一律寫出實際日期**（myChgDateInfo／myChgWhen），**不得用「今天／今日／當日」代稱**；
+//      資料日落後 ≥MYCHG_STALE_LAG 個交易日、晚於今日、或缺失時另出一段與免責卡同重量的說明。
+//      **刻意不新增紅黃綠判級**（判級語意未經裁決），只把事實敘述清楚。
+//   ⑥ **整表不可用時，頂列徽章不得報成正常涵蓋**（2026-09-09 補，第六軸；本輪主動自查找到）：
+//      舊版 renderStats() 的 mychg 徽章自己算 `(md.rows||[]).length`，於是 cols 形狀不符時徽章顯示
+//      「資料日 2026-09-08 · 2757 檔涵蓋」、內文卻是「無法取得異動資料」（實測三種殘缺情境）。
+//      現在徽章與內文共用 `myChgUnusable()` 這支唯一事實來源，徽章逐字沿用「無法取得異動資料」、
+//      成因放 tooltip，**刻意不上色**。改健康度判準只需要改那一支。
 const MYCHG_LOT_TH = 100;      // 張：任一法人淨買賣達 ±此值即列入
 const MYCHG_CHG_PCT_TH = 3;    // %：漲跌達 ±此值即列入
 const MYCHG_MAX_ROWS = 5;      // 最多列幾檔
 const MYCHG_MIN_ROWS = 2000;   // 整表健康度下限（同管線端 build_postmkt.py 的 MARKET_DAILY_MIN_ROWS）
+const MYCHG_STALE_LAG = 2;     // 資料日落後幾個交易日就額外出一段說明（顯示用門檻，非判級、無回測依據）
 // 代號型態判別（判準正本＝build_postmkt.py 的 RE_MARKET_CODE／RE_MARKET_EXCLUDE，改那兩條要回頭改這裡）
 const MYCHG_WARRANT_RE = /^(?:0[3-9]\d{3}[0-9A-Z]|7\d{4}[0-9A-Z])$/;  // 權證：上市 03–09 開頭／上櫃 7 開頭，皆 6 碼
 const MYCHG_SEC_RE = /^\d[0-9A-Z]{2,7}$/;                             // 證券代號字面型態＝數字開頭；不符＝偽代號
@@ -1199,30 +1221,74 @@ function myChgIndex(md, codes){
 const myChgSig = r => (r.f != null && Math.abs(r.f) >= MYCHG_LOT_TH)
   || (r.t != null && Math.abs(r.t) >= MYCHG_LOT_TH)
   || (r.chg != null && Math.abs(r.chg) >= MYCHG_CHG_PCT_TH);
-// 張數欄：缺值＝「當日法人資料未到」（title 寫明成因），不是 0、不是「無顯著異動」
-const myChgLots = v => v == null ? '<span class="mut" title="當日法人資料未到（法人資料日與基準日不一致時整欄留空；單檔查無法人資料時該檔留空），不是 0">—</span>' : zh(v);
-const myChgPct = v => v == null ? '<span class="mut" title="當日無漲跌%資料（價格資料缺），不是 0%">—</span>' : sgn(v, (v > 0 ? "+" : "") + v.toFixed(2));
+// 張數欄：缺值＝「該資料日的法人資料未到」（title 寫明成因），不是 0、不是「無顯著異動」
+const myChgLots = v => v == null ? '<span class="mut" title="該資料日的法人資料未到（法人資料日與本區塊資料日不一致時整欄留空；單檔查無法人資料時該檔留空），不是 0">—</span>' : zh(v);
+const myChgPct = v => v == null ? '<span class="mut" title="該資料日無漲跌%資料（價格資料缺），不是 0%">—</span>' : sgn(v, (v > 0 ? "+" : "") + v.toFixed(2));
+
+// ---- 第五軸：資料日 ----
+// 回 {d, today, lag, txt, stale}：d=""＝日期缺失或格式不合；lag=null＝日期不明或資料日晚於今日；
+// lag 為交易日數（只排週末、國定假日不扣，沿用 dayDiff 的已知近似，與日期 tab／頂列同口徑）。
+// stale=true 只代表「要多講一句」，**不是紅黃綠判級**。
+function myChgDateInfo(md, nowStr){
+  const d = dateNorm(md && md.date), today = (nowStr || twNow()).slice(0, 10);
+  if (!d) return { d:"", today, lag:null, txt:"資料日不明（market_daily.date 缺失或格式不合）", stale:true };
+  if (d > today) return { d, today, lag:null, txt:`資料日 ${d}（晚於今日 ${today}）`, stale:true };
+  const lag = dayDiff(today, d);
+  const txt = lag === 0 ? `資料日 ${d}（即今日）`
+    : lag === 1 ? `資料日 ${d}（今日 ${today} 的前 1 個交易日）`
+    : `資料日 ${d}（落後今日 ${today} ${lag} 個交易日）`;
+  return { d, today, lag, txt, stale: lag >= MYCHG_STALE_LAG };
+}
+// 主語片語與時間狀語：日期不明時**不得**退回「今天」，明說不明
+const myChgWhen = i => i.d ? `在資料日 ${i.d}` : "在本區塊資料日（不明）";
+const myChgAt = i => i.d ? `資料日 ${i.d}` : "本區塊資料日（不明）";
+
+// 整表健康度（README 必要條件第三軸）——**畫面上任何地方都以它為準**。
+// 抽成共用函式的理由（2026-09-09 第六軸）：舊版 renderStats() 的徽章自己算 `(md.rows||[]).length`，
+// 於是 cols 形狀不符時徽章照樣報「資料日 2026-09-08 · 2757 檔涵蓋」，內文卻是「無法取得異動資料」
+// ——**把一份本 tab 根本用不了的資料呈現成正常涵蓋**，與前五軸同型。兩處共用同一支就不會再分岔。
+// 回 ""＝可用；非空字串＝不可用的原因（直接放進畫面，內文與徽章 tooltip 同一句）。
+function myChgUnusable(md){
+  if (!md) return "本次資料檔沒有 market_daily 區塊（管線版本較舊）";
+  const cols = Array.isArray(md.cols) ? md.cols : [];
+  const rows = Array.isArray(md.rows) ? md.rows : null;
+  if (!rows || ["c", "chg", "f", "t"].some(k => cols.indexOf(k) < 0))
+    return "market_daily 形狀不符（cols／rows 缺欄位）";
+  if (!rows.length) return "market_daily 沒有任何一列（上游整包抓取失敗）";
+  if (rows.length < MYCHG_MIN_ROWS) return `market_daily 只有 ${rows.length} 檔（低於健康度下限 ${MYCHG_MIN_ROWS}），上游疑似殘缺`;
+  return "";
+}
 
 function myChgHtml(){
-  const disc = `<div class="diag-disc">本頁只描述「持股今天有沒有相對明顯的變化」，`
+  const md = (state.pm || {}).market_daily;
+  const di = myChgDateInfo(md);
+  // 免責卡：主語綁資料日、不用「今天」；隱私那句只保證真的成立的事（見本段開頭第 ⑤ 軸與隱私註解）
+  const disc = `<div class="diag-disc">本頁只描述「持股${esc(myChgWhen(di))} 有沒有相對明顯的變化」`
+    + `——講的是那一天的狀態，不是「今天」（本區塊資料日與頂列的資料日語意不同、值也常常不同）。`
     + `門檻為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒。`
-    + `持股資料僅存於本機瀏覽器（localStorage），不上傳任何伺服器，本 tab 也不發任何網路請求。</div>`;
+    + `持股清單只存於本機瀏覽器（localStorage），不上傳任何伺服器；比對全在瀏覽器端完成，`
+    + `持股代號不進任何網路請求（本 tab 不新增網路請求，資料取自各盤後 tab 共用、已載入的 data/postmkt.json）。</div>`;
   const codes = myChgCodes();
   if (!codes.length){
     return disc + `<div class="empty">尚未設定持股。<br>請到 <a class="slink" href="#tab=diag">持股診斷</a> tab 新增代號與股數（只存本機瀏覽器，不上傳）。</div>`;
   }
   // 整表健康度（README 必要條件第三軸）：整包缺失／形狀不符／列數殘缺一律整段「無法取得異動資料」，
-  // 不得進入逐檔三分狀態、也不得靜默當成「今天沒有異動」。
-  const md = (state.pm || {}).market_daily;
+  // 不得進入逐檔三分狀態、也不得靜默當成「今天沒有異動」。判定走共用的 myChgUnusable()（徽章同源）；
+  // idx 為 null 是同一件事的雙保險（myChgIndex 自己也驗 cols）。
   const rows = Array.isArray(md && md.rows) ? md.rows : null;
   const idx = md ? myChgIndex(md, codes) : null;
-  if (!md || !rows || !idx || rows.length < MYCHG_MIN_ROWS){
-    const why = !md ? "本次資料檔沒有 market_daily 區塊（管線版本較舊）"
-      : !rows || !idx ? "market_daily 形狀不符（cols／rows 缺欄位）"
-      : !rows.length ? "market_daily 沒有任何一列（上游整包抓取失敗）"
-      : `market_daily 只有 ${rows.length} 檔（低於健康度下限 ${MYCHG_MIN_ROWS}），上游疑似殘缺`;
+  const why = myChgUnusable(md) || (idx ? "" : "market_daily 形狀不符（cols／rows 缺欄位）");
+  if (why)
     return disc + `<div class="empty">無法取得異動資料<br><span class="mut" style="font-size:.8rem">${esc(why)}</span></div>`;
-  }
+  // 第五軸：資料日明顯落後／晚於今日／不明時，用與免責卡同重量的一段講清楚（不是 0.74rem 灰字）。
+  // **不新增紅黃綠判級**，只敘述「這些數字是哪一天的」。
+  const staleBox = di.stale
+    ? `<div class="diag-disc">${esc(di.d
+        ? (di.lag == null
+            ? `注意：本區塊資料日 ${di.d} 晚於今日 ${di.today}（上游時序異常）——下方每一個數字都是 ${di.d} 那天的。`
+            : `注意：本區塊資料日 ${di.d} 落後今日 ${di.today} 共 ${di.lag} 個交易日——下方每一個數字都是 ${di.d} 那天的，不是最近的狀態。`)
+        : `注意：本次資料沒有可用的資料日（market_daily.date 缺失或格式不合）——下方數字屬於哪一天無法確認，不要當成今天的狀態。`)}</div>`
+    : "";
   // 逐檔三分：查得到／本表不涵蓋（權證、偽代號）／真的查無此代號
   const found = [], warrants = [], pseudo = [], unknown = [];
   codes.forEach(c => {
@@ -1232,7 +1298,7 @@ function myChgHtml(){
     else if (MYCHG_WARRANT_RE.test(c)) warrants.push(c);
     else unknown.push(c);
   });
-  // 查得到的列再分兩類（互斥）：**三欄全 null＝當日完全沒有資料**，不可併進「未達門檻」（README 第四軸）；
+  // 查得到的列再分兩類（互斥）：**三欄全 null＝該資料日完全沒有資料**，不可併進「未達門檻」（README 第四軸）；
   // 其餘至少有一欄有值者才判得動門檻（myChgSig 對兩者都回 false，差別在「判過」還是「無從判起」）。
   const isBlank = r => r.chg == null && r.f == null && r.t == null;
   const blank = found.filter(isBlank);
@@ -1244,12 +1310,17 @@ function myChgHtml(){
   const shown = sig.slice(0, MYCHG_MAX_ROWS);
   // 部分缺值只講缺的那部分：instMiss＝有值的列裡法人欄仍缺（其中 instMissPx 檔的漲跌%才真的有效），
   // pxMiss＝只缺漲跌%、法人欄有值。兩者都**不含** blank（那類已整檔另外講）。
+  // ⚠ **現行管線下 instMissPx 恆等於 instMiss.length，下面「其中 N 檔」與「整句不加」兩個分支不可達**
+  //   （2026-09-09 查證）：build_postmkt.py 的 `it = inst_by_c.get(c)` 以同一個 it 真假值同時決定 f 與 t
+  //   （法人資料日 ≠ 基準日時 inst_by_c 直接被清空），**單欄 null 不可能發生**；而 rated 已排除三欄全 null，
+  //   所以 instMiss 的列 chg 必有值。兩個分支是**防禦性**的——第三方或未來的資料形狀可能單欄缺，
+  //   **不要因為「跑不到」就刪掉**（人工構造 fixture 實測文案正確）。
   const instMiss = rated.filter(r => r.f == null || r.t == null);
   const instMissPx = instMiss.filter(r => r.chg != null).length;
   const pxMiss = rated.filter(r => r.chg == null).length;
 
-  let h = disc;
-  h += sec("達門檻持股", `持股 ${codes.length} 檔 · 門檻 法人 ±${MYCHG_LOT_TH} 張或漲跌 ±${MYCHG_CHG_PCT_TH}% · 最多列 ${MYCHG_MAX_ROWS} 檔`);
+  let h = disc + staleBox;
+  h += sec("達門檻持股", esc(`${di.txt} · 持股 ${codes.length} 檔 · 門檻 法人 ±${MYCHG_LOT_TH} 張或漲跌 ±${MYCHG_CHG_PCT_TH}% · 最多列 ${MYCHG_MAX_ROWS} 檔`));
   if (shown.length){
     h += tbl([
       {h:"個股",cls:"l",f:r=>`<span class="clk" data-mychg="${esc(r.c)}" title="到持股診斷看這一檔">${nameCell(r)}</span>`},
@@ -1258,24 +1329,30 @@ function myChgHtml(){
       {h:"漲跌%",f:r=>myChgPct(r.chg),sortVal:r=>r.chg},
     ], shown);
   } else {
-    h += `<div class="empty" style="padding:22px 14px">持股中今日沒有任何一檔達門檻。</div>`;
+    // 主語綁資料日，**不得寫「今日」**（第五軸）
+    h += `<div class="empty" style="padding:22px 14px">持股中${esc(myChgWhen(di))} 沒有任何一檔達門檻。</div>`;
   }
   // 各狀態各自一句、分行呈現，**不可合併成同一個字串**（合併＝使用者無從分辨缺資料與無異動）
   const notes = [];
+  const at = myChgAt(di);   // 「資料日 YYYY-MM-DD」或「本區塊資料日（不明）」
   const quiet = rated.length - sig.length;
-  if (quiet > 0) notes.push(`${shown.length ? "其餘 " : ""}${quiet} 檔未達門檻（當日查得到的欄位變化都不到門檻）`);
+  if (quiet > 0) notes.push(`${shown.length ? "其餘 " : ""}${quiet} 檔未達門檻（${at} 查得到的欄位變化都不到門檻）`);
   // 第四軸：三欄全 null＝完全沒有資料。**不可**說成「查得到但變化小」，也不是「查無此代號」（它在表內）。
-  if (blank.length) notes.push(`${blank.length} 檔（${blank.slice(0, 5).map(r => r.c).join("／")}${blank.length > 5 ? " 等" : ""}）當日漲跌%／外資／投信三欄全部缺值——這幾檔確實在本表內，但當日完全沒有資料可比對，既不是「查得到但變化不到門檻」，也不是「查無此代號」`);
-  if (instMiss.length) notes.push(`${instMiss.length} 檔的外資／投信欄是「當日法人資料未到」（法人資料日與本區塊基準日不一致時整欄留空；單檔查無法人資料時該檔留空）——不是 0、也不是「無顯著異動」${instMissPx === instMiss.length ? "；這些列的漲跌% 當日仍然有效" : instMissPx > 0 ? `；其中 ${instMissPx} 檔的漲跌% 當日仍然有效` : ""}`);
-  if (pxMiss > 0) notes.push(`${pxMiss} 檔當日沒有漲跌%（價格資料缺，顯示「—」不是 0%）——該列的法人欄仍有值，照常判讀`);
+  if (blank.length) notes.push(`${blank.length} 檔（${blank.slice(0, 5).map(r => r.c).join("／")}${blank.length > 5 ? " 等" : ""}）在${at} 的漲跌%／外資／投信三欄全部缺值——這幾檔確實在本表內，但在${at} 完全沒有資料可比對，既不是「查得到但變化不到門檻」，也不是「查無此代號」`);
+  if (instMiss.length) notes.push(`${instMiss.length} 檔的外資／投信欄是「${at} 的法人資料未到」（法人資料日與本區塊資料日不一致時整欄留空；單檔查無法人資料時該檔留空）——不是 0、也不是「無顯著異動」${instMissPx === instMiss.length ? `；這些列的漲跌% 在${at} 仍然有效` : instMissPx > 0 ? `；其中 ${instMissPx} 檔的漲跌% 在${at} 仍然有效` : ""}`);
+  if (pxMiss > 0) notes.push(`${pxMiss} 檔在${at} 沒有漲跌%（價格資料缺，顯示「—」不是 0%）——該列的法人欄仍有值，照常判讀`);
   if (warrants.length) notes.push(`${warrants.length} 檔是權證，本表不涵蓋（權證全市場約 4.5 萬檔，納入會讓資料檔體積倍增，故刻意排除）——不是查無此代號`);
   if (pseudo.length) notes.push(`${pseudo.length} 檔不是證券代號（非數字開頭，如指數／大盤代碼），本表不涵蓋`);
-  if (unknown.length) notes.push(`${unknown.length} 檔在當日資料中查無此代號（已下市／停牌／代號有誤），不代表沒有異動`);
+  if (unknown.length) notes.push(`${unknown.length} 檔在${at} 的資料中查無此代號（已下市／停牌／代號有誤），不代表沒有異動`);
   const extra = sig.length - shown.length;
   if (extra > 0) notes.push(`另 ${extra} 檔已達門檻但未列出（最多列 ${MYCHG_MAX_ROWS} 檔）`);
+  // 第五軸：同一畫面兩個資料日，明講哪個是哪個（頂列取 pm.date、本區塊取 market_daily.date）
+  const pmd = dateNorm((state.pm || {}).date);
+  if (di.d && pmd && pmd !== di.d)
+    notes.push(`頂列的「資料日 ${pmd}」是 data/postmkt.json 的全檔基準日；本區塊另以 ${di.d} 為準（market_daily.date＝價格／借券資料日，兩者語意不同、值常常差一個交易日），本頁所有數字都是 ${di.d} 那天的`);
   // ↓ 誠實原則（CANON 第 8 條）：語意一字不可弱化，改門檻要連這句一起改
   notes.push(`門檻：法人淨買賣 ±${MYCHG_LOT_TH} 張或漲跌 ±${MYCHG_CHG_PCT_TH}%，為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒`);
-  notes.push(`資料源：data/postmkt.json 的 market_daily（全市場逐檔 ${rows.length} 檔，資料日 ${md.date || "—"}）；股名取自本站既有代號對照，查不到就顯示代號。持股比對全在瀏覽器端完成，代號不進任何請求`);
+  notes.push(`資料源：data/postmkt.json 的 market_daily（全市場逐檔 ${rows.length} 檔，${di.txt}）；股名取自本站既有代號對照，查不到就顯示代號。持股比對全在瀏覽器端完成，代號不進任何請求`);
   h += `<div class="mut" style="font-size:.74rem;margin:2px 4px 8px;line-height:1.7">${notes.map(esc).join("<br>")}</div>`;
   return h;
 }
@@ -1529,9 +1606,15 @@ function renderStats(){
   } else if (state.tab === "mychg"){
     // 同 mktbal/rrgd/screen/diag：本 tab 有自己的資料日，**取 market_daily.date 而不是 pm.date**
     //（兩者語意不同、值常常不同——market_daily 以價格資料日為基準，pm.date 是全檔基準日）
+    // **整表不可用時不得報「N 檔涵蓋」**（2026-09-09 第六軸）：判定與內文共用 myChgUnusable()，
+    // 徽章逐字沿用內文那句「無法取得異動資料」，成因放 tooltip；**刻意不上色**（不新增判級語意）。
     const md = state.pm && state.pm.market_daily;
-    el.innerHTML = md ? `<div class="stat">資料日 <b>${esc(md.date||"—")}</b></div>`
-      + `<div class="stat"><b>${(md.rows||[]).length}</b> 檔涵蓋</div>` : "";
+    const bad = state.pm ? myChgUnusable(md) : "";
+    el.innerHTML = !state.pm ? ""
+      : bad ? `<div class="stat">資料日 <b>${esc((md && md.date) || "—")}</b></div>`
+              + `<div class="stat" title="${esc(bad)}">無法取得異動資料</div>`
+      : `<div class="stat">資料日 <b>${esc(md.date||"—")}</b></div>`
+        + `<div class="stat"><b>${md.rows.length}</b> 檔涵蓋</div>`;
   } else if (state.tab === "diag"){
     const dg = state.diag;
     el.innerHTML = dg ? `<div class="stat">素材庫資料日 <b>${esc(dg.date||"—")}</b></div>`
