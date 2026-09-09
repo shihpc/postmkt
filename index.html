@@ -390,7 +390,11 @@ const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQu
 //（預設 tab insight 且側欄關閉時 hash 為空）。
 // 子狀態只挑最有用的：oddlot 的 sub(intraday|after)、broker 的 sub(branch|stock|list)＋code(查詢 id)、
 // lending 的 code(展開個股)、diag 的 code(聚焦持股卡；不在持股時提示並預填新增欄，不炸)。
-// 入口站「我的異動」連到 #tab=diag&code=<代號>，此格式須維持可用。
+// `#tab=diag&code=<代號>` 是通用深連結，**此格式須維持可用**——但用它的人已經換了：
+// 原本是入口站 shihpc.github.io 的「我的異動」區塊，該區塊已於 2026-09-09 移除（功能搬進本站
+// 「持股異動」tab）；現在的使用者是**本站自己**（持股異動列點個股跳持股診斷，見下方唯一例外那段
+// 的 `data-mychg` handler；`stkSecLinks()` 的側欄站內連結也吐這個格式）。入口站改連 `#tab=mychg`
+// ——那條深連結靠 HASH_TABS 由 TABS 自動生成，**改動「持股異動」的 tab id 會讓它失效**。
 // stock=：個股摘要側欄（2026-09-07 批次三 #15 後半）開啟中的代號。**刻意與 code= 分家**——
 // code= 的語意已被 lending(展開列)／broker(查詢 id)／diag(聚焦持股卡) 三個 tab 各自佔用，
 // 側欄跨 tab 都可開，混用會讓同一把 key 有兩種意思。兩者可並存（例 #tab=lending&code=2330&stock=2454）。
