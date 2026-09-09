@@ -55,7 +55,10 @@
     （**不塞歷史、不觸發 hashchange**），外部改網址走 `hashchange`
     （grep `addEventListener("hashchange"`）。讀入一律白名單＋型別檢查，非法值靜默退回預設。
     **唯一刻意例外（2026-09-09）**：「持股異動」列點個股跳「持股診斷」走 `location.hash = …`
-    ——**全站唯一的「賦值」是它**（在 `myChgHtml()` 的點擊 handler 內），但
+    ——**全站唯一的「賦值」是它**。位置＝`renderMyChg()` **之後**那個 document 級委派 listener
+    ——錨點 grep `closest(".clk[data-mychg]")`，在 `index.html` **2 處**：hash 路由那段的說明
+    註解 1 處＋實作 1 處。**它不在 `myChgHtml()` 內**（`myChgHtml()` 只吐出帶 `data-mychg`
+    屬性的字串，2026-09-09 更正原本寫錯的位置）。但
     `grep 'location.hash = '` 在 `index.html` 有 **3 處命中**（兩行註解＋這一處賦值）：
     **「唯一賦值」為真、「唯一命中」為假**，兩者不可混講。同理 `grep data-mychg` 在
     `index.html` 有 **5 處**（不是 4）：註解 3 行（其中一行就是 `index.html` 自己那句
@@ -89,7 +92,9 @@
     **零新增網路請求**，持股代號不進任何 URL／header／body——畫面承諾只能寫「持股代號不進任何網路
     請求」，**不可寫「本 tab 不發任何網路請求」**，`ensurePm()` 自己就會抓 `data/postmkt.json`）。
     **六種「說錯話」不可混講**（正本＝README「前端消費 `market_daily` 的必要條件」的六軸，
-    與 `index.html` 該段註解的 ①–⑥ 是**同一組六項**，三方必須逐項對得上）：
+    與 `index.html` 該段註解的 ①–⑥ 是**同一組六項**：三方的**集合**必須一致，
+    **序號則尚未對齊**——`index.html` 的 ③④ 與 README 的軸3／軸4 順序互換，
+    屬敘述性差異、不影響判準，列在 CHANGELOG「待下批同步」，統一時以 README 的軸序為準）：
     本表不涵蓋（權證／偽代號，**不可說成「查無此代號」**）／該資料日法人資料未到（`f`／`t` 為
     `null`，不得讀成 0；**同列 `chg` 只有在它自己不是 `null` 時才仍然有效**——`chg` 也可能是
     `null`，**不得無條件宣稱「同列漲跌% 仍然有效」**）／該資料日完全沒有資料（`chg`／`f`／`t`
@@ -171,3 +176,12 @@ ruff check .                      # lint（設定在 pyproject.toml）
 ```
 
 改前端後務必實測 14 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
+
+**手機驗收條件（2026-09-09 更正，舊寫法已被實測推翻）**：375／390／1280 三寬度下
+①**整頁 `document.documentElement.scrollWidth == window.innerWidth`**（無**頁面級**水平捲軸）、
+②表格各欄**全部可見、無文字裁切（逐格 `scrollWidth - clientWidth == 0`）、無換行**。
+**不得宣稱 `.tblbox` 的 `scrollWidth == clientWidth`**——`.mtable` 是 `width:100%`＋`nowrap`，
+壓到 min-content 之後由 `.tblbox` 的 `overflow:auto` 吸收，「持股異動」在 **375px ＋ 6 位數張數**
+時實測會溢出數 px（依股名長度而動，本批量到 6px）。那不影響可見性：`.tblbox` 的裁切邊界是
+**padding box**，溢出量落在其 **12px 右內距**內，不捲動也完整看得到。
+數據、量法與「刻意不修」的決定見 CHANGELOG「（同日修正之五）手機驗收條件更正」節。

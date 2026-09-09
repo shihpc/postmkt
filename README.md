@@ -114,7 +114,7 @@
 
 ### 前端消費 `market_daily` 的必要條件（2026-09-09 訂，改前端前必讀）
 
-**現行消費端＝本站 `index.html` 的「持股異動」tab**（2026-09-09 上線，grep `function myChgHtml`／`const MYCHG_MIN_ROWS`——裸名 `MYCHG_MIN_ROWS` 在 `index.html` 有 4 處命中，宣告式才唯一）。下列**六軸**（軸1～軸4 接在本段之後，第五／第六軸在本節末尾兩則；2026-09-09 更正，原寫「四軸」是在補上第五、第六軸時漏改的計數）在該 tab 都有對應的實作與文案，改那段程式前先讀完本節；改本節判準（含 `RE_MARKET_CODE`／`RE_MARKET_EXCLUDE`／`MARKET_DAILY_MIN_ROWS`）要回頭同步該 tab 的 `MYCHG_WARRANT_RE`／`MYCHG_SEC_RE`／`MYCHG_MIN_ROWS`。
+**現行消費端＝本站 `index.html` 的「持股異動」tab**（2026-09-09 上線，grep `function myChgHtml`／`const MYCHG_MIN_ROWS`——裸名 `MYCHG_MIN_ROWS` 在 `index.html` 有 4 處命中，宣告式才唯一）。下列**六軸**（軸1～軸4 接在本段之後；第五／第六軸的錨點用**行首形式** `grep -n '^- \*\*第五軸'`／`'^- \*\*第六軸'`（各在本檔唯一命中，實測；**裸名 `**第五軸：` 不唯一——本句自己就是第二次命中**）——它們**不是本節最後兩則**，而是本節頂層 9 則 bullet 的第 7、8 則，其後還有第 9 則「股名對照」，那則不屬六軸。2026-09-09 兩次更正：先前寫「四軸」是補上第五、第六軸時漏改的計數，寫「本節末尾兩則」則是位置講錯）在該 tab 都有對應的實作與文案，改那段程式前先讀完本節；改本節判準（含 `RE_MARKET_CODE`／`RE_MARKET_EXCLUDE`／`MARKET_DAILY_MIN_ROWS`）要回頭同步該 tab 的 `MYCHG_WARRANT_RE`／`MYCHG_SEC_RE`／`MYCHG_MIN_ROWS`。
 
 **`market_daily.rows` 刻意不是全宇宙**。前端拿使用者的持股代號去查這張表時，
 **「代號不在 `rows` 裡」不可一律呈現為「查無此代號（已下市／停牌／代號有誤）」**——
