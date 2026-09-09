@@ -517,7 +517,7 @@ def build_market_daily(date: str, price_rows: list, inst_rows: list, inst_date: 
     rows}），2,700+ 檔只多約 55KB（真實建置實測見 CHANGELOG 2026-09-09）。
 
     **宇宙＝當日 TaiwanStockPrice ∩ TaiwanStockInfo −（權證／指數偽代號黑名單）**
-    （此管線建置時 price_rows 與 nm 都已在手，零額外 API 呼叫）：
+    （nm 建置時已在手；price_rows 常態下沿用當沖或借券那份，只有三個日期都不同時才多查一次）：
     - `TaiwanStockPrice` **單日全市場就有 4.5 萬列**（2026-09-09 CI 實測 45,675 列），
       因為它含權證等非證券商品；直接照單全收會讓區塊從 ~55KB 膨脹成 ~1.07MB
       （實測全檔 2,719,486 bytes），且塞一堆沒人會持有的權證進來。
@@ -550,6 +550,17 @@ def build_market_daily(date: str, price_rows: list, inst_rows: list, inst_date: 
     dt_* 處理），避免把別天的買賣超錯配到今天。**build_lending 沒有這道日期守門**（無條件
     用 inst_by_c），所以法人資料落後的那天，融借券 tab 會顯示外資 +N 張、而本區塊同一檔
     顯示 null——**這是刻意的（新區塊較嚴），不是 bug**，見 CHANGELOG 2026-09-09。
+
+    **基準日 date 由 main() 傳入，是法人日 d_inst（取不到才退回 lend_date），與 build_lending
+    的 lend_date 脫鉤**（2026-09-09 修，原本兩者共用 lend_date）。原本共用的代價：lend_date
+    ＝ `d_short or latest`，而 TaiwanDailyShortSaleBalances 是全批最慢的一支，晚場 20:5x 那班
+    常落後一天，於是上面那道守門**必然觸發、f/t 整欄變 null**。線上實證（generated_at
+    2026-09-09T20:55:42+08:00 那版）：date_mismatch 的融資／借券成交／三大法人／當沖四項全為
+    2026-09-09（＝基準被 d_short 拖在 2026-09-08），本區塊 date=2026-09-08、rows 2,757 檔、
+    **f 非 null 0 檔、t 非 null 0 檔**（chg 非 null 2,711 檔）。脫鉤後常態下 date == inst_date、
+    守門不會觸發；**守門本身仍保留**，供退回分支與上游真的錯亂時把關。
+    對照：`lending.date` 仍是 lend_date，所以本區塊的 date **可能與 lending.date 不同**，
+    消費端一律讀區塊自己的 date（見 docs/date-semantics.md）。
     """
     inst_by_c = _agg_inst_net(inst_rows)
     if inst_date and date and inst_date != date:
@@ -765,6 +776,24 @@ def main() -> None:
     if mismatch:
         print(f"  ⚠ 借券tab日期不對齊（基準{lend_date}）："
               f"{[m['name'] for m in mismatch]} 使用了不同日期的資料", flush=True)
+    # market_daily 的基準日綁**法人日 d_inst**，與借券tab的 lend_date 脫鉤（2026-09-09）。
+    # 為什麼：lend_date = d_short or latest，而 TaiwanDailyShortSaleBalances 是全批最慢的一支，
+    # 晚場那班常落後一天 → build_market_daily 的「法人資料日 ≠ 基準日」守門必然觸發、f/t 整欄變 null。
+    # 線上實證（generated_at 2026-09-09T20:55:42+08:00 那版 data/postmkt.json）：date_mismatch 的
+    # 融資／借券成交／三大法人／當沖**四項全為 2026-09-09**（＝基準 lend_date 被 d_short 拖在
+    # 2026-09-08），market_daily.date = 2026-09-08、rows 2,757 檔，**f 非 null 0 檔、t 非 null 0 檔**
+    # （chg 非 null 2,711 檔）。使用者從約 21:00 到隔日 01:xx 那班短賣餘額補上前，「持股異動」整晚
+    # 都顯示「當日法人資料未到」——功能不是壞掉，是每天有好幾個小時是廢的。
+    # 守門本身**保留**（退回分支與上游異常時仍需要它，寧缺勿混），這裡只是不再自己製造不一致。
+    md_date = d_inst or lend_date
+    # 價格沿用同一天、已在手的那份：d_inst == d_dt 是常態（兩者都約 21:00 更新），
+    # 其次是 d_inst == lend_date；三者都不同才多打一次全市場查詢（實務上不該發生）。
+    if md_date == d_dt:
+        r_price_md = r_price
+    elif md_date == lend_date:
+        r_price_md = r_price_lend
+    else:
+        r_price_md = api_get("TaiwanStockPrice", start_date=md_date, end_date=md_date) if md_date else []
     out = {
         "date": latest,
         "generated_at": dt.datetime.now(TAIPEI).isoformat(timespec="seconds"),
@@ -782,9 +811,11 @@ def main() -> None:
         # 全市場逐檔精簡表（持股異動 tab）。**必須留在 out 的最後**：
         # taiwan-flow-live-v2 的 Worker /status 對本檔走 Range 只取檔頭（fetchStatusHead，
         # 預設 2048 bytes）再 regex 撈第一個 "date" 與 "generated_at"，任何新區塊插到那兩個
-        # key 之前都會讓它撈到錯的日期或撈不到。r_price_lend 與 lending 同基準日（lend_date），
-        # 建置時已在手，不需額外 API 呼叫。
-        "market_daily": build_market_daily(lend_date, r_price_lend, r_inst, d_inst, nm),
+        # key 之前都會讓它撈到錯的日期或撈不到。
+        # 基準日是 md_date（＝法人日 d_inst，退回 lend_date），**不是 lending 的 lend_date**——
+        # 2026-09-09 脫鉤，理由與線上實測數字見上方 md_date 的註解；r_price_md 常態沿用
+        # 建置時已在手的那份收盤價，不需額外 API 呼叫。
+        "market_daily": build_market_daily(md_date, r_price_md, r_inst, d_inst, nm),
     }
 
     dst = ROOT / "data" / "postmkt.json"

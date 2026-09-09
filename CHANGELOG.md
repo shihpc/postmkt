@@ -3,6 +3,59 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-09-09（同日修正之六）`market_daily` 基準日與 `lend_date` 脫鉤：修「每晚 f/t 整欄 null」
+
+**線上實證的缺陷，不是推測。** raw main 的 `data/postmkt.json`（`generated_at`
+`2026-09-09T20:55:42+08:00` 那版）實打結果：
+
+- `date_mismatch` ＝ 融資／借券成交／三大法人／當沖 **四項全為 `2026-09-09`**
+  → 代表基準 `lend_date` 不是 09-09，而是 `d_short`（`TaiwanDailyShortSaleBalances`）的 **09-08**
+- `market_daily.date` ＝ `2026-09-08`、`rows` **2,757 檔**
+- **`f` 非 null 0 檔、`t` 非 null 0 檔**（`chg` 非 null 2,711 檔）
+
+### 根因
+
+`main()` 原本把 `market_daily` 的基準日綁在 `lend_date`（＝`d_short or latest`），純粹是為了
+重用已在手的 `r_price_lend`。但短賣餘額是全批**最慢**的一支，晚場 20:5x 那班常落後一天，於是
+`build_market_daily()` 的「法人資料日 ≠ 基準日」守門**必然觸發**、`inst_by_c` 被清空、f/t 整欄
+寫 null。使用者從約 21:00 到隔日 01:xx 那班短賣餘額補上前，「持股異動」整晚都顯示「當日法人
+資料未到」——**功能不是壞掉，是每天有好幾個小時是廢的**。
+
+### 改法
+
+`md_date = d_inst or lend_date`（`build_postmkt.py` grep `md_date = d_inst or lend_date`），
+價格沿用**同一天、已在手**的那份：`md_date == d_dt`（常態，法人與當沖都約 21:00 更新）→ 重用
+`r_price`；`md_date == lend_date` → 重用 `r_price_lend`；三者都不同才多打一次全市場
+`TaiwanStockPrice`（實務上不該發生）；`d_inst` 為空 → 退回 `lend_date`＋`r_price_lend`＝舊行為。
+
+**刻意不動的東西**：`build_lending()` 與 `out["lending"]` **逐字未變**（借券 tab 照舊以
+`lend_date` 為基準，三處衍生欄公式約定不變；`git diff -U0` 的 hunk 與該函式行範圍零重疊）；
+`date_mismatch` 的組成與語意不動（那是借券 tab 的徽章）；`out["date"]` 仍是 `latest`；
+`build_market_daily()` 的宇宙過濾、null 語意、示警分支不動。
+**`inst_date != date` 守門保留**——脫鉤後常態不會觸發，但退回分支與上游真的錯亂時仍需要它，
+拿掉等於把「寧缺勿混」拆了。README「前端消費 `market_daily` 的必要條件」**六軸一字未改**：
+六軸講的是前端不可說錯的話，脫鉤不改變任何一軸（`f`／`t` 仍可能為 null）。
+
+### 驗證
+
+`tests/test_postmkt_build.py` 新增兩支離線測試（免 token 免網路，跑真正的 `main()`）：
+`test_output_market_daily_date_follows_inst_not_short_sale` 構造「`d_short` 落後一天、
+`d_inst == d_dt` 為今日」，驗 `market_daily.date == d_inst`、`!= lending.date`、f/t 非 null > 0；
+`test_output_market_daily_falls_back_to_lend_date_when_no_inst` 構造 `d_inst` 為空，驗退回
+`lend_date`。突變測試各自單獨改再還原：`md_date` 改回 `lend_date` → 前者紅；拿掉
+`inst_date != date` 守門 → 既有的 `test_market_daily_inst_date_mismatch_blanks_f_t` 紅。
+`python -m pytest tests/ -q` 115 passed、`ruff check .` 零違規。
+
+**尚無線上樣本**：本批只有離線重現與程式碼依據，脫鉤後的實際形狀要等下一班 build 產出
+`data/postmkt.json` 才驗得到（鐵律 6）。
+
+### 待下批同步（本批刻意未動）
+
+`README.md` 第五軸那段仍寫「`market_daily.date` ＝ `build_market_daily(lend_date, …)` 傳進去的
+`lending.date`（價格／借券資料日）……**系統性差一天**」，以及 tab 對照表那列的同一句——**脫鉤後
+這兩處的出處敘述已不成立**（現在是價格／法人資料日，且常態下不再系統性差一天）。本批的驗收
+條件明文要求六軸不得改動、要改先回報，故留給下一批處理；六軸的**規範內容**本身仍然正確。
+
 ## 2026-09-09（同日修正之五）手機驗收條件更正：「375px 不溢出」被實測推翻
 
 **純文件批**：`index.html` 與 `build_postmkt.py` 位元組層零變更（md5 前後相同）。
