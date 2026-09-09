@@ -407,6 +407,20 @@ def daytrading_broker_estimate(date: str, codes: list, close_map: dict, top_k: i
     return out
 
 
+def _prev_close(p: dict):
+    """前一交易日收盤＝當日 close − spread（TaiwanStockPrice 的 spread 是漲跌價）。
+    close/spread 任一缺就回 None（不猜）。"""
+    close, spread = p.get("close"), p.get("spread")
+    return (close - spread) if (close is not None and spread is not None) else None
+
+
+def _chg_pct(p: dict):
+    """漲跌%＝spread ÷ 前收 × 100，四捨五入 2 位。
+    build_daytrading 與 build_market_daily **共用同一算式**（口徑一致，勿各寫一份）。"""
+    prev_close = _prev_close(p)
+    return round(p.get("spread") / prev_close * 100, 2) if prev_close else None
+
+
 def build_daytrading(date: str, rows: list, price_rows: list, nm: dict) -> dict:
     """當沖：金額排行＋當沖比重排行（分母 = 同日 TaiwanStockPrice 的 Trading_Volume）。"""
     tv = {r.get("stock_id"): (r.get("Trading_Volume") or 0) for r in price_rows}
@@ -421,9 +435,8 @@ def build_daytrading(date: str, rows: list, price_rows: list, nm: dict) -> dict:
         amt = ((r.get("BuyAmount") or 0) + (r.get("SellAmount") or 0)) / 2
         total = tv.get(c) or 0
         p = px_map.get(c, {})
-        close, spread = p.get("close"), p.get("spread")
-        prev_close = (close - spread) if (close is not None and spread is not None) else None
-        chg_pct = round(spread / prev_close * 100, 2) if prev_close else None
+        prev_close = _prev_close(p)
+        chg_pct = _chg_pct(p)
         amp_pct = round((p.get("max") - p.get("min")) / prev_close * 100, 2) \
             if (prev_close and p.get("max") is not None and p.get("min") is not None) else None
         recs.append({
@@ -444,6 +457,44 @@ def build_daytrading(date: str, rows: list, price_rows: list, nm: dict) -> dict:
             x["traders"] = brokers.get(x["c"], [])
 
     return {"date": date, "by_amount": by_amount}
+
+
+def build_market_daily(date: str, price_rows: list, inst_rows: list, inst_date: str) -> dict:
+    """全市場逐檔精簡表（「持股異動」tab 用）：任一持股都查得到漲跌%與外資/投信買賣超張數。
+
+    為什麼不擴充 lending.rows：那是依借券餘額排序的排行、宇宙是「有借券／融資融券活動」的
+    聯集（純現股會缺席），且欄位與 augmentLending()／_augment_lending() 三處一致的約定綁死。
+    故另立獨立區塊，改用 taiwan-flows `data/daily/<d>.json` 同款欄式二維陣列（{date, cols,
+    rows}），2600+ 檔只多約 80KB。
+
+    宇宙＝當日 TaiwanStockPrice 全市場（此管線建置時已在手，零額外 API 呼叫）。
+
+    **刻意與 build_lending 不同：查不到法人資料寫 null、不寫 0。** build_lending 用
+    `inst_by_c.get(c, {"foreign": 0, ...})` 把「沒有這檔的法人資料」與「法人真的沒買賣」
+    寫成同一個 0，兩者無法區分；本區塊要餵的是「有沒有異動」的判讀，缺資料被呈現成
+    「無異動」正是入口站舊版踩過的坑，故一律 null。
+
+    法人資料日與本區塊基準日不一致時，f/t 一律留 null（寧缺勿混，同 build_lending 的
+    dt_* 處理），避免把別天的買賣超錯配到今天。
+    """
+    inst_by_c = _agg_inst_net(inst_rows)
+    if inst_date and date and inst_date != date:
+        print(f"  ⚠ market_daily：法人資料日 {inst_date} ≠ 基準日 {date}，f/t 欄一律留空（寧缺勿混）", flush=True)
+        inst_by_c = {}
+    rows_out = []
+    for r in sorted(price_rows, key=lambda x: str(x.get("stock_id") or "")):
+        c = r.get("stock_id")
+        if not c:
+            continue
+        it = inst_by_c.get(c)
+        rows_out.append([
+            c,
+            _chg_pct(r),
+            round(it["foreign"] / 1000) if it else None,
+            round(it["trust"] / 1000) if it else None,
+        ])
+    # c=代號、chg=漲跌%、f=外資買賣超(張)、t=投信買賣超(張)；欄名短是因為這區塊逐檔重複 2600+ 次
+    return {"date": date, "cols": ["c", "chg", "f", "t"], "rows": rows_out}
 
 
 def block_trader_map(date: str) -> list:
@@ -634,6 +685,12 @@ def main() -> None:
         # 分點互動查詢（個股/單點）由前端直呼FinMind（TradingDailyReport 21:00更新，
         # 跟當沖同源），預設查詢日跟當沖對齊
         "brokers": build_traders(d_dt or latest),
+        # 全市場逐檔精簡表（持股異動 tab）。**必須留在 out 的最後**：
+        # taiwan-flow-live-v2 的 Worker /status 對本檔走 Range 只取檔頭（fetchStatusHead，
+        # 預設 2048 bytes）再 regex 撈第一個 "date" 與 "generated_at"，任何新區塊插到那兩個
+        # key 之前都會讓它撈到錯的日期或撈不到。r_price_lend 與 lending 同基準日（lend_date），
+        # 建置時已在手，不需額外 API 呼叫。
+        "market_daily": build_market_daily(lend_date, r_price_lend, r_inst, d_inst),
     }
 
     dst = ROOT / "data" / "postmkt.json"

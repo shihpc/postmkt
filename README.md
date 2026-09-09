@@ -43,6 +43,14 @@
   比重榜同時停產——前端從未渲染，停產順帶把分點推估查詢從 ~100 檔減半）。
   TWSE 端點（TWT72U/零股）改走 `src/twseclient.py` 全域節流。
   找不到最新交易日資料時自動往前回退最多 5 天；TWSE 端點失敗重試一次後降級（缺欄警示）。
+  **`market_daily` 區塊（2026-09-09 新增，供「持股異動」用）**：全市場逐檔精簡底表，
+  形狀比照 taiwan-flows `data/daily/<d>.json` 的 `{date, cols, rows}` 欄式二維陣列，
+  `cols` ＝ `["c","chg","f","t"]`（代號／漲跌%／外資買賣超張／投信買賣超張）。宇宙＝
+  當日全市場 `TaiwanStockPrice`（建置時已在手，零額外 API 呼叫），漲跌%與當沖 tab 共用
+  `_chg_pct()`。**查不到法人資料寫 `null` 不寫 0**（刻意與 `lending.rows` 的
+  `foreign_vol`/`trust_vol` 不同——後者把「沒資料」寫成 0，兩者無法區分），法人資料日
+  ≠ 基準日時 `f`/`t` 全留 `null`（寧缺勿混）。**此區塊必須排在 `out` 最後**：Worker
+  `/status` 用 Range 只取檔頭 regex 撈第一個 `date`／`generated_at`（見「外部消費者」）。
 - `.github/workflows/build.yml`：平日 21:53 台北（13:53 UTC）排程＋手動觸發
   （2026-07-14 起由 21:30 延後：FinMind 當沖量值約 21:30 後才更新，留緩衝＋
   冷門分鐘避開壅塞），跑完自動 commit `data/postmkt.json`。

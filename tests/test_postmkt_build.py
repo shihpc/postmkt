@@ -157,3 +157,87 @@ def test_fetch_twse_lending_success_after_transient_failure(monkeypatch):
     out = bp.fetch_twse_lending("2026-09-04", "NLB")
     assert isinstance(out, dict)
     assert n["i"] == 2 and waits == [bp.RETRY_BACKOFFS[0]]
+
+
+# ---------- build_market_daily：全市場逐檔精簡表（持股異動 tab 用，2026-09-09） ----------
+
+def _md_price_rows():
+    """close/spread 的各種組合，含缺值與 spread=0 的邊界。"""
+    return [
+        {"stock_id": "2330", "close": 102.0, "spread": 2.0},
+        {"stock_id": "2317", "close": 200.0, "spread": -10.0},
+        {"stock_id": "1101", "close": 30.0, "spread": 0.0},      # 平盤 → 0.0，不是 None
+        {"stock_id": "00637L", "close": 25.5, "spread": None},   # spread 缺 → chg=None
+        {"stock_id": "9999", "close": None, "spread": 1.0},      # close 缺 → chg=None
+        {"stock_id": "8888", "close": 5.0, "spread": 5.0},       # 前收=0 → 除以零防護 → None
+    ]
+
+
+def _md_inst_rows():
+    return [
+        {"stock_id": "2330", "name": "Foreign_Investor", "buy": 3_000_000, "sell": 1_000_000},
+        {"stock_id": "2330", "name": "Foreign_Dealer_Self", "buy": 0, "sell": 500_000},
+        {"stock_id": "2330", "name": "Investment_Trust", "buy": 100_000, "sell": 400_000},
+        {"stock_id": "2317", "name": "Dealer_self", "buy": 900_000, "sell": 0},  # 只有自營 → f/t 為 0
+    ]
+
+
+def test_market_daily_shape_and_full_coverage():
+    out = bp.build_market_daily("2026-09-07", _md_price_rows(), _md_inst_rows(), "2026-09-07")
+    assert out["date"] == "2026-09-07"
+    assert out["cols"] == ["c", "chg", "f", "t"]
+    # 宇宙＝當日 TaiwanStockPrice 全市場，逐檔都在（不是排行、不截斷），依代號排序
+    codes = [r[0] for r in out["rows"]]
+    assert codes == sorted(r["stock_id"] for r in _md_price_rows())
+    assert all(len(r) == len(out["cols"]) for r in out["rows"])
+
+
+def test_market_daily_chg_pct_matches_build_daytrading():
+    """漲跌%必須與 build_daytrading 同一算式（兩邊共用 _chg_pct，這裡以輸出實測對照）。"""
+    price = _md_price_rows()
+    dt_rows = [{"stock_id": p["stock_id"], "Volume": 1_000, "BuyAmount": 0, "SellAmount": 0}
+               for p in price]
+    dt_out = bp.build_daytrading("", dt_rows, price, {})
+    dt_chg = {r["c"]: r["chg_pct"] for r in dt_out["by_amount"]}
+    md = bp.build_market_daily("2026-09-07", price, [], "2026-09-07")
+    md_chg = {r[0]: r[1] for r in md["rows"]}
+    assert dt_chg == md_chg
+    # 同時釘住實際數值，避免兩邊一起改錯還互相對得上
+    assert md_chg == {"2330": 2.0,        # 2 / 前收 100
+                      "2317": -4.76,      # -10 / 前收 210
+                      "1101": 0.0,        # 平盤是 0.0，不是 None
+                      "00637L": None, "9999": None, "8888": None}
+
+
+def test_market_daily_missing_inst_is_null_not_zero():
+    """刻意與 build_lending 不同：查不到法人資料寫 null，不寫 0（缺資料≠沒異動）。"""
+    out = bp.build_market_daily("2026-09-07", _md_price_rows(), _md_inst_rows(), "2026-09-07")
+    by_c = {r[0]: r for r in out["rows"]}
+    # 有法人資料：外資 = (300萬-100萬) + (0-50萬) = 150萬股 → 1500 張；投信 -300 張
+    assert by_c["2330"][2] == 1500 and by_c["2330"][3] == -300
+    # 有法人資料但只有自營 → 真的是 0，不是 None
+    assert by_c["2317"][2] == 0 and by_c["2317"][3] == 0
+    # 完全查不到法人資料 → None
+    for c in ("1101", "00637L", "9999", "8888"):
+        assert by_c[c][2] is None and by_c[c][3] is None, f"{c} 缺法人資料應為 None"
+    # 對照組：build_lending 現行做法會寫 0（既有缺陷，本區塊刻意不沿用）
+    lend = bp.build_lending("", [], [{"stock_id": "1101"}], [], [], "", [], [], [], {})
+    assert lend["rows"][0]["foreign_vol"] == 0
+
+
+def test_market_daily_inst_date_mismatch_blanks_f_t():
+    """法人資料日 ≠ 基準日 → f/t 一律留 None（寧缺勿混，同 build_lending 的 dt_* 處理）。"""
+    out = bp.build_market_daily("2026-09-07", _md_price_rows(), _md_inst_rows(), "2026-09-04")
+    assert all(r[2] is None and r[3] is None for r in out["rows"])
+    # chg 不受影響（它來自 price_rows 本身）
+    assert {r[0]: r[1] for r in out["rows"]}["2330"] == 2.0
+
+
+def test_market_daily_does_not_touch_lending():
+    """新區塊不得改到 lending：同一份輸入，先後呼叫 build_market_daily 前後 lending 逐位相同。"""
+    before = _lending_fixture()
+    bp.build_market_daily("2026-09-07", _md_price_rows(), _md_inst_rows(), "2026-09-07")
+    after = _lending_fixture()
+    assert before == after
+    # lending 的欄位形狀維持現狀（rows 是 dict 陣列、不是 market_daily 的二維陣列）
+    assert isinstance(before["rows"][0], dict) and "cols" not in before

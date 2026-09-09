@@ -3,6 +3,46 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-09-09 `postmkt.json` 新增 `market_daily` 全市場逐檔精簡區塊（管線階段）
+
+入口站 `shihpc.github.io` 的「我的異動」要搬進本站成為新 tab，它需要**任一持股**的三個數字：
+漲跌%／外資買賣超(張)／投信買賣超(張)。站內既有資料不夠：`diag.json` 只有 1200 檔（45.3%）
+且無單日法人張數（只有 5 日合計 `f5`／`t5` 與連買天數）；`postmkt.json` 的 `lending.rows`
+雖有 2232 檔法人張數，但**完全沒有漲跌%**，且宇宙是「有借券／融資融券活動」的聯集
+（`codes = set(sys_bal) | set(otc_bal) | ...`），純現股會缺席。
+
+**做法：讓 `postmkt.json` 自給自足，不新增對 taiwan-flows 的跨 repo 依賴。**
+
+- **不擴大 `lending.rows`**：那是依借券餘額排序的排行，擴大宇宙會污染「融借券」tab，
+  也會動到 `augmentLending()`／`_augment_lending()` 三處一致的約定與既有 parity 測試。
+  改為新增**獨立區塊** `market_daily`（`build_postmkt.build_market_daily`）。
+- **區塊名 `market_daily` 的理由**：它不是排行（其餘區塊都是），而是「全市場×單日」的
+  逐檔底表；形狀與命名比照 taiwan-flows `data/daily/<d>.json` 的 `{date, cols, rows}`
+  欄式二維陣列，跨站對應一眼看得出來。`cols` ＝ `["c","chg","f","t"]`。
+- **零額外 API 呼叫**：漲跌%取自建置時已在手的全市場 `TaiwanStockPrice`
+  （`r_price_lend`，與 lending 同基準日 `lend_date`），法人張數取自已抓的 `r_inst`。
+  漲跌%算式與當沖 tab **共用同一個 `_chg_pct()`**（由 `build_daytrading` 原地抽出，
+  行為不變），不各寫一份。
+- **缺資料寫 `null`、不寫 0**（刻意與 `build_lending` 不同）：`build_lending` 的
+  `inst_by_c.get(c, {"foreign": 0, ...})` 把「查不到這檔的法人資料」與「法人真的沒買賣」
+  寫成同一個 0。這個 tab 要判讀的正是「有沒有異動」，**缺資料被呈現成無異動**就是入口站
+  舊版踩過的坑（舊版只讀 `latest.json` 各榜前 30，911 檔達門檻者有 687 檔被寫成「無顯著異動」），
+  故一律 `null`。法人資料日 ≠ 基準日時 `f`／`t` 全留 `null`（寧缺勿混，同 `dt_*` 的處理）。
+- **`market_daily` 放在 `out` 的最後**：taiwan-flow-live-v2 的 Worker `/status` 對本檔走
+  Range 只取檔頭（`fetchStatusHead`，預設 2048 bytes）再 regex 撈**第一個** `"date"` 與
+  `"generated_at"`，新區塊插到那兩個 key 之前會讓它撈到錯的日期。程式該處有原地註解。
+- **體積**（以 taiwan-flows 2026-09-07 全市場 2650 檔重建同形狀區塊估算，非真實建置產出）：
+  區塊 raw 56,315 B／gzip 17,263 B；全檔 raw 1,651,880 → 1,708,211（+3.41%）、
+  gzip 270,522 → 288,384（+6.60%）。
+- **`lending` 逐位未受影響**：同一份 fixture 跑改前／改後（固定 `PYTHONHASHSEED`）逐位相同。
+  順帶記下一個**既有、非本次造成**的觀察：`build_lending` 的 `codes` 是 `set`，
+  借券餘額同值（例如都為 0）時列序會隨 `PYTHONHASHSEED` 變動——舊版自己跑兩次不同 seed
+  也會不同。不在本次範圍，未動。
+
+**本階段只做 Python 管線＋離線測試，未碰 `index.html`**；「持股異動」tab 另案。
+新增測試 5 支於 `tests/test_postmkt_build.py`（形狀／漲跌%與當沖同算式／缺法人為 null 不為 0／
+資料日不一致留空／不影響 lending）。
+
 ## 2026-09-07 個股摘要側欄 v1（批次三 #15 後半）
 
 批次三 #15 的完成判準是「URL 狀態（hash 路由）→ 個股摘要側欄 v1（摘要＋跨站深連結，**不重抓**）」，
