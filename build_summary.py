@@ -777,7 +777,18 @@ def call_claude_retry(model: str, system: str, user_msg: str, label: str) -> dic
 
 URL_BATCHES = "https://api.anthropic.com/v1/messages/batches"
 BATCH_POLL_SEC = 20
-BATCH_DEADLINE_SEC = {"am": 25 * 60, "pm": 180 * 60}
+# pm 由 180 分砍到 30 分（2026-09-10）。依據是實測，不是猜的：可檢視的三天（09-07/08/09）
+# **摘要那包 batch 沒有一次在 180 分內 ended**，log 逐日寫著「超過期限仍未 ended（in_progress）
+# → cancel 並全數同步回退」，於是每場白等整整 180 分、換到 4 分半的同步回退（＝原價），
+# 半價一毛沒省到，還把產物從台北 21:5x 推到 00:1x~00:4x——晚於日終健檢（23:50），
+# 每天固定誤報一則「summary-pm(無檔)」。**對照組**：am 場同一份程式、同樣三筆，
+# via 全是 batch、全程 6 分 27 秒（提交時刻 UTC 22:5x）；pm 提交在 UTC 13:2x。
+# 推測是 batch 佇列在該時段特別慢（看不到 Anthropic 佇列內部，**未證實**），
+# 但「同程式換時段就成功」是實測。所以砍期限在現況下**沒有代價**：那包本來就沒成功過。
+# 副作用（刻意）：本常數是 per-slot、摘要與彙總共用，所以彙總那包的上限也一併變 30 分。
+# 現況彙總實測 20 分 14 秒，且原本只分到 25 分（被摘要燒掉預算後折算的餘額），故不是退步。
+# 若日後 pm 的 via 又穩定出現 batch，可以再往上調——調之前先看幾天 via 欄。
+BATCH_DEADLINE_SEC = {"am": 25 * 60, "pm": 30 * 60}
 # 全場時間預算：兩包 batch（摘要、彙總）各自的期限若都取滿，加上閘門硬等（pm 170 分/
 # am 210 分）會超過 summary.yml timeout-minutes 240，job 被砍時連同步回退都來不及、
 # 整場無產出。故每包期限＝min(場次期限, 全場剩餘預算−同步保留)；剩餘不足 60 秒直接

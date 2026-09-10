@@ -106,8 +106,9 @@ def test_batch_refusal_or_empty_text_falls_back(monkeypatch):
 
 
 def test_deadline_constants_match_spec():
-    # am 25 分（使用者裁定的期限回退）；pm 180 分（需留在 summary.yml timeout 240 分內）
-    assert bs.BATCH_DEADLINE_SEC == {"am": 25 * 60, "pm": 180 * 60}
+    # am 25 分（使用者裁定的期限回退）；pm 30 分（2026-09-10 由 180 分砍下來——
+    # 實測三天摘要 batch 都沒在 180 分內 ended，白等到期再同步回退，理由見常數上方註解）
+    assert bs.BATCH_DEADLINE_SEC == {"am": 25 * 60, "pm": 30 * 60}
     assert bs.SUMMARY_MODELS == ["claude-sonnet-5"]
     assert bs.MIN_OK_FOR_SYNTH == 2
 
@@ -117,9 +118,11 @@ def test_batch_deadline_budget():
     now = _t.monotonic()
     # 剛進場：剩餘充裕 → 取場次期限本身（容差 2 秒吃掉 monotonic 經過時間）
     assert abs(bs.batch_deadline("am", now) - 25 * 60) <= 2
-    assert abs(bs.batch_deadline("pm", now) - 180 * 60) <= 2
-    # 閘門耗掉 100 分：pm 剩 225-100-15=110 分 < 180 分 → 取剩餘預算
-    assert abs(bs.batch_deadline("pm", now - 100 * 60) - 110 * 60) <= 2
+    assert abs(bs.batch_deadline("pm", now) - 30 * 60) <= 2
+    # 閘門耗掉 100 分：剩 225-100-15=110 分 > 30 分 → 仍取場次期限（不是剩餘預算）
+    assert abs(bs.batch_deadline("pm", now - 100 * 60) - 30 * 60) <= 2
+    # 閘門耗掉 190 分：剩 225-190-15=20 分 < 30 分 → 這時才改取剩餘預算
+    assert abs(bs.batch_deadline("pm", now - 190 * 60) - 20 * 60) <= 2
     # 耗掉 210 分：剩 0 → 跳過 batch
     assert bs.batch_deadline("pm", now - 210 * 60) == 0
     # 耗掉 209.5 分：剩 ~30 秒 < 60 秒門檻 → 同樣跳過
