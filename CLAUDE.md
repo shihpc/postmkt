@@ -131,13 +131,19 @@
 - `build_summary.py` → `data/summary/`（AI 彙總自動場；含資料齊全輪詢閘門與假日判斷）。
   **2026-08-29 起：每頁 1 份共 3 份摘要（原 6 份）、`MIN_OK_FOR_SYNTH=2` 才彙總、共振強度口徑 N/3；
   自動場摘要與彙總改走 Anthropic Message Batches（半價，逾時或單筆失敗逐筆同步回退）**。
-  **pm 期限 2026-09-10 由 180 分砍為 30 分**（am 維持 25 分）：實測可檢視的三天，pm 的摘要 batch
-  沒有一次在 180 分內 ended，每天白等滿期限再同步回退（＝原價、半價沒省到），產物被推到台北
-  00:1x~00:4x、晚於 v2 Worker 的日終健檢（23:50），天天誤報一則「summary-pm(無檔)」。
-  對照組＝am 同一份程式同樣三筆、`via` 全是 batch、全程 6 分 27 秒。理由與逐行 log 證據寫在
-  `build_summary.py` 的 `BATCH_DEADLINE_SEC` 上方；**要往上調回去之前，先看幾天 `-pm.json` 的
-  `via` 欄**（`sync`＝那包 batch 又沒趕上）。**本常數是 per-slot、摘要與彙總共用**，改它會同時
-  改到彙總那包的上限。`summary.yml` 另有 `workflow_dispatch` 輸入 `no_wait`（跳過資料齊全閘門，
+  **pm 期限 2026-09-10 改走牌鐘截止點**（`build_summary.py` grep `PM_BATCH_CUTOFF_HM`＝台北 23:00；
+  am 維持固定 25 分、**刻意不掛牌鐘**）：`batch_deadline(slot, t_start, now=None)` 取
+  min(場次期限, 全場剩餘預算−同步保留, 距截止點剩餘)，已過截止＝回 0＝整包跳過 batch 直接同步。
+  `BATCH_DEADLINE_SEC["pm"]` 為 **180 分，但那只是上界**，實際綁住 pm 的是牌鐘。
+  **同日第一版「砍成固定 30 分」已作廢**：那版的理由寫「那包 batch 本來就沒成功過，所以沒有代價」，
+  **被當晚 run 34481046459 推翻**——摘要那包實跑約 **104 分鐘**後 `via` 全 batch 成功、產物台北 22:58
+  落地（早於健檢），30 分會把它 cancel 掉、白付原價。四天實際分布＝**三失敗一成功**
+  （09-07／08／09 逾 180 分未 ended 全 sync 回退；09-10 約 104 分成功）。
+  **23:00 是餘裕的選擇、不是量出來的最適值**（截止後最壞還要摘要同步回退 4 分 17 秒＋彙總，
+  留 50 分給 23:50 健檢；沒有足夠天數的完成時間分布可算最適值，**不可寫成實測結論**）。
+  逐行 log 證據寫在 `build_summary.py` 的 `BATCH_DEADLINE_SEC` 上方；**要調整之前，先看幾天
+  `-pm.json` 的 `via` 欄**（`sync`＝那包 batch 又沒趕上牌鐘）。**場次期限與牌鐘都是 per-slot、
+  摘要與彙總共用**，改它會同時改到彙總那包的上限。`summary.yml` 另有 `workflow_dispatch` 輸入 `no_wait`（跳過資料齊全閘門，
   測試／補跑用）
 - `src/build_diag.py` → `data/diag/diag.json`（持股診斷素材庫；cache.json 走 actions/cache 不進 git）
 - `src/build_mktbal.py` → `data/market_balance_history.json`（大盤餘額）

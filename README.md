@@ -149,7 +149,7 @@
 
 - **`f`／`t` 為 `null` ≠ 無異動——不得當成 0，也不得說成「無顯著異動」**。
   `build_market_daily()` 在**法人資料日 ≠ 基準日**時會把整欄 `f`／`t` 寫成 `null`
-  （寧缺勿混；`build_postmkt.py` grep `法人資料日與本區塊基準日`——**裸名 `法人資料日` 有 2 處命中**，守門測試
+  （寧缺勿混；`build_postmkt.py` grep `法人資料日與本區塊基準日`（**唯一命中**，:549）——同檔**裸名 `法人資料日` 有 3 處命中**（2026-09-10 重數更正，原寫 2 處）：:549 docstring（**就是上面那個錨點所在的那一行，它自己也算一次**，這正是前三次同型錯誤漏算的那一種）、:573 守門觸發時的 `print`、:787 `main()` 裡 `md_date` 上方的說明註解。數法＝`grep -o 法人資料日 build_postmkt.py | wc -l` ＝ 3；本例 `grep -c`（**算行數**）恰巧也是 3，因為沒有任何一行出現兩次——**兩者巧合相等、不可互相取代**。計數範圍**僅限 `build_postmkt.py`**（全 repo 另有 README／CLAUDE.md／index.html／tests／CHANGELOG 等多處，不在此數內）。守門測試
   `test_market_daily_inst_date_mismatch_blanks_f_t`），單檔查無法人資料時同樣寫 `null` 而非 0
   （`test_market_daily_missing_inst_is_null_not_zero`）。**前端把 `null` 讀成 0 或「無顯著異動」，
   等於原封不動複製本節開頭引用的那個舊坑**（入口站「我的異動」舊版只讀 `latest.json`，
@@ -393,9 +393,13 @@
   `summary_manual`；自動場由 `build_summary.py`＋`summary.yml`（cron 06:23/22:47 台北觸發——提早＋錯開整點
   避開 GitHub cron 壅塞（UTC 00:00 整點延遲常達 2-3 小時），由資料齊全輪詢閘門等資料
   **2026-08-29 起：每頁 1 份（共 3 份、≥2 份成功才彙總、共振強度 N/3），自動場摘要與彙總改走
-  Message Batches（半價；am 期限 25 分／pm 180 分，超時或單筆失敗逐筆同步回退，另受全場時間預算
-  折算不撞 workflow timeout）。費用估依官方現行價（Sonnet 5 \$2/\$10、Opus 4.8 \$5/\$25）重算約
-  NT$10-12/手動次——原文案 NT$8-10 係以 6+1 次但舊價低估，非成本上升。**
+  Message Batches（半價；超時或單筆失敗逐筆同步回退）。費用估依官方現行價（Sonnet 5 \$2/\$10、
+  Opus 4.8 \$5/\$25）重算約 NT$10-12/手動次——原文案 NT$8-10 係以 6+1 次但舊價低估，非成本上升。**
+  **期限口徑 2026-09-10 第二版**：am 固定 25 分；pm 改走**牌鐘截止點**（台北 23:00，
+  `build_summary.py` `PM_BATCH_CUTOFF_HM`）——能等多久就等多久，但保證趕在 v2 Worker 日終健檢
+  （23:50）前落地；`BATCH_DEADLINE_SEC["pm"]` 為 180 分，那只是上界。兩者另受全場時間預算折算
+  不撞 workflow timeout（`batch_deadline()` 取三者最小）。同日第一版曾把 pm 砍成固定 30 分，
+  被當晚一包實跑 104 分鐘、成功落在台北 22:58 的 batch 推翻（見 CHANGELOG）。
   （2026-07-14 依審計改造：pm 硬等 postmkt/news晚班(>=21:00)/taiwan-flows 三源皆今日、最多 170 分，
   逾時=假日 skip；am 先硬等 morning.json 最多 150 分，通過後軟等 us.json＋news早班(>=06:00)
   最多 60 分、逾時照跑），輸出 `data/summary/YYYYMMDD-{am|pm}.json` 保留近 3 日，前端列表點閱。

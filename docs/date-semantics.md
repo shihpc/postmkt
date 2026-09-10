@@ -134,7 +134,7 @@
 
 > `lending.date` 是借券 tab 多 dataset 的對齊基準（取短餘額表日）；某 dataset 與之不同即進 `date_mismatch`。
 
-> `market_daily.date` **不再與 `lending.date` 綁定**（2026-09-09 脫鉤）：本區塊取法人日 `d_inst`，借券 tab 仍取短餘額表日 `lend_date`，**兩者可能不同**，收盤價各取自己那天的 `TaiwanStockPrice`。**消費端一律讀區塊自己的 `date`、不要拿最上層 `date`、也不要拿 `lending.date` 當它的資料日**。區塊內 `f`／`t`（外資／投信買賣超張數）另有守門：法人資料日 ≠ 本區塊 `date` 時整欄寫 `null`（寧缺勿混），所以「有 `date` 但 `f`／`t` 全 null」是合法狀態、不是壞檔——脫鉤前這道守門因為短賣餘額落後而**每晚必然觸發**（實證見 CHANGELOG 2026-09-09），脫鉤後常態不觸發，但退回分支與上游錯亂時仍會。
+> `market_daily.date` **不再與 `lending.date` 綁定**（2026-09-09 脫鉤）：本區塊取法人日 `d_inst`，借券 tab 仍取短餘額表日 `lend_date`，**兩者可能不同**，收盤價各取自己那天的 `TaiwanStockPrice`。**消費端一律讀區塊自己的 `date`、不要拿最上層 `date`、也不要拿 `lending.date` 當它的資料日**。區塊內 `f`／`t`（外資／投信買賣超張數）另有守門：法人資料日 ≠ 本區塊 `date` 時整欄寫 `null`（寧缺勿混），所以「有 `date` 但 `f`／`t` 全 null」是合法狀態、不是壞檔——脫鉤前這道守門因為短賣餘額落後而**每晚必然觸發**（實證見 CHANGELOG 2026-09-09）；脫鉤後**從 `build_postmkt.py` 的 `main()` 呼叫時它已恆假**——`date`（＝`md_date`）與 `inst_date` 都由 `d_inst` 決定，`d_inst` 為真則兩者相等、條件不成立，`d_inst` 為假（退回 `lend_date` 那條分支）則 `inst_date` 為空、條件第一項就短路，兩路窮盡。**所以「退回分支或上游錯亂時這道守門仍會觸發」是錯的**（本句 2026-09-10 更正）：退回分支裡 `f`／`t` 之所以仍可能全 `null`，是因為 `r_inst` 同時為空、`inst_by_c` 自然是 `{}`，**與這道守門無關**。守門保留是為了 `build_market_daily()` 被其他呼叫端／未來重構以不同的 `date`／`inst_date` 組合呼叫時仍能寧缺勿混（單元測試 `test_market_daily_inst_date_mismatch_blanks_f_t` 就是這樣直接呼叫它的）。**消費端該記的結論不變**：「有 `date` 但 `f`／`t` 全 null」是合法狀態、不是壞檔。
 
 > **前端頂列（2026-09-06 起）**「資料日｜本站更新｜狀態」直接取上表 `date`／`generated_at`（後者走 `fmtGenTaipei` 轉台北到分）。
 > 狀態四值（`index.html` `pmStatus()`，台北時區、交易日只排週末）：**正常**＝資料日為今日，或為上一交易日且未過 22:30；

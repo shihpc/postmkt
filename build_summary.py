@@ -771,36 +771,66 @@ def call_claude_retry(model: str, system: str, user_msg: str, label: str) -> dic
 
 # ---------- Message Batches（2026-08-29：自動場改走半價非同步批次） ----------
 # 官方規格：多數 batch 1 小時內完成、上限 24 小時、全部 token 半價。完成時間無保證，
-# 故設每包期限：am 25 分（早上有時效，超時 cancel 改同步補做）、pm 180 分（無時效壓力，
-# 但須留在 summary.yml timeout 240 分內，超時同樣回退——batch 尾端延遲不可讓全場死掉）。
+# 故每包都要有期限，超時 cancel 改同步補做——batch 尾端延遲不可讓全場死掉。
+# am 走固定 25 分（早上有時效）；**pm 走牌鐘截止點**（PM_BATCH_CUTOFF_HM，理由見下），
+# BATCH_DEADLINE_SEC["pm"] 的 180 分只是上界、不是實際綁住 pm 的那條。
 # expired／errored／canceled 的個別請求同樣走同步回退。前端手動場不走 batch（互動要即時）。
 
 URL_BATCHES = "https://api.anthropic.com/v1/messages/batches"
 BATCH_POLL_SEC = 20
-# pm 由 180 分砍到 30 分（2026-09-10）。依據是實測，不是猜的：可檢視的三天（09-07/08/09）
-# **摘要那包 batch 沒有一次在 180 分內 ended**，log 逐日寫著「超過期限仍未 ended（in_progress）
-# → cancel 並全數同步回退」，於是每場白等整整 180 分、換到 4 分半的同步回退（＝原價），
-# 半價一毛沒省到，還把產物從台北 21:5x 推到 00:1x~00:4x——晚於日終健檢（23:50），
-# 每天固定誤報一則「summary-pm(無檔)」。**對照組**：am 場同一份程式、同樣三筆，
-# via 全是 batch、全程 6 分 27 秒（提交時刻 UTC 22:5x）；pm 提交在 UTC 13:2x。
-# 推測是 batch 佇列在該時段特別慢（看不到 Anthropic 佇列內部，**未證實**），
-# 但「同程式換時段就成功」是實測。所以砍期限在現況下**沒有代價**：那包本來就沒成功過。
-# 副作用（刻意）：本常數是 per-slot、摘要與彙總共用，所以彙總那包的上限也一併變 30 分。
-# 現況彙總實測 20 分 14 秒，且原本只分到 25 分（被摘要燒掉預算後折算的餘額），故不是退步。
-# 若日後 pm 的 via 又穩定出現 batch，可以再往上調——調之前先看幾天 via 欄。
-BATCH_DEADLINE_SEC = {"am": 25 * 60, "pm": 30 * 60}
+# 【pm 為什麼改成牌鐘截止、而不是固定分鐘數】（2026-09-10 第二版，取代同日第一版的「砍成 30 分」）
+# 第一版把 pm 由 180 分砍成 30 分，理由寫的是「那包 batch 本來就沒成功過，所以**沒有代價**」。
+# **那句話已被 2026-09-10 當晚那班推翻**（run 34481046459，job log 實查）：
+#   `Build summary` 13:11:09Z 起跑 → 摘要三筆 14:55:19Z 全數 `via:batch` 完成
+#   ＝那包 batch 實跑約 **104 分鐘**；彙總 batch（期限 105 分，預算折算後的餘額）202 秒完成，
+#   產物 14:58:42Z ＝台北 **22:58**，早於 v2 Worker 的日終健檢（23:50）。
+# 30 分的期限會在 13:41Z 把這包 cancel 掉，**這種日子會白白付原價**（半價沒省到）。
+# 四天的實際分布是**三失敗一成功**：
+#   09-07／09-08／09-09 摘要 batch 逾 180 分仍 in_progress → cancel、三筆全數 sync 回退；
+#   09-10 約 104 分 ended → 三筆全數 batch。
+# 所以固定分鐘數兩頭都不對：短了砍掉會成功的那天，長了（180 分）則在失敗的那天把產物推到
+# 台北 00:1x~00:4x、晚於健檢，天天誤報一則「summary-pm(無檔)」。
+#
+# 【改法】能等多久就等多久，但保證在日終健檢前落地：截止點 PM_BATCH_CUTOFF_HM ＝台北 23:00，
+# batch_deadline() 取 min(場次期限, 全場剩餘預算−同步保留, 距截止點剩餘)。
+# 【23:00 是餘裕的選擇，不是量出來的最適值】——**不可把它讀成實測結論**。算的是餘裕：截止之後
+# 最壞情況還要跑摘要同步回退（實測 4 分 17 秒，16:20:39Z→16:24:56Z）＋彙總（batch 或同步；
+# 彙總實測 20 分 14 秒），留 50 分鐘足夠兩包都回退仍趕在 23:50 前。真正的「最適截止點」要有
+# 更多天的 batch 完成時間分布才算得出來，本批沒有那份資料。
+# 【180 分留作上界】BATCH_DEADLINE_SEC["pm"] 改回 180 分：牌鐘才是實際綁住 pm 的那條，
+# 180 分只在「job 極早開跑」（距 23:00 還超過 3 小時）時才會先撞到。
+# 【am 不掛牌鐘】am 自己 25 分就結束，且晨間健檢在 09:30、am 場 06:23 起跑，沒有這個問題。
+# 【已知不處理的情形】pm 場被 GitHub Actions 延到跨午夜才啟動時（走 slot_trading_day() 的
+# hour<12 那條路），同日 23:00 的截止點在約 23 小時之後、等於不生效，於是回落到 180 分上界。
+# 那一天的健檢（前一晚 23:50）本來就已經跑完、牌鐘救不了，**刻意不為它加分支**（範圍外）。
+# 【要往上／往下調之前】先看幾天 -pm.json 的 `via` 欄（`sync`＝那包 batch 又沒趕上牌鐘）。
+# 【副作用（刻意）】場次期限與牌鐘都是 per-slot、摘要與彙總共用，所以彙總那包同受這個牌鐘綁。
+BATCH_DEADLINE_SEC = {"am": 25 * 60, "pm": 180 * 60}
+PM_BATCH_CUTOFF_HM = (23, 0)   # pm 專用牌鐘截止（台北時、分）；am 刻意不掛，見上
 # 全場時間預算：兩包 batch（摘要、彙總）各自的期限若都取滿，加上閘門硬等（pm 170 分/
 # am 210 分）會超過 summary.yml timeout-minutes 240，job 被砍時連同步回退都來不及、
-# 整場無產出。故每包期限＝min(場次期限, 全場剩餘預算−同步保留)；剩餘不足 60 秒直接
+# 整場無產出。故每包期限還要再與「全場剩餘預算−同步保留」取小；剩餘不足 60 秒直接
 # 跳過 batch 走同步。t_start 從 main 進場（閘門之前）起算。
 JOB_BUDGET_SEC = 225 * 60    # summary.yml timeout-minutes 240 留 15 分收尾（commit/push）
 SYNC_RESERVE_SEC = 15 * 60   # 保留給同步回退（最多 4 次呼叫）的時間
 
 
-def batch_deadline(slot: str, t_start: float) -> int:
-    """本包 batch 可用秒數；回 0 表示剩餘預算不足、應跳過 batch 直接同步。"""
+def batch_deadline(slot: str, t_start: float, now=None) -> int:
+    """本包 batch 可用秒數；回 0 表示應跳過 batch 直接同步。
+
+    三條上限取最小：①場次期限 BATCH_DEADLINE_SEC ②全場剩餘預算−同步保留
+    ③pm 專屬的牌鐘截止剩餘（PM_BATCH_CUTOFF_HM，am 不參與）。
+    已過截止點 → ③為負 → 回 0 → 走既有的「期限 0 就整包跳過 batch」路徑直接同步，
+    不新增分支。`now`＝台北時間，**供測試注入**（預設 taipei_now()），只有 pm 用得到。
+    """
     remain = JOB_BUDGET_SEC - (time.monotonic() - t_start) - SYNC_RESERVE_SEC
-    dl = int(min(BATCH_DEADLINE_SEC[slot], remain))
+    caps = [float(BATCH_DEADLINE_SEC[slot]), remain]
+    if slot == "pm":
+        n = now or taipei_now()
+        cutoff = n.replace(hour=PM_BATCH_CUTOFF_HM[0], minute=PM_BATCH_CUTOFF_HM[1],
+                           second=0, microsecond=0)
+        caps.append((cutoff - n).total_seconds())
+    dl = int(min(caps))
     return dl if dl >= 60 else 0
 
 
