@@ -1167,10 +1167,13 @@ function renderPM(){
 //      `910322` 各 1）——ETF＋ETN 只佔 13/46（28%），**不可寫成「多為匯率避險型 ETF 與 ETN」**。
 //      market_daily 區塊 2026-09-09 才上線，`data/postmkt.json` 近 20 個 commit 只有這一天帶該區塊，
 //      所以這個比例與成分只有一天的觀測，不知道日常分布長什麼樣。
-//   ⑤ **資料日不是「今天」**（2026-09-09 補，第五軸）：md.date ＝管線的 lending.date（價格／借券資料日），
-//      與頂列的 pm.date（全檔基準日）**是兩個不同的日期**——實查 `build_postmkt.py` 的
-//      `build_market_daily(lend_date, …)`，且線上 44ef7e7 實測頂列 2026-09-09、本區塊 2026-09-08，
-//      系統性差一天。同一畫面擺兩個日期又用「今天」當主語＝**宣稱這是今天的狀態**，與前四軸同型。
+//   ⑤ **資料日不是「今天」**（2026-09-09 補，第五軸）：md.date ＝管線的基準日，**同日修正後綁法人日
+//      d_inst**（取不到才退回 lend_date；實查 `build_postmkt.py` 的 `md_date = d_inst or lend_date`
+//      與 `build_market_daily(md_date, …)`），與頂列的 pm.date（全檔基準日＝七支 FinMind dataset
+//      日期的最大值）**仍是兩個不同語意的日期**：脫鉤後常態相等，但只要有任何一支資料源比法人新，
+//      兩者就會再度分開，**相等不是保證**。**脫鉤前**（基準綁 lend_date 時）是系統性差一天——線上
+//      44ef7e7 實測頂列 2026-09-09、本區塊 2026-09-08，那是本軸的**成因證據**，脫鉤只縮小發生頻率、
+//      沒有消滅這個狀態。同一畫面擺兩個日期又用「今天」當主語＝**宣稱這是今天的狀態**，與前四軸同型。
 //      故本 tab 文案**一律寫出實際日期**（myChgDateInfo／myChgWhen），**不得用「今天／今日／當日」代稱**；
 //      資料日落後 ≥MYCHG_STALE_LAG 個交易日、晚於今日、或缺失時另出一段與免責卡同重量的說明。
 //      **刻意不新增紅黃綠判級**（判級語意未經裁決），只把事實敘述清楚。
@@ -1264,7 +1267,7 @@ function myChgHtml(){
   const di = myChgDateInfo(md);
   // 免責卡：主語綁資料日、不用「今天」；隱私那句只保證真的成立的事（見本段開頭第 ⑤ 軸與隱私註解）
   const disc = `<div class="diag-disc">本頁只描述「持股${esc(myChgWhen(di))} 有沒有相對明顯的變化」`
-    + `——講的是那一天的狀態，不是「今天」（本區塊資料日與頂列的資料日語意不同、值也常常不同）。`
+    + `——講的是那一天的狀態，不是「今天」（本區塊資料日與頂列的資料日語意不同，是否相等不保證）。`
     + `門檻為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒。`
     + `持股清單只存於本機瀏覽器（localStorage），不上傳任何伺服器；比對全在瀏覽器端完成，`
     + `持股代號不進任何網路請求（本 tab 不新增網路請求，資料取自各盤後 tab 共用、已載入的 data/postmkt.json）。</div>`;
@@ -1349,7 +1352,7 @@ function myChgHtml(){
   // 第五軸：同一畫面兩個資料日，明講哪個是哪個（頂列取 pm.date、本區塊取 market_daily.date）
   const pmd = dateNorm((state.pm || {}).date);
   if (di.d && pmd && pmd !== di.d)
-    notes.push(`頂列的「資料日 ${pmd}」是 data/postmkt.json 的全檔基準日；本區塊另以 ${di.d} 為準（market_daily.date＝價格／借券資料日，兩者語意不同、值常常差一個交易日），本頁所有數字都是 ${di.d} 那天的`);
+    notes.push(`頂列的「資料日 ${pmd}」是 data/postmkt.json 的全檔基準日；本區塊另以 ${di.d} 為準（market_daily.date＝價格／法人資料日，兩者語意不同），本頁所有數字都是 ${di.d} 那天的`);
   // ↓ 誠實原則（CANON 第 8 條）：語意一字不可弱化，改門檻要連這句一起改
   notes.push(`門檻：法人淨買賣 ±${MYCHG_LOT_TH} 張或漲跌 ±${MYCHG_CHG_PCT_TH}%，為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒`);
   notes.push(`資料源：data/postmkt.json 的 market_daily（全市場逐檔 ${rows.length} 檔，${di.txt}）；股名取自本站既有代號對照，查不到就顯示代號。持股比對全在瀏覽器端完成，代號不進任何請求`);
@@ -1605,7 +1608,8 @@ function renderStats(){
       + `<div class="stat"><b>${sc.n||0}</b> 檔</div>` : "";
   } else if (state.tab === "mychg"){
     // 同 mktbal/rrgd/screen/diag：本 tab 有自己的資料日，**取 market_daily.date 而不是 pm.date**
-    //（兩者語意不同、值常常不同——market_daily 以價格資料日為基準，pm.date 是全檔基準日）
+    //（兩者語意不同——market_daily 以法人資料日 d_inst 為基準（取不到才退回 lend_date），
+    //  pm.date 是全檔基準日；2026-09-09 脫鉤後常態相等，但任一資料源比法人新時仍會分開，相等不是保證）
     // **整表不可用時不得報「N 檔涵蓋」**（2026-09-09 第六軸）：判定與內文共用 myChgUnusable()，
     // 徽章逐字沿用內文那句「無法取得異動資料」，成因放 tooltip；**刻意不上色**（不新增判級語意）。
     const md = state.pm && state.pm.market_daily;

@@ -515,13 +515,17 @@ HEAD_DATE_RE = re.compile(r'"date"\s*:\s*"(\d{4}-\d{2}-\d{2})"')
 HEAD_GEN_RE = re.compile(r'"generated_at"\s*:\s*"([^"]+)"')
 
 
-def _run_main_offline(monkeypatch, tmp_path):
-    """跑真正的 main()，但所有對外呼叫都換成離線 fixture（不碰網路、不寫進 repo 的 data/）。"""
+def _run_main_offline(monkeypatch, tmp_path, fake_api_get=None):
+    """跑真正的 main()，但所有對外呼叫都換成離線 fixture（不碰網路、不寫進 repo 的 data/）。
+
+    `fake_api_get` 可注入自訂的 dataset→列 對應，用來構造各 dataset 日期不對齊的情境
+    （見 test_output_market_daily_date_follows_inst_not_short_sale）。
+    """
     day = dt.date.today().isoformat()
     price = [dict(r, date=day) for r in _md_price_rows()]
     info = [{"stock_id": c, "stock_name": n} for c, n in _md_nm().items()]
 
-    def fake_api_get(dataset, **kw):
+    def default_api_get(dataset, **kw):
         same_day = kw.get("start_date") == day
         if dataset == "TaiwanStockInfo":
             return info
@@ -534,7 +538,7 @@ def _run_main_offline(monkeypatch, tmp_path):
         return []
 
     monkeypatch.setenv("FINMIND_TOKEN", "dummy-token-for-offline-test")
-    monkeypatch.setattr(bp, "api_get", fake_api_get)
+    monkeypatch.setattr(bp, "api_get", fake_api_get or default_api_get)
     monkeypatch.setattr(bp, "fetch_twse_lending", lambda date, select_type: {})
     monkeypatch.setattr(bp, "fetch_twse_oddlot", lambda base_date, report: ("", []))
     monkeypatch.setattr(bp, "ROOT", tmp_path)
@@ -559,4 +563,77 @@ def test_output_market_daily_is_full_market_and_last(monkeypatch, tmp_path):
     assert list(out)[-1] == "market_daily"
     assert [r[0] for r in md["rows"]] == _md_universe()
     assert len(md["rows"]) > bp.TOP_N
-    assert md["date"] == out["lending"]["date"]   # 與 lending 同基準日（lend_date）
+    # 本 fixture 裡 d_inst == d_dt == latest == lend_date，故兩者相等；
+    # **不是**因為兩者共用基準日（2026-09-09 已脫鉤，見下一支測試）。
+    assert md["date"] == out["lending"]["date"]
+
+
+# ---------- market_daily 基準日與 lend_date 脫鉤（2026-09-09 線上實證缺陷） ----------
+#
+# 線上 generated_at 2026-09-09T20:55:42+08:00 那版 data/postmkt.json：date_mismatch 的融資／
+# 借券成交／三大法人／當沖四項全為 2026-09-09（＝基準 lend_date 被最慢的 d_short 拖在
+# 2026-09-08），market_daily.date=2026-09-08、rows 2,757 檔、f/t 非 null 各 0 檔。
+# 原因是 main() 把 market_daily 的基準日綁在 lend_date，讓 build_market_daily 的
+# 「法人資料日 ≠ 基準日」守門必然觸發。下面兩支測試把那一晚的形狀離線重現。
+
+def _lagging_short_sale_api(day: str, prev: str, inst_day: str | None):
+    """d_short 落後一天（prev）、法人／當沖／價格都在 day 的 fake api_get。
+
+    `inst_day=None` ＝ 法人資料整個抓不到（d_inst 為空），用來驗退回 lend_date 的分支。
+    """
+    price_by_day = {d: [dict(r, date=d) for r in _md_price_rows()] for d in (day, prev)}
+    info = [{"stock_id": c, "stock_name": n} for c, n in _md_nm().items()]
+
+    def fake_api_get(dataset, **kw):
+        d = kw.get("start_date")
+        if dataset == "TaiwanStockInfo":
+            return info
+        if dataset == "TaiwanStockPrice":
+            return price_by_day.get(d, [])
+        if dataset == "TaiwanDailyShortSaleBalances":
+            # 全批最慢的一支：只有前一交易日有資料
+            return [{"stock_id": "2330", "SBLShortSalesCurrentDayBalance": 500_000}] if d == prev else []
+        if dataset == "TaiwanStockDayTrading":
+            return [{"stock_id": "2330", "Volume": 1_000, "BuyAmount": 200, "SellAmount": 100}] if d == day else []
+        if dataset == "TaiwanStockInstitutionalInvestorsBuySell":
+            return _md_inst_rows() if (inst_day and d == inst_day) else []
+        return []
+
+    return fake_api_get
+
+
+def test_output_market_daily_date_follows_inst_not_short_sale(monkeypatch, tmp_path):
+    """短賣餘額落後一天時，market_daily 仍以**法人日**為基準，f/t 不得整欄變 null。"""
+    day = dt.date.today().isoformat()
+    prev = (dt.date.today() - dt.timedelta(days=1)).isoformat()
+    out = _run_main_offline(monkeypatch, tmp_path, _lagging_short_sale_api(day, prev, day))
+
+    # 借券 tab 照舊以 d_short 為基準（本次不動 lending）
+    assert out["lending"]["date"] == prev
+    assert {m["name"] for m in out["date_mismatch"]} >= {"三大法人", "當沖"}
+
+    md = out["market_daily"]
+    assert md["date"] == day, "market_daily 基準日應為法人日，不得被最慢的短賣餘額拖住"
+    assert md["date"] != out["lending"]["date"], "脫鉤後兩者可以不同（此情境必不同）"
+    # 這正是線上那晚的病徵：f/t 非 null 必須 > 0，不能整欄 null
+    assert sum(1 for r in md["rows"] if r[2] is not None) > 0, "外資欄不得整欄 null"
+    assert sum(1 for r in md["rows"] if r[3] is not None) > 0, "投信欄不得整欄 null"
+    by_c = {r[0]: r for r in md["rows"]}
+    assert by_c["2330"][2] == 1500 and by_c["2330"][3] == -300
+    # 宇宙與 chg 不受影響（價格沿用同一天那份）
+    assert [r[0] for r in md["rows"]] == _md_universe()
+    assert by_c["2330"][1] == 2.0
+
+
+def test_output_market_daily_falls_back_to_lend_date_when_no_inst(monkeypatch, tmp_path):
+    """法人資料整個抓不到（d_inst 為空）→ 退回 lend_date＋該日已在手的收盤價（即舊行為）。"""
+    day = dt.date.today().isoformat()
+    prev = (dt.date.today() - dt.timedelta(days=1)).isoformat()
+    out = _run_main_offline(monkeypatch, tmp_path, _lagging_short_sale_api(day, prev, None))
+
+    md = out["market_daily"]
+    assert md["date"] == prev == out["lending"]["date"], "d_inst 為空時退回 lend_date"
+    # 沒有法人資料 → f/t 全 null 是正確狀態（不是 0），宇宙與 chg 仍照常輸出
+    assert all(r[2] is None and r[3] is None for r in md["rows"])
+    assert [r[0] for r in md["rows"]] == _md_universe()
+    assert {r[0]: r[1] for r in md["rows"]}["2330"] == 2.0

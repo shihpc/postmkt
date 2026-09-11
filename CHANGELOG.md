@@ -3,6 +3,170 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-09-09（同日修正之六）`market_daily` 基準日與 `lend_date` 脫鉤：修「每晚 f/t 整欄 null」
+
+**線上實證的缺陷，不是推測。** raw main 的 `data/postmkt.json`（`generated_at`
+`2026-09-09T20:55:42+08:00` 那版）實打結果：
+
+- `date_mismatch` ＝ 融資／借券成交／三大法人／當沖 **四項全為 `2026-09-09`**
+  → 代表基準 `lend_date` 不是 09-09，而是 `d_short`（`TaiwanDailyShortSaleBalances`）的 **09-08**
+- `market_daily.date` ＝ `2026-09-08`、`rows` **2,757 檔**
+- **`f` 非 null 0 檔、`t` 非 null 0 檔**（`chg` 非 null 2,711 檔）
+
+### 根因
+
+`main()` 原本把 `market_daily` 的基準日綁在 `lend_date`（＝`d_short or latest`），純粹是為了
+重用已在手的 `r_price_lend`。但短賣餘額是全批**最慢**的一支，晚場 20:5x 那班常落後一天，於是
+`build_market_daily()` 的「法人資料日 ≠ 基準日」守門**必然觸發**、`inst_by_c` 被清空、f/t 整欄
+寫 null。使用者從約 21:00 到隔日 01:xx 那班短賣餘額補上前，「持股異動」整晚都顯示「當日法人
+資料未到」——**功能不是壞掉，是每天有好幾個小時是廢的**。
+
+### 改法
+
+`md_date = d_inst or lend_date`（`build_postmkt.py` grep `md_date = d_inst or lend_date`），
+價格沿用**同一天、已在手**的那份：`md_date == d_dt`（常態，法人與當沖都約 21:00 更新）→ 重用
+`r_price`；`md_date == lend_date` → 重用 `r_price_lend`；三者都不同才多打一次全市場
+`TaiwanStockPrice`（實務上不該發生）；`d_inst` 為空 → 退回 `lend_date`＋`r_price_lend`＝舊行為。
+
+**刻意不動的東西**：`build_lending()` 與 `out["lending"]` **逐字未變**（借券 tab 照舊以
+`lend_date` 為基準，三處衍生欄公式約定不變；`git diff -U0` 的 hunk 與該函式行範圍零重疊）；
+`date_mismatch` 的組成與語意不動（那是借券 tab 的徽章）；`out["date"]` 仍是 `latest`；
+`build_market_daily()` 的宇宙過濾、null 語意、示警分支不動。
+**`inst_date != date` 守門保留，但地位要說清楚**——**從 `main()` 呼叫時它已是恆假的死碼**：
+`date`（＝`md_date`）與 `inst_date` 都由 `d_inst` 決定，`d_inst` 為真則兩者相等、條件不成立；
+`d_inst` 為假（退回分支）則 `inst_date` 為空、條件第一項就短路，兩路窮盡。退回分支之所以安全，
+是因為 `r_inst` 同時為空、`inst_by_c` 自然是 `{}`，**與這道守門無關**。保留的理由是
+`build_market_daily()` 作為獨立函式仍可能被其他呼叫端／未來重構以不同的 `date`／`inst_date`
+組合呼叫（現行單元測試 `test_market_daily_inst_date_mismatch_blanks_f_t` 就是這樣直接呼叫它的），
+屆時仍需寧缺勿混；拿掉等於把「寧缺勿混」拆了。README「前端消費 `market_daily` 的必要條件」**六軸的規範一字未改**（2026-09-10 更正措辭：
+原寫「六軸一字未改」，但同批確實改過第五軸的**出處敘述**——見下方「README 兩處出處敘述同步更正」——
+未改的是**規範**，不是那一節的每個字；README 自己寫的就是「本軸的**規範**一字不改」，兩份說法現已一致）：
+六軸講的是前端不可說錯的話，脫鉤不改變任何一軸（`f`／`t` 仍可能為 null）。
+
+### 驗證
+
+`tests/test_postmkt_build.py` 新增兩支離線測試（免 token 免網路，跑真正的 `main()`）：
+`test_output_market_daily_date_follows_inst_not_short_sale` 構造「`d_short` 落後一天、
+`d_inst == d_dt` 為今日」，驗 `market_daily.date == d_inst`、`!= lending.date`、f/t 非 null > 0；
+`test_output_market_daily_falls_back_to_lend_date_when_no_inst` 構造 `d_inst` 為空，驗退回
+`lend_date`。突變測試各自單獨改再還原：`md_date` 改回 `lend_date` → 前者紅；拿掉
+`inst_date != date` 守門 → 既有的 `test_market_daily_inst_date_mismatch_blanks_f_t` 紅。
+`python -m pytest tests/ -q` 115 passed、`ruff check .` 零違規。
+
+**尚無線上樣本**：本批只有離線重現與程式碼依據，脫鉤後的實際形狀要等下一班 build 產出
+`data/postmkt.json` 才驗得到（鐵律 6）。
+
+### README 兩處出處敘述同步更正（同批補上）
+
+`README.md` 第五軸那段與 tab 對照表那列原本都寫「`market_daily.date` ＝
+`build_market_daily(lend_date, …)` 傳進去的 `lending.date`（價格／借券資料日）……**系統性差一天**」
+——**脫鉤後這兩處的出處敘述已不成立**，已改為「法人日 `d_inst`（價格／法人資料日）」。
+
+**六軸的規範內容一字未改**，第五軸也**沒有**因此變弱：`market_daily.date` 與頂層 `date`
+（＝margin／lend／short／dt／block／inst／hold **七支 FinMind dataset 的日期取 max**，
+**不含**兩支 TWSE 零股日期 `d_oddi`／`d_odda`——2026-09-10 更正，原寫「所有資料源的最大日」是過寬的，
+與同批 README 第五軸的收緊寫法不一致）脫鉤後常態相等，但只要有任何一支資料源比法人更新，兩者就會再度分開，
+**相等不是保證**。脫鉤縮小的是發生頻率，不是消滅這個狀態——所以畫面主語仍然不得寫「今天」。
+原本的「系統性差一天」實測（線上 `44ef7e7`）改寫成**脫鉤前**的成因證據保留，不刪除。
+
+## 2026-09-10 pm 摘要 batch 期限改走**牌鐘截止點**（台北 23:00）——同日第一版「砍成固定 30 分」已被當晚實測推翻
+
+**起因是一則 LINE 告警**：v2 Worker 的日終健檢（台北 23:50）報「summary-pm(無檔)」。
+查下去檔案根本沒缺——`20260909-pm.json` 3/3 頁成功、彙總有產出、三個資料日都是 09-09，
+只是**台北 09-10 00:45 才落地**，比健檢晚 55 分鐘。近三天都一樣（00:18／00:23／00:45），
+09-01 以前則是 21:07~23:27、都在健檢前。分水嶺在 09-02。
+
+**根因（job log 逐行，run 34356423382）**：
+
+```
+13:20:22  齊全閘門（pm）→ 同秒通過      ← 0 秒。資料早就齊了，不是資料問題
+13:20:35  batch[摘要] 已提交（3 筆，期限 180 分）
+16:20:39  batch[摘要] 超過期限仍未 ended（in_progress）→ cancel 並全數同步回退
+16:24:56  摘要完成：3/3 份成功          ← 同步回退只花 4 分 17 秒
+16:24:57  batch[彙總] 已提交（1 筆，期限 25 分）
+16:45:11  batch[彙總] 完成（1214s）
+```
+
+整場 3 小時 25 分，**真正在做事的約 25 分鐘；180 分鐘拿去等一包最後被取消丟掉的 batch**。
+被丟掉時狀態是 `in_progress`——不是失敗也不是過期，就是還在排隊。三天的 `via` 欄一致：
+摘要三筆全 `sync`、彙總 `batch`。**半價一毛沒省到**（摘要那包全走原價同步），還把產出延後 3 小時。
+
+**對照組（同程式、同三筆）**：am 場 `via` 全是 `batch`、全程 6 分 27 秒。差別只有期限
+（am 25 分／pm 180 分）與提交時刻（am UTC 22:5x／pm UTC 13:2x）。**推測** batch 佇列在
+UTC 13:2x（美國上午）特別慢——看不到 Anthropic 佇列內部，**未證實**；但「同程式換時段就成功」是實測。
+
+**另一個差點出事的副作用**：摘要燒掉 180 分後，`batch_deadline` 折算給彙總的只剩 **25 分**，
+而彙總實際跑 20 分 14 秒——**只差 5 分鐘連彙總也會被迫回退**。
+
+### 第一版改法（同日稍早，**已作廢**）
+
+`BATCH_DEADLINE_SEC["pm"]` 180 分 → **30 分**（am 不動），理由寫的是「現況下**沒有代價**，
+因為那包 batch **本來就沒成功過**」。
+
+### 第二版改法：牌鐘截止點（現行）
+
+**第一版那句理由已被 2026-09-10 當晚那班推翻**（run 34481046459，job log 實查）：
+
+```
+13:11:09  Build summary 起跑
+14:55:19  摘要三筆全數完成，via 全是 batch   ← 那包 batch 實跑約 104 分鐘
+14:55:2x  batch[彙總] 已提交（1 筆，期限 105 分＝預算折算後的餘額）
+14:58:42  產物落地（202 秒）＝台北 22:58     ← 早於日終健檢 23:50
+```
+
+30 分的期限會在 13:41Z 就把這包 cancel 掉，**這種日子會白白付原價**。所以「沒有代價」不成立，
+「**每天**白等」也講得太滿——四天的實際分布是**三失敗一成功**：
+
+| 日期 | 摘要 batch | 結果 |
+|------|-----------|------|
+| 09-07／09-08／09-09 | 逾 180 分仍 `in_progress` → cancel | 三筆全 `sync` 回退（原價） |
+| 09-10 | 約 **104 分** ended | 三筆全 `batch`（半價），產物台北 22:58 |
+
+固定分鐘數兩頭都不對：短了砍掉會成功的那天，長了（180 分）則在失敗的那天把產物推到
+00:1x~00:4x、晚於健檢。**改法＝能等多久就等多久，但保證在健檢前落地**：
+
+- 新增 `PM_BATCH_CUTOFF_HM = (23, 0)`（台北 23:00），**只對 pm 生效**——am 自己 25 分就結束，
+  且晨間健檢在 09:30、am 場 06:23 起跑，沒有這個問題。
+- `batch_deadline(slot, t_start, now=None)` 回
+  `min(場次期限, 全場剩餘預算−同步保留, 距截止點剩餘)`，仍是「<60 秒回 0」。
+  `now` 供測試注入（預設 `taipei_now()`），測試因此不依賴真實牆鐘。
+- 已過截止點 → 距截止剩餘 ≤0 → 回 0 → **沿既有路徑整包跳過 batch 直接同步**，不新增分支。
+- `BATCH_DEADLINE_SEC["pm"]` **改回 180 分**：牌鐘才是實際綁住 pm 的那條，180 分只在
+  「job 極早開跑」（距 23:00 超過 3 小時）時才會先撞到。
+
+**23:00 是餘裕的選擇、不是量出來的最適值**——**不可讀成實測結論**。算的是餘裕：截止之後最壞
+情況還要跑摘要同步回退（實測 4 分 17 秒）＋彙總（batch 或同步；彙總實測 20 分 14 秒），
+留 50 分鐘足夠兩包都回退仍趕在 23:50 前。要算真正的最適截止點，需要更多天的 batch 完成時間
+分布，本批沒有那份資料。
+
+**已知不處理的情形**：pm 場被 GitHub Actions 延到跨午夜才啟動時（走 `slot_trading_day()` 的
+`hour<12` 那條路），同日 23:00 的截止點在約 23 小時之後、等於不生效，於是回落到 180 分上界。
+那一天的健檢（前一晚 23:50）本來就已經跑完、牌鐘救不了，**刻意不為它加分支**（範圍外）。
+
+**可觀測範圍的誠實邊界**：`-pm.json` 只留最近 3 日（管線刪 3 日前舊檔），`via` 欄只驗得到
+最近三天。09-02~09-04 只有落地時間（16:31／16:26／16:40 UTC），時間形狀一致，
+**推斷同因、無直接證據**。
+
+**要調整之前，先看幾天 `-pm.json` 的 `via` 欄**（`sync`＝那包 batch 又沒趕上牌鐘）。
+
+### 驗證
+
+`tests/test_summary_batch.py` 新增四支離線測試（免 token 免網路，時點一律注入、不碰真實牆鐘）：
+`test_pm_cutoff_binds_when_near_2300`（距截止 20 分／100 分時取截止剩餘）、
+`test_pm_cutoff_zero_after_2300_skips_batch`（23:00 到點、23:05、23:59 與「剩 30 秒 < 60 秒門檻」全回 0，
+並以「剩 5 分 → 300」反證不是被別的條件砍掉）、
+`test_am_ignores_pm_cutoff`（am 在 22:40／23:00／23:30 一律 25 分）、
+`test_now_is_injectable_and_defaults_to_taipei_now`（四個時點重演＋monkeypatch `taipei_now` 驗預設值）。
+既有 `test_batch_deadline_budget` 改為注入台北 19:00（牌鐘不綁）並依 pm 改回 180 分更新四個區間；
+`test_deadline_constants_match_spec` 加驗 `PM_BATCH_CUTOFF_HM == (23, 0)`。
+**突變測試各自單獨改再還原**：`batch_deadline` 的 `min()` 拿掉截止那一項 → 上述前三支中的三支紅
+（`binds_near_2300`／`zero_after_2300`／`now_is_injectable`）；把截止點也套到 am
+（`if slot in ("pm", "am")`）→ `test_am_ignores_pm_cutoff` 紅。還原後
+`python -m pytest tests/ -q` **119 passed**、`ruff check .` 零違規。
+
+**尚無線上樣本**：牌鐘的實際效果要等合併後第一個交易日的 `-pm.json`（看 `generated_at` 與
+`via` 欄）才驗得到，本批只有離線測試與程式碼依據（鐵律 6）。
+
 ## 2026-09-09（同日修正之五）手機驗收條件更正：「375px 不溢出」被實測推翻
 
 **純文件批**：`index.html` 與 `build_postmkt.py` 位元組層零變更（md5 前後相同）。

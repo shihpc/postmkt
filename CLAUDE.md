@@ -110,8 +110,15 @@
     （**2026-09-09 二次更正**：`26e3a73` 那版把「查無此代號」提成六項之一、又把「整表殘缺」
     踢出六軸另立一層，與 `index.html` ③ 和 README「前四軸／另外三軸」直接相反，
     把原本三方一致的清單改成互相矛盾，本批已改回。教訓見 CHANGELOG。）
-    資料日徽章取 **`market_daily.date`，不是 `pm.date`**（前者＝價格／借券資料日，後者＝全檔基準日，
-    線上實測系統性差一天）。**第五軸（2026-09-09）**：畫面主語一律寫出實際日期，
+    資料日徽章取 **`market_daily.date`，不是 `pm.date`**（前者＝**價格／法人資料日**，後者＝全檔基準日
+    ＝各段 date 取 max）。**2026-09-09 起本區塊基準日改綁法人日 `d_inst`、與借券 tab 的 `lend_date`
+    脫鉤**（`build_postmkt.py` grep `md_date = d_inst or lend_date`）：原本共用 `lend_date`
+    ＝`d_short or latest`，而短賣餘額是全批最慢的一支，晚場那班常落後一天，於是
+    `build_market_daily()` 的「法人資料日 ≠ 基準日」守門必然觸發、**f/t 整欄變 null**
+    （線上實證：generated_at `2026-09-09T20:55:42+08:00` 那版 `date_mismatch` 四項全 `2026-09-09`、
+    `market_daily.date` 停在 `2026-09-08`、2,757 檔的 `f`／`t` 非 null 各 0 檔）。脫鉤後常態下
+    本區塊資料日與 `pm.date` 應相同，**但仍不保證**——法人日落後、或 `d_inst` 為空退回 `lend_date`
+    時兩者會不同，所以「兩個資料日並存要明講」那條不變（**脫鉤後尚無線上樣本，此段為程式碼依據**）。**第五軸（2026-09-09）**：畫面主語一律寫出實際日期，
     **不得用「今天／今日／當日」代稱**；落後 ≥`MYCHG_STALE_LAG`（2）個交易日、晚於今日或缺失時
     另出一段與免責卡同重量的說明，且**不新增紅黃綠判級**。比照個股摘要側欄「每段自帶自己的資料日」。
     **股名在本 tab 刻意不完整**：`stkName()` 的 `diag`／`screen`／`aetf` 三個來源在本 tab 都沒載，
@@ -125,8 +132,20 @@
 - `build_postmkt.py` → `data/postmkt.json`（主資料，五個盤後 tab）
 - `build_summary.py` → `data/summary/`（AI 彙總自動場；含資料齊全輪詢閘門與假日判斷）。
   **2026-08-29 起：每頁 1 份共 3 份摘要（原 6 份）、`MIN_OK_FOR_SYNTH=2` 才彙總、共振強度口徑 N/3；
-  自動場摘要與彙總改走 Anthropic Message Batches（半價，am 期限 25 分／pm 180 分，逾時或單筆
-  失敗逐筆同步回退）**。`summary.yml` 另有 `workflow_dispatch` 輸入 `no_wait`（跳過資料齊全閘門，
+  自動場摘要與彙總改走 Anthropic Message Batches（半價，逾時或單筆失敗逐筆同步回退）**。
+  **pm 期限 2026-09-10 改走牌鐘截止點**（`build_summary.py` grep `PM_BATCH_CUTOFF_HM`＝台北 23:00；
+  am 維持固定 25 分、**刻意不掛牌鐘**）：`batch_deadline(slot, t_start, now=None)` 取
+  min(場次期限, 全場剩餘預算−同步保留, 距截止點剩餘)，已過截止＝回 0＝整包跳過 batch 直接同步。
+  `BATCH_DEADLINE_SEC["pm"]` 為 **180 分，但那只是上界**，實際綁住 pm 的是牌鐘。
+  **同日第一版「砍成固定 30 分」已作廢**：那版的理由寫「那包 batch 本來就沒成功過，所以沒有代價」，
+  **被當晚 run 34481046459 推翻**——摘要那包實跑約 **104 分鐘**後 `via` 全 batch 成功、產物台北 22:58
+  落地（早於健檢），30 分會把它 cancel 掉、白付原價。四天實際分布＝**三失敗一成功**
+  （09-07／08／09 逾 180 分未 ended 全 sync 回退；09-10 約 104 分成功）。
+  **23:00 是餘裕的選擇、不是量出來的最適值**（截止後最壞還要摘要同步回退 4 分 17 秒＋彙總，
+  留 50 分給 23:50 健檢；沒有足夠天數的完成時間分布可算最適值，**不可寫成實測結論**）。
+  逐行 log 證據寫在 `build_summary.py` 的 `BATCH_DEADLINE_SEC` 上方；**要調整之前，先看幾天
+  `-pm.json` 的 `via` 欄**（`sync`＝那包 batch 又沒趕上牌鐘）。**場次期限與牌鐘都是 per-slot、
+  摘要與彙總共用**，改它會同時改到彙總那包的上限。`summary.yml` 另有 `workflow_dispatch` 輸入 `no_wait`（跳過資料齊全閘門，
   測試／補跑用）
 - `src/build_diag.py` → `data/diag/diag.json`（持股診斷素材庫；cache.json 走 actions/cache 不進 git）
 - `src/build_mktbal.py` → `data/market_balance_history.json`（大盤餘額）
