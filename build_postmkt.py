@@ -402,7 +402,10 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
     # **效益的誠實量級（實測，不是估計；勿再寫成「diff 只剩真變化」那種無條件說法）**：
     # data/postmkt.json 是**單行 JSON**（本檔 json.dump 的 separators=(",",":")、`wc -l` 為 0），
     # 所以**文字層面的 git diff 本來就是整行變更**，加次鍵不會、也不可能讓 diff「只剩真變化」。
-    # 真正省到的是 packfile 的 delta：單版 base 306,103 B，「同資料重跑、舊碼」增量約 4,375 B，
+    # 真正省到的是 packfile 的 delta：單版 base 約 306,103 B，「同資料重跑、舊碼」增量約 4,375 B，
+    # （base 標「約」：2026-09-13 覆驗者獨立重量得 305,364 B，與上面這個數字差約 0.2%；
+    #  差異依覆驗者的說明來自 pack 方式與主鍵並列時的洗牌亂數不同——**此歸因未經我方獨立驗證**。
+    #  重點是這三個數字都是單次量測的量級參考、不是可逐位元組重現的常數，一律當「約」讀。）
     # 一次性重排增量約 3,794 B（2,233 個位置中 536 個代號不同＝24.0%）。也就是
     # **一次性約 3.8KB ＋ 每次重跑省下約 4.4KB 的噪音**，不是「大 diff」。
     # 另外 generated_at 每次都變，所以**不會**出現「重跑產物逐位元組相同因此不 commit」的額外好處。
@@ -414,8 +417,14 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
     # 對消費端無影響：三處衍生欄公式（index.html augmentLending()／build_summary.py
     # _augment_lending()／已下線的舊後端版）都是逐列就地計算，不讀前後列、不依賴列序。
     rows_out.sort(key=lambda x: (-(x["sys_bal"] + x["otc_bal"]), x["c"] or ""))
-    # 不截斷到TOP_N：Table1的定位是「查任一檔股票」，前端主排行榜只顯示前TOP_N，
-    # 但完整清單要留給搜尋功能查詢不在前段班的股票（見cmoney-sbl-mapping-research.md）。
+    # 不截斷到TOP_N：Table1的定位是「查任一檔股票」，完整清單要留給搜尋功能查詢
+    # 不在前段班的股票（見cmoney-sbl-mapping-research.md）。
+    # 2026-09-13 更正：本註解原寫「前端主排行榜只顯示前TOP_N」，實查與程式不符——
+    # index.html 的融借券整合排行是 tbl([...], allRows)、allRows = l.rows，**整張表全列
+    # 渲染**（列數超過 VIRTUAL_THRESHOLD 只做虛擬捲動，決定當下畫幾列 DOM、不丟任何列），
+    # 全檔 grep 'slice(0,50)' 與 'TOP_N' 皆零命中。TOP_N 只套用在 build_short_balance()
+    # 的 margin_short/sbl 與漲跌幅/使用率/當沖那幾張榜，**不套用在本函式的 rows_out**。
+    # 那句錯誤敘述曾被 CHANGELOG 沿用成「前端排行榜前 50」，一併更正。
     return {"date": date, "rows": rows_out,
             "sys_available": bool(sys_bal), "otc_available": bool(otc_bal)}
 
