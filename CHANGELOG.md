@@ -62,11 +62,20 @@ TOP_N 用於別的函式產的榜：`build_margin()` 的融資增加／減少／
 - **三處衍生欄公式**：`index.html` 的 `augmentLending()`（`for (const r of rows)`）與
   `build_summary.py` 的 `_augment_lending()`（`for r in rows`）都是**逐列就地計算**，
   只讀該列自己的欄位、不讀前後列、不用索引 → 與列序無關。
-- **會消費列序的切片恰有兩處，都是取前 25**：`build_summary.py` 的 `lr[:25]` 與
-  `index.html` `insightGatherContext()` 的 `lr.slice(0,25)`（畫面標籤「融借券整合排行 前25」）。
-  兩者的行為**只會變得更確定**（同分列不再隨機）；且現行資料**前 25 名沒有任何並列**
-  （實測 `data/postmkt.json`，`k[i] == k[i+1]` 在前 25 內零命中；順帶量到前 50 內也是零），
-  所以當下輸出不變。
+- **會消費 `lending.rows` 列序的切片有三處**（2026-09-13 四次更正，前三版都少算）：
+  ①`build_summary.py` 的 `lr[:25]`、②`index.html` `insightGatherContext()` 的 `lr.slice(0,25)`
+  ——這兩處**都是取前 25，且當下輸出不變**（實測 `data/postmkt.json`，排序鍵
+  `k[i] == k[i+1]` 在前 25 內零命中；順帶量到前 50、前 100 內也是零）。
+  ③**`index.html` `lendSearchAreaHtml()` 的 `.slice(0,20)`**——借券 tab「個股查詢」的結果，
+  `allRows` 就是 `d.lending.rows`，`filter` 保序後直接切前 20。
+  **③的輸出會變，而且是使用者看得到的畫面**，不可宣稱「當下輸出不變」。
+  但**變化的方向是「由不確定變確定」，不是「從一個正確答案變成另一個」**——全表 2,233 列中
+  相鄰同鍵位置 568 個、836 列（37.4%）落在並列鍵上，而**舊行為的前 20 本來就取決於輸入序**。
+  不依賴比較基準的量法（同一份資料、5 個不同輸入序對跑，候選查詢＝所有出現在代號／名稱中的
+  1~2 字子字串共 5,870 個）：**舊行為下 86 個查詢的前 20 排列會因執行而異、其中 9 個連成員都會變**；
+  新行為下這些全部變成確定的。所以③是**修好了一個既有的不確定性**，不是引入回歸。
+  （**措辭更正**：②原寫「畫面標籤」是錯的——`insightGatherContext()` 產的是**送 LLM 的 prompt
+  文字**，`dlabel(...)` 是 prompt 段落標題，全檔追 `g.text` 的去向沒有任何渲染到畫面的路徑。）
   （**2026-09-13 三次更正**：本條原寫「與前端排行榜的 `TOP_N`」——那是同一個虛構物的最後一份
   殘留，與本則上方「`grep -n 'slice(0,50)\|TOP_N' index.html` 零命中」那句**直接打架**。
   `grep -c TOP_N index.html` ＝ 0；更根本的是 `margin`／`lending`／`short_balance`／`daytrading`
