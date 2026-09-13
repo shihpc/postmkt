@@ -3908,9 +3908,15 @@ document.addEventListener("change", e => {
 //    即時報價段標的是「最後成交時戳」——依 date-semantics.md，/live 的 ts **不是資料日**，不可混用。
 // 3. **跨站深連結只用實查確認支援的格式**（2026-09-07 curl 三站線上 index.html 實查）：
 //    taiwan-stock-news 有 hash 路由（HASH_TABS 含 track、code 走 4-6 位大寫英數、q 為關鍵字），
-//    故 #tab=track&code= 與 #tab=news&q= 可用；taiwan-flows 與 taiwan-flow-live-v2 全檔
-//    grep `location.hash` **零命中**＝沒有 hash 路由，只連首頁並在說明列標「需自行搜尋該檔」。
-//    **不得編造不存在的深連結格式**；日後那兩站有了路由再回來補。
+//    故 #tab=track&code= 與 #tab=news&q= 可用。
+//    **taiwan-flows 與 taiwan-flow-live-v2 只連首頁——但理由不是「沒有 hash 路由」**
+//    （2026-09-13 實查 origin/main 更正）：taiwan-flow-live-v2 確實零命中，但 **taiwan-flows 有**
+//    （`location.hash` 3 處、`function parseHash` 1 處）。原句的依據是 09-07 那天的 curl，
+//    而 flows 的 hash 路由**就是同一天**（批次三 #15）加的——量測當下為真、同日就過期。
+//    真正的理由是 **flows 的 hash key 裡沒有逐檔代號**（`#tab=&mode=&d1=&d2=&side=&rank=&etype=
+//    &inv=&sec=&sub=`，`sec`／`sub` 是類股／次產業不是個股），所以還是給不出個股深連結。
+//    **結論不變、依據換掉**；畫面那句寫的是「沒有個股網址參數」，本來就正確。
+//    **不得編造不存在的深連結格式**；日後 flows 加了逐檔 key 再回來補。
 // 4. 持股清單（localStorage pm_holdings）不進側欄的網址、也不進任何請求（約定 6）；hash 只放單一代號。
 const STK_URL_NEWS = "https://shihpc.github.io/taiwan-stock-news/";
 const STK_URL_FLOWS = "https://shihpc.github.io/taiwan-flows/";

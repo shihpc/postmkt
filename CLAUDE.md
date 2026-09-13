@@ -82,8 +82,13 @@
     因為各 dataset 的 date 本來就會不同（見 `date_mismatch`）。跨站一律純導覽 `<a target="_blank"
     rel="noopener">`，**不 fetch → 不需新增 CSP `connect-src`**；深連結只用實查確認支援的格式
     （grep `function stkSecLinks`）：taiwan-stock-news `#tab=track&code=`／`#tab=news&q=` 可用，
-    **taiwan-flows 與 taiwan-flow-live-v2 沒有 hash 路由**（2026-09-07 curl 線上 index.html
-    grep `location.hash` 零命中），只連首頁並在說明列註明需自行搜尋，不得編造深連結格式。
+    **taiwan-flows 與 taiwan-flow-live-v2 只連首頁**，並在說明列註明需自行搜尋，不得編造深連結格式。
+    **理由 2026-09-13 更正**：原寫「兩站都沒有 hash 路由（09-07 curl grep `location.hash` 零命中）」
+    ——**對 taiwan-flows 是錯的**，實查 `origin/main` 得 `location.hash` **3 處**、`function parseHash`
+    **1 處**（live-v2 才是兩者皆 0）。flows 的 hash 路由**就是 09-07 當天**（批次三 #15）加的，
+    量測當下為真、同日即過期。真正的理由是 **flows 的 hash key 沒有逐檔代號**
+    （`#tab=&mode=&d1=&d2=&side=&rank=&etype=&inv=&sec=&sub=`，`sec`／`sub` 是類股／次產業），
+    所以仍給不出個股深連結。**結論不變、依據換掉**；畫面文案寫「沒有個股網址參數」本來就正確。
     hash key 用 **`stock=`**（處理該 key 的三行 grep `q.get("stock")`／`state.stkOpen = h.stock`／
     `p.push("stock="`，分別位於 `parseHash`／`applyHash`／`currentHash` 內），
     **刻意與 `code=` 分家**——`code=` 已被 lending／broker／diag 三個 tab 各自佔用，側欄跨 tab 都能開；
@@ -139,8 +144,10 @@
   `BATCH_DEADLINE_SEC["pm"]` 為 **180 分，但那只是上界**，實際綁住 pm 的是牌鐘。
   **同日第一版「砍成固定 30 分」已作廢**：那版的理由寫「那包 batch 本來就沒成功過，所以沒有代價」，
   **被當晚 run 34481046459 推翻**——摘要那包實跑約 **104 分鐘**後 `via` 全 batch 成功、產物台北 22:58
-  落地（早於健檢），30 分會把它 cancel 掉、白付原價。四天實際分布＝**三失敗一成功**
-  （09-07／08／09 逾 180 分未 ended 全 sync 回退；09-10 約 104 分成功）。
+  落地（早於健檢），30 分會把它 cancel 掉、白付原價。**五天**實際分布＝**三失敗兩成功**
+  （09-07／08／09 逾 180 分未 ended 全 sync 回退；09-10 約 104 分成功；09-11 整場僅
+  **7 分 32 秒**、摘要 batch 上界約 5 分）。**2026-09-13 補 09-11，原寫「四天三失敗一成功」已過期。**
+  完成時間橫跨約 5 分 ~ 104 分 ~ >180 分，**分布極寬**——任何固定分鐘數都是在賭它。
   **23:00 是餘裕的選擇、不是量出來的最適值**（截止後最壞還要摘要同步回退 4 分 17 秒＋彙總，
   留 50 分給 23:50 健檢；沒有足夠天數的完成時間分布可算最適值，**不可寫成實測結論**）。
   逐行 log 證據寫在 `build_summary.py` 的 `BATCH_DEADLINE_SEC` 上方；**要調整之前，先看幾天
