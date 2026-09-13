@@ -637,3 +637,192 @@ def test_output_market_daily_falls_back_to_lend_date_when_no_inst(monkeypatch, t
     assert all(r[2] is None and r[3] is None for r in md["rows"])
     assert [r[0] for r in md["rows"]] == _md_universe()
     assert {r[0]: r[1] for r in md["rows"]}["2330"] == 2.0
+
+
+# ---------- build_lending 列序決定性：不得隨 PYTHONHASHSEED 飄（2026-09-13） ----------
+#
+# 為什麼要有這支：`build_lending()` 的 `codes = set(...)` 是集合，迭代序由字串雜湊決定，
+# 而 CPython 預設對 str 開啟雜湊隨機化（PYTHONHASHSEED 未設＝每個行程不同）。排序若只用
+# 單鍵 `-(sys_bal + otc_bal)`，**同分列的相對位置就由那個隨機迭代序決定**——同一天的資料
+# 重跑一次，`data/postmkt.json` 就出現整片與資料無關的位移。
+#
+# 這不是理論風險，是已落地的實況（2026-09-13 以 repo 內兩個相鄰版本實測）：
+#   - `data/postmkt.json`（generated_at 2026-09-12T01:20:49+08:00）2,233 列中，`sys_bal+otc_bal`
+#     同為 0 者 164 列；連同其餘並列值，共 836 列（37.4%）落在「有並列」的鍵上。
+#   - 資料日同為 2026-09-11、`lending.rows` 成員集合完全相同的兩版（`4b0476e` 與 `068d960`），
+#     2,233 個位置中有 **552 個**的代號不同。
+# 修法＝次鍵 `c`（代號）。本測試守的是**修法本身**，不是那兩個歷史數字。
+#
+# **為什麼用 subprocess**：PYTHONHASHSEED 只在直譯器啟動時生效，同一個 pytest 行程內
+# 改 os.environ 不會改變已經建好的 str 雜湊種子，所以必須各自開新行程。
+_LENDING_ORDER_PROBE = r'''
+import json, sys
+root = sys.argv[1]
+sys.path.insert(0, root)
+sys.path.insert(0, root + "/src")
+import build_postmkt as bp
+
+# 前 12 檔給互異的借券餘額（驗主鍵仍然由大到小），其餘 48 檔餘額全為 0（全部並列，
+# 是本測試真正要觀察的那一段）。代號刻意不按字典序給，免得「碰巧有序」蓋掉真問題。
+DISTINCT = {f"{9100 + i}": (12 - i) * 1000.0 for i in range(12)}
+TIED = [f"{8000 + (i * 37) % 900}" for i in range(48)]
+TIED = sorted(set(TIED))[:40]
+
+def fake_twse(date, select_type):
+    # 只有 SLB 平台有餘額；NLB 回空（等同線上該平台查無資料的常見情形）
+    if select_type != "SLB":
+        return {}
+    return {c: {"prev": 0.0, "in": 0.0, "out": 0.0, "bal": v, "mv": 0.0}
+            for c, v in DISTINCT.items()}
+
+bp.fetch_twse_lending = fake_twse
+margin_rows = [{"stock_id": c} for c in list(DISTINCT) + TIED]
+out = bp.build_lending("2026-09-11", [], margin_rows, [], [], "", [], [], [], {})
+print(json.dumps({"order": [r["c"] for r in out["rows"]],
+                  "distinct": sorted(DISTINCT, key=lambda c: -DISTINCT[c]),
+                  "tied": sorted(TIED)}))
+'''
+
+
+def _lending_order_under_seed(seed: str) -> dict:
+    import os
+    import subprocess
+    import sys
+    env = dict(os.environ, PYTHONHASHSEED=seed)
+    root = str(pathlib.Path(__file__).resolve().parent.parent)
+    r = subprocess.run([sys.executable, "-c", _LENDING_ORDER_PROBE, root],
+                       capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+def test_lending_row_order_is_stable_across_hash_seeds():
+    """三個不同 PYTHONHASHSEED 各跑一次 build_lending，列序必須逐字相同。
+
+    只斷言「三次相同」還不夠——把次鍵拿掉時三次仍有機率相同（並列列剛好沒被洗到），
+    所以同時斷言**列序等於確定性的期望值**：主鍵由大到小，同分段依代號升冪。
+    """
+    runs = [_lending_order_under_seed(s) for s in ("0", "1", "12345")]
+    orders = [r["order"] for r in runs]
+    assert orders[0] == orders[1] == orders[2], "列序隨 PYTHONHASHSEED 改變＝排序缺決定性次鍵"
+    # 期望值：前 12 檔依餘額由大到小（主鍵），其後 40 檔餘額並列 0、依代號升冪（次鍵）
+    want = runs[0]["distinct"] + runs[0]["tied"]
+    assert orders[0] == want, "同分段未依代號升冪＝次鍵沒生效（或主鍵被次鍵蓋過）"
+    # 並列段確實存在（否則本測試等於沒測到次鍵）
+    assert len(runs[0]["tied"]) >= 40
+
+
+# ---------- 死碼守門的前提：main() 絕不製造 date != inst_date（2026-09-13） ----------
+#
+# `build_market_daily()` 的 `inst_date != date` 守門，**從 main() 呼叫時恆假**——`md_date`
+# 與 `inst_date` 都由 `d_inst` 決定（`md_date = d_inst or lend_date`、`inst_date = d_inst`）：
+# `d_inst` 為真 → 兩者相等；`d_inst` 為假 → `inst_date` 為空、條件第一項就短路。兩路窮盡。
+# 這個「恆假」是 2026-09-09 脫鉤修正的**成果**（脫鉤前它每晚都會觸發、f/t 整欄變 null），
+# 但在此之前**沒有任何測試斷言這個前提**：日後有人把 `md_date` 的取法改回 `lend_date`
+# （或改成別的資料日），守門會重新變成活的、f/t 整欄留白，而既有測試只會看到「f/t 是 null」
+# 這個**合法**狀態，不會紅。本測試把前提本身釘住。
+#
+# 做法＝攔截 build_market_daily 記錄實際傳入的 (date, inst_date)，再委派給真函式（不改行為）。
+
+def _spy_market_daily(monkeypatch) -> list:
+    calls: list = []
+    real = bp.build_market_daily
+
+    def spy(date, price_rows, inst_rows, inst_date, nm):
+        calls.append({"date": date, "inst_date": inst_date})
+        return real(date, price_rows, inst_rows, inst_date, nm)
+
+    monkeypatch.setattr(bp, "build_market_daily", spy)
+    return calls
+
+
+@pytest.mark.parametrize("scenario", ["aligned", "lagging_short_sale", "no_inst"])
+def test_main_never_passes_mismatched_inst_date_to_market_daily(monkeypatch, tmp_path, scenario):
+    """三個情境跑真正的 main()，斷言傳進 build_market_daily 的 date 與 inst_date
+    **相等，或 inst_date 為空**——也就是那道守門在 main() 這條路上永遠不會觸發。"""
+    day = dt.date.today().isoformat()
+    prev = (dt.date.today() - dt.timedelta(days=1)).isoformat()
+    api = {"aligned": None,
+           "lagging_short_sale": _lagging_short_sale_api(day, prev, day),
+           "no_inst": _lagging_short_sale_api(day, prev, None)}[scenario]
+
+    calls = _spy_market_daily(monkeypatch)
+    _run_main_offline(monkeypatch, tmp_path, api)
+
+    assert len(calls) == 1, "main() 應恰好呼叫 build_market_daily 一次"
+    c = calls[0]
+    assert (not c["inst_date"]) or c["inst_date"] == c["date"], (
+        f"main() 把不一致的日期餵進 build_market_daily：{c}——"
+        "『法人資料日 ≠ 基準日』守門會重新變成活的，f/t 將整欄留白")
+
+
+# ---------- main() 選價格的三個分支，含最後那條 else（2026-09-13 補） ----------
+#
+# `md_date == d_dt`（常態）與 `md_date == lend_date`（退回）兩條既有測試已覆蓋
+# （test_output_market_daily_date_follows_inst_not_short_sale／..._falls_back_to_lend_date_...），
+# **`else` 分支（三個日期互異、額外打一次全市場 TaiwanStockPrice）零覆蓋**。
+# 這裡把它補上：法人日落在當沖日與借券基準日之間，且三者互異。
+
+def _three_distinct_dates_api(d_dt: str, d_inst: str, d_short: str):
+    """當沖／法人／短賣餘額各自落在不同日期的 fake api_get；**價格逐日不同**
+    （2330 的 spread 依日期而異），這樣才驗得出「拿的是哪一天的價格」。"""
+    info = [{"stock_id": c, "stock_name": n} for c, n in _md_nm().items()]
+    spread_by_day = {d_dt: 2.0, d_inst: 6.0, d_short: -4.0}
+
+    def price_for(d):
+        rows = []
+        for r in _md_price_rows():
+            r = dict(r, date=d)
+            if r["stock_id"] == "2330":
+                r["spread"] = spread_by_day[d]
+                r["close"] = 100.0 + spread_by_day[d]
+            rows.append(r)
+        return rows
+
+    def fake_api_get(dataset, **kw):
+        d = kw.get("start_date")
+        if dataset == "TaiwanStockInfo":
+            return info
+        if dataset == "TaiwanStockPrice":
+            return price_for(d) if d in spread_by_day else []
+        if dataset == "TaiwanStockDayTrading":
+            return [{"stock_id": "2330", "Volume": 1_000, "BuyAmount": 200, "SellAmount": 100}] if d == d_dt else []
+        if dataset == "TaiwanStockInstitutionalInvestorsBuySell":
+            return _md_inst_rows() if d == d_inst else []
+        if dataset == "TaiwanDailyShortSaleBalances":
+            return [{"stock_id": "2330", "SBLShortSalesCurrentDayBalance": 500_000}] if d == d_short else []
+        return []
+
+    return fake_api_get
+
+
+def test_main_extra_price_query_when_all_three_dates_differ(monkeypatch, tmp_path):
+    """d_inst／d_dt／lend_date 三者互異 → 走 else 分支，額外查一次 md_date 當天的價格。"""
+    d_dt = dt.date.today().isoformat()
+    d_inst = (dt.date.today() - dt.timedelta(days=1)).isoformat()
+    d_short = (dt.date.today() - dt.timedelta(days=2)).isoformat()
+
+    seen: list = []
+    api = _three_distinct_dates_api(d_dt, d_inst, d_short)
+
+    def recording_api(dataset, **kw):
+        seen.append((dataset, kw.get("start_date")))
+        return api(dataset, **kw)
+
+    out = _run_main_offline(monkeypatch, tmp_path, recording_api)
+
+    # 前提：三個日期真的互異（否則本測試測到的是別的分支）
+    assert out["lending"]["date"] == d_short
+    assert out["daytrading"]["date"] == d_dt
+    md = out["market_daily"]
+    assert md["date"] == d_inst
+    assert len({d_dt, d_inst, d_short}) == 3
+
+    # else 分支的可觀測證據①：真的對 md_date 當天打了一次 TaiwanStockPrice
+    assert ("TaiwanStockPrice", d_inst) in seen, "三日期互異時應額外查一次 md_date 的價格"
+    # 證據②：market_daily 的 chg 來自 md_date 那天的價格，不是當沖日或借券基準日那天的
+    chg = {r[0]: r[1] for r in md["rows"]}["2330"]
+    assert chg == 6.0, f"chg 應取自 {d_inst} 的價格（spread 6.0 / 前收 100），實得 {chg}"
+    # 法人欄照常有值（md_date == d_inst，守門不觸發）
+    by_c = {r[0]: r for r in md["rows"]}
+    assert by_c["2330"][2] == 1500 and by_c["2330"][3] == -300

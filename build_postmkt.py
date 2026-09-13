@@ -391,7 +391,16 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
         else:
             row["dt_vol"] = row["dt_amt"] = row["dt_diff"] = None
 
-    rows_out.sort(key=lambda x: -(x["sys_bal"] + x["otc_bal"]))  # 依兩平台借券餘額合計
+    # 依兩平台借券餘額合計排序，**次鍵 c（代號）不是美化、是決定性的必要條件**：上面的
+    # `codes = set(...)` 是集合，迭代序隨 PYTHONHASHSEED 每個行程都不同，而同分列非常多——
+    # 本 repo 已落地的 data/postmkt.json（generated_at 2026-09-12T01:20:49+08:00）實測 2,233 列
+    # 裡有 164 列的 sys_bal+otc_bal 同為 0，**連同其餘並列值共 836 列（37.4%）落在有並列的鍵上**。
+    # 單鍵排序時這些同分列的相對位置每次建置都重洗，於是同一個資料日重跑就會產生整片與資料
+    # 無關的位移：實測同為資料日 2026-09-11、成員完全相同的兩版（4b0476e vs 068d960），
+    # 2,233 個位置有 **552 個**的代號不同。加次鍵後同分列有唯一且決定性的順序，diff 只剩真變化。
+    # 對消費端無影響：三處衍生欄公式（index.html augmentLending()／build_summary.py
+    # _augment_lending()／已下線的舊後端版）都是逐列就地計算，不讀前後列、不依賴列序。
+    rows_out.sort(key=lambda x: (-(x["sys_bal"] + x["otc_bal"]), x["c"]))
     # 不截斷到TOP_N：Table1的定位是「查任一檔股票」，前端主排行榜只顯示前TOP_N，
     # 但完整清單要留給搜尋功能查詢不在前段班的股票（見cmoney-sbl-mapping-research.md）。
     return {"date": date, "rows": rows_out,

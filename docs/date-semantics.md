@@ -124,12 +124,12 @@
 ### data/postmkt.json
 | 欄位 | 語意 | 時區 | 粒度 |
 |------|------|------|------|
-| `date` | 盤後主資料交易日（各段 date 取 max） | 台北 | 交易日 |
+| `date` | 盤後主資料交易日 ＝ **七支 FinMind dataset**（margin／lend／short／dt／block／inst／hold）**的日期取 max**（`build_postmkt.py` grep `dates = [d for d in (d_margin`）。**不含兩支 TWSE 零股日** `d_oddi`／`d_odda`，所以「各段 date 取 max」是過寬的說法（2026-09-13 更正）。前端頂列 `pmStatus()` 判新鮮度用的就是這個 | 台北 | 交易日 |
 | `generated_at` | 產出時刻 | P4 改台北 +08:00（原 UTC `+00:00`） | 時刻 |
 | `margin/lending/short_balance/daytrading/blocktrade.date` | 各 dataset 的交易日 | — | 交易日 |
 | `oddlot.intraday.date` / `oddlot.after.date` | 零股盤中／盤後交易日 | — | 交易日 |
 | `brokers.date` | 分點查詢預設日（與當沖對齊） | — | 交易日 |
-| `market_daily.date` | 全市場逐檔精簡表（持股異動 tab）的基準日 ＝ **法人日 `d_inst`**（`TaiwanStockInstitutionalInvestorsBuySell` 的資料日；抓不到才退回 `lending.date`）。**2026-09-09 起與 `lending.date` 脫鉤**（原本共用 `lend_date`）。**與最上層 `date` 語意不同**（那個是各段 date 取 max），兩者值可能不同 | 2026-09-09 由 `lending.date`（`lend_date`）改綁 `d_inst` | 交易日 |
+| `market_daily.date` | 全市場逐檔精簡表（持股異動 tab）的基準日 ＝ **法人日 `d_inst`**（`TaiwanStockInstitutionalInvestorsBuySell` 的資料日；抓不到才退回 `lending.date`）。**2026-09-09 起與 `lending.date` 脫鉤**（原本共用 `lend_date`）。**與最上層 `date` 語意不同**（那個是七支 FinMind dataset 的日期取 max，見本表 `date` 列），兩者值可能不同 | 2026-09-09 由 `lending.date`（`lend_date`）改綁 `d_inst` | 交易日 |
 | `date_mismatch` | P5 新增：借券 tab 落後偵測 `[{name,date}]`，非空＝有 dataset 落後於 `lending.date` 基準 | — | 交易日 |
 
 > `lending.date` 是借券 tab 多 dataset 的對齊基準（取短餘額表日）；某 dataset 與之不同即進 `date_mismatch`。
