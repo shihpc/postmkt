@@ -153,7 +153,7 @@
 
 - **`f`／`t` 為 `null` ≠ 無異動——不得當成 0，也不得說成「無顯著異動」**。
   `build_market_daily()` 在**法人資料日 ≠ 基準日**時會把整欄 `f`／`t` 寫成 `null`
-  （寧缺勿混；`build_postmkt.py` grep `法人資料日與本區塊基準日`（**唯一命中**，:549）——同檔**裸名 `法人資料日` 有 3 處命中**（2026-09-10 重數更正，原寫 2 處）：:549 docstring（**就是上面那個錨點所在的那一行，它自己也算一次**，這正是前三次同型錯誤漏算的那一種）、:573 守門觸發時的 `print`、:787 `main()` 裡 `md_date` 上方的說明註解。數法＝`grep -o 法人資料日 build_postmkt.py | wc -l` ＝ 3；本例 `grep -c`（**算行數**）恰巧也是 3，因為沒有任何一行出現兩次——**兩者巧合相等、不可互相取代**。計數範圍**僅限 `build_postmkt.py`**（全 repo 另有 README／CLAUDE.md／index.html／tests／CHANGELOG 等多處，不在此數內）。守門測試
+  （寧缺勿混；`build_postmkt.py` grep `法人資料日與本區塊基準日`（**唯一命中**，:549）——同檔**裸名 `法人資料日` 有 3 處命中**（2026-09-10 重數更正，原寫 2 處）：:571 docstring（**就是上面那個錨點所在的那一行，它自己也算一次**，這正是前三次同型錯誤漏算的那一種）、:595 守門觸發時的 `print`、:809 `main()` 裡 `md_date` 上方的說明註解（**這三個行號 2026-09-13 重量過兩次**：本節寫成 :549／:573／:787 時就已經是舊值——`53c5ac0` 當下實為 :558／:582／:796——本批在 `build_lending()` 又加了 13 行註解後成為現值。**又一次證明行號會漂**，判讀時一律以上面那個 grep 宣告式錨點為準）。數法＝`grep -o 法人資料日 build_postmkt.py | wc -l` ＝ 3；本例 `grep -c`（**算行數**）恰巧也是 3，因為沒有任何一行出現兩次——**兩者巧合相等、不可互相取代**。計數範圍**僅限 `build_postmkt.py`**（全 repo 另有 README／CLAUDE.md／index.html／tests／CHANGELOG 等多處，不在此數內）。守門測試
   `test_market_daily_inst_date_mismatch_blanks_f_t`），單檔查無法人資料時同樣寫 `null` 而非 0
   （`test_market_daily_missing_inst_is_null_not_zero`）。**前端把 `null` 讀成 0 或「無顯著異動」，
   等於原封不動複製本節開頭引用的那個舊坑**（入口站「我的異動」舊版只讀 `latest.json`，
@@ -213,11 +213,13 @@
   `market_daily.date` ＝ `build_market_daily()` 的基準日，**2026-09-09 起＝法人日 `d_inst`**
   （價格／法人資料日；同日修正前綁的是借券 tab 的 `lend_date`，見 CHANGELOG）。它**與
   `data/postmkt.json` 最上層的 `date`（頂列顯示的全檔基準日）語意不同**：該 `date` 實查
-  `build_postmkt.py:777-778` 的 `dates = [...]`／`latest = max(dates)`（2026-09-13 由 :768-769
-  更新——同批在 `build_lending()` 的排序上方加了 9 行說明註解，把 `main()` 整段往下推；
+  `build_postmkt.py:790-791` 的 `dates = [...]`／`latest = max(dates)`（2026-09-13 內兩度更新：
+  先由 :768-769 →:777-778（`build_lending()` 排序上方加註解），再→:790-791（同節的註解依驗收
+  意見重寫、又長了 13 行）。**這正是行號錨點的通病：同一天就漂了兩次**——
   **行號會漂、宣告式不會**，要 grep 的話用 `dates = [d for d in (d_margin`），**只取 margin／lend／
   short／dt／block／inst／hold 七支 FinMind dataset 的日期**，**不含**兩支 TWSE 零股日期
-  `d_oddi`／`d_odda`（`build_postmkt.py:774-775`），所以寫成「所有資料源的最大日」是過寬的。
+  `d_oddi`／`d_odda`（`build_postmkt.py:787-788`，錨點用 `d_oddi, r_oddi = `），
+  所以寫成「所有資料源的最大日」是過寬的。
   脫鉤後常態相等，但只要有任何一支資料源比法人更新，兩者就會再度分開，**相等不是保證**。
   脫鉤前的實測是系統性差一天（線上 `44ef7e7`：頂列 `2026-09-09`、本區塊 `2026-09-08`）
   ——那是本軸的成因證據，脫鉤只縮小發生頻率、**沒有消滅這個狀態**，所以本軸的**規範**一字不改。同一畫面同時

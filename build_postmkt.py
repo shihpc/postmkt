@@ -397,10 +397,23 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
     # 裡有 164 列的 sys_bal+otc_bal 同為 0，**連同其餘並列值共 836 列（37.4%）落在有並列的鍵上**。
     # 單鍵排序時這些同分列的相對位置每次建置都重洗，於是同一個資料日重跑就會產生整片與資料
     # 無關的位移：實測同為資料日 2026-09-11、成員完全相同的兩版（4b0476e vs 068d960），
-    # 2,233 個位置有 **552 個**的代號不同。加次鍵後同分列有唯一且決定性的順序，diff 只剩真變化。
+    # 2,233 個位置有 **552 個**的代號不同。加次鍵後同分列有唯一且決定性的順序。
+    #
+    # **效益的誠實量級（實測，不是估計；勿再寫成「diff 只剩真變化」那種無條件說法）**：
+    # data/postmkt.json 是**單行 JSON**（本檔 json.dump 的 separators=(",",":")、`wc -l` 為 0），
+    # 所以**文字層面的 git diff 本來就是整行變更**，加次鍵不會、也不可能讓 diff「只剩真變化」。
+    # 真正省到的是 packfile 的 delta：單版 base 306,103 B，「同資料重跑、舊碼」增量約 4,375 B，
+    # 一次性重排增量約 3,794 B（2,233 個位置中 536 個代號不同＝24.0%）。也就是
+    # **一次性約 3.8KB ＋ 每次重跑省下約 4.4KB 的噪音**，不是「大 diff」。
+    # 另外 generated_at 每次都變，所以**不會**出現「重跑產物逐位元組相同因此不 commit」的額外好處。
+    #
+    # 次鍵寫 `x["c"] or ""`（不是裸 x["c"]）：`margin_by_c`／`short_by_c` 以
+    # `r.get("stock_id")` 建鍵且**無預設值**，上游任一列缺 stock_id 就會讓 codes 混進 None，
+    # 主鍵並列時 str 與 None 相比會拋 TypeError（單鍵版不會炸，是次鍵引進的新當機路徑）。
+    # 對正常資料排序語意逐位不變。守門測試 test_build_lending_sort_tolerates_none_code。
     # 對消費端無影響：三處衍生欄公式（index.html augmentLending()／build_summary.py
     # _augment_lending()／已下線的舊後端版）都是逐列就地計算，不讀前後列、不依賴列序。
-    rows_out.sort(key=lambda x: (-(x["sys_bal"] + x["otc_bal"]), x["c"]))
+    rows_out.sort(key=lambda x: (-(x["sys_bal"] + x["otc_bal"]), x["c"] or ""))
     # 不截斷到TOP_N：Table1的定位是「查任一檔股票」，前端主排行榜只顯示前TOP_N，
     # 但完整清單要留給搜尋功能查詢不在前段班的股票（見cmoney-sbl-mapping-research.md）。
     return {"date": date, "rows": rows_out,

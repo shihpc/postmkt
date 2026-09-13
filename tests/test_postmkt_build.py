@@ -712,6 +712,30 @@ def test_lending_row_order_is_stable_across_hash_seeds():
     assert len(runs[0]["tied"]) >= 40
 
 
+def test_build_lending_sort_tolerates_none_code():
+    """次鍵引進的新當機路徑：codes 混進 None 時排序不得拋 TypeError（2026-09-13）。
+
+    可達性不是假想的：`margin_by_c`／`short_by_c` 都以 `r.get("stock_id")` 建鍵且**無預設值**，
+    上游任一列缺 `stock_id` 就會讓 `codes = set(...)` 混進 `None`。主鍵（sys_bal+otc_bal）並列
+    的列佔實測約 37%，所以 None 幾乎必然與某個 str 同分 → 裸次鍵 `x["c"]` 會拋
+    `TypeError: '<' not supported between instances of 'str' and 'NoneType'`。
+    **單鍵版不會炸，這是次鍵引進的新路徑**，故修法是 `x["c"] or ""`。
+
+    mutation 守門：把 `build_postmkt.py` 的 `or ""` 拿掉，本測試必須轉紅。
+    """
+    # date="" → 跳過 TWSE 網路呼叫，sys_bal/otc_bal 全 0 ⇒ 三列主鍵全部並列（正是會爆的那段）
+    margin_rows = [{"stock_id": "1102"}, {}, {"stock_id": "1101"}]   # 第二列缺 stock_id → None
+    short_rows = [{"stock_id": None}]                                # 顯式 None，與上面同一把鍵
+    out = bp.build_lending("", [], margin_rows, short_rows, [], "", [], [], [], {})
+
+    codes = [r["c"] for r in out["rows"]]
+    # 列數：{"1101", "1102", None} 共 3 把鍵（兩處 None 是同一把，集合去重）
+    assert len(codes) == 3, codes
+    assert set(codes) == {"1101", "1102", None}
+    # 並列段仍為確定性順序：None 以 "" 參與比較 ⇒ 排在所有代號之前，其餘依代號升冪
+    assert codes == [None, "1101", "1102"], codes
+
+
 # ---------- 死碼守門的前提：main() 絕不製造 date != inst_date（2026-09-13） ----------
 #
 # `build_market_daily()` 的 `inst_date != date` 守門，**從 main() 呼叫時恆假**——`md_date`
