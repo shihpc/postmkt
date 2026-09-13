@@ -62,9 +62,17 @@ TOP_N 用於別的函式產的榜：`build_margin()` 的融資增加／減少／
 - **三處衍生欄公式**：`index.html` 的 `augmentLending()`（`for (const r of rows)`）與
   `build_summary.py` 的 `_augment_lending()`（`for r in rows`）都是**逐列就地計算**，
   只讀該列自己的欄位、不讀前後列、不用索引 → 與列序無關。
-- **會消費列序的是切片**：`build_summary.py` 的 `lr[:25]`（摘要取前 25）與前端排行榜的 `TOP_N`。
-  它們的行為**只會變得更確定**（同分列不再隨機）；且現行資料**前 50 名沒有任何並列**
-  （實測 `data/postmkt.json`，`k[i] == k[i+1]` 在前 50 內零命中），所以當下輸出不變。
+- **會消費列序的切片恰有兩處，都是取前 25**：`build_summary.py` 的 `lr[:25]` 與
+  `index.html` `insightGatherContext()` 的 `lr.slice(0,25)`（畫面標籤「融借券整合排行 前25」）。
+  兩者的行為**只會變得更確定**（同分列不再隨機）；且現行資料**前 25 名沒有任何並列**
+  （實測 `data/postmkt.json`，`k[i] == k[i+1]` 在前 25 內零命中；順帶量到前 50 內也是零），
+  所以當下輸出不變。
+  （**2026-09-13 三次更正**：本條原寫「與前端排行榜的 `TOP_N`」——那是同一個虛構物的最後一份
+  殘留，與本則上方「`grep -n 'slice(0,50)\|TOP_N' index.html` 零命中」那句**直接打架**。
+  `grep -c TOP_N index.html` ＝ 0；更根本的是 `margin`／`lending`／`short_balance`／`daytrading`
+  四支 builder 在 `main()` 裡是**平行呼叫、各吃各的上游列表**，沒有任何一支收到 `rows_out`，
+  所以 TOP_N 在**結構上**就不可能消費 `lending.rows` 的列序。連帶把切點由 50 改回真正相關的
+  25——原本的「前 50」正是從那個不存在的 TOP_N 推來的。）
 - **既有測試沒有綁順序**：`tests/test_postmkt_build.py` 的 lending 三支測試都用單列 fixture
   取 `["rows"][0]`，`tests/test_summary_gates.py` 的 `_augment_lending` 四支是純函式對照，
   兩者都與多列排序無關。

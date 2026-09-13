@@ -423,7 +423,10 @@ def build_lending(date: str, lend_rows: list, margin_rows: list, short_rows: lis
     # index.html 的融借券整合排行是 tbl([...], allRows)、allRows = l.rows，**整張表全列
     # 渲染**（列數超過 VIRTUAL_THRESHOLD 只做虛擬捲動，決定當下畫幾列 DOM、不丟任何列），
     # 全檔 grep 'slice(0,50)' 與 'TOP_N' 皆零命中。TOP_N 套用在別的函式產的榜：
-    # build_margin() 的融資增加/減少/使用率（:250-253，排序鍵 chg = bal - prev ＝**融資餘額
+    # build_margin() 的融資增加/減少/使用率（錨點 grep 'def build_margin('，**2 處命中：
+    # 本註解這一行＋宣告式本身，宣告式才是目標**——在同一個檔裡寫出錨點字串，
+    # 「寫出來」這個動作本身就會讓它多一次命中，所以這裡不宣稱「唯一命中」。
+    # 排序鍵 chg = bal - prev ＝**融資餘額
     # 異動**，不是漲跌幅；前端標籤即「融資增加榜/融資減少榜/融資使用率榜」）、
     # build_short_balance() 的 margin_short/sbl、build_daytrading() 的當沖金額榜，
     # **都不套用在本函式的 rows_out**。
