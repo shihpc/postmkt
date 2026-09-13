@@ -182,3 +182,30 @@ def test_now_is_injectable_and_defaults_to_taipei_now(monkeypatch):
     assert abs(bs.batch_deadline("pm", now) - 20 * 60) <= 2
     monkeypatch.setattr(bs, "taipei_now", lambda: tpe(23, 10))
     assert bs.batch_deadline("pm", now) == 0
+
+
+def test_pm_cutoff_does_not_bind_after_midnight():
+    """⑥ 跨午夜：`now` 落在台北 00:xx 時，牌鐘不綁、回落 180 分上界（2026-09-13 補）。
+
+    `batch_deadline` 的牌鐘是 `n.replace(hour=23, minute=0)`——**同一個日曆日的 23:00**，
+    不是「下一個 23:00」。所以清晨 00:10 算出來的「距截止剩餘」是約 22 小時 50 分（往後看，
+    不是負的往前看），三條上限取最小之後由場次期限 180 分勝出。這條路徑原本只有註解描述、
+    零測試，而 pm 場實務上會跨午夜（2026-09-10 那班摘要 batch 實跑約 104 分鐘、產物台北 22:58
+    落地；逾時回退的幾天更晚），一旦有人把牌鐘改成「取下一個 23:00」或改用 UTC 比較，
+    清晨那段就會從 180 分變成 0（整包跳過 batch）或反過來爆表，而現有測試全都在 19:00–23:59
+    之間、抓不到。
+
+    **不是**在主張「pm 場一定會跑到清晨」——只是這個時點算得出來、就該有明確的期望值。
+    """
+    import time as _t
+    now = _t.monotonic()
+    # 00:10 距同日 23:00 還有 22h50m，遠大於 180 分上界 → 取 180 分
+    assert abs(bs.batch_deadline("pm", now, tpe(0, 10)) - 180 * 60) <= 2
+    # 00:00 整、以及 02:30、08:00 同理（都在當日 23:00 之前，牌鐘一律不綁）
+    for t in (tpe(0, 0), tpe(2, 30), tpe(8, 0)):
+        assert abs(bs.batch_deadline("pm", now, t) - 180 * 60) <= 2
+    # 清晨時段牌鐘不綁，但**全場預算照樣綁**：耗掉 100 分 → 225-100-15=110 分
+    assert abs(bs.batch_deadline("pm", now - 100 * 60, tpe(0, 10)) - 110 * 60) <= 2
+    # 對照組：同樣是「距 23:00 很遠」，19:00 早已有測試涵蓋；這裡確認清晨與它同值，
+    # 也就是跨午夜沒有走進別條路徑
+    assert bs.batch_deadline("pm", now, tpe(0, 10)) == bs.batch_deadline("pm", now, tpe(19, 0))

@@ -47,7 +47,11 @@
   **`market_daily` 區塊（2026-09-09 新增，供「持股異動」用）**：全市場逐檔精簡底表，
   形狀比照 taiwan-flows `data/daily/<d>.json` 的 `{date, cols, rows}` 欄式二維陣列，
   `cols` ＝ `["c","chg","f","t"]`（代號／漲跌%／外資買賣超張／投信買賣超張），
-  `date` ＝ `lending.date`（與最上層 `date` 語意不同，見 `docs/date-semantics.md`）。
+  `date` ＝ **法人日 `d_inst`**（`build_postmkt.py` grep `md_date = d_inst or lend_date`，
+  取不到才退回 `lend_date`）。**2026-09-13 更正：原寫「＝`lending.date`」，那是 2026-09-09
+  基準日脫鉤前的舊事實，脫鉤當批漏改這一句。**與最上層 `date`（＝七支 FinMind dataset 取 max
+  的全檔基準日）語意不同、與 `lending.date` 也可能不同，見 `docs/date-semantics.md`
+  與下方「前端消費 `market_daily` 的必要條件」第五軸。
   **宇宙＝當日 `TaiwanStockPrice` ∩ `TaiwanStockInfo`（`nm`）－ 商品類黑名單**，兩者建置時
   都已在手、零額外 API 呼叫；**不能直接用整包 `TaiwanStockPrice`**——它單日全市場就有 4.5 萬列
   （2026-09-09 CI 實測 45,675 列，權證佔絕大多數），照單全收會讓全檔從 ~1.65 MB 變成
@@ -209,9 +213,11 @@
   `market_daily.date` ＝ `build_market_daily()` 的基準日，**2026-09-09 起＝法人日 `d_inst`**
   （價格／法人資料日；同日修正前綁的是借券 tab 的 `lend_date`，見 CHANGELOG）。它**與
   `data/postmkt.json` 最上層的 `date`（頂列顯示的全檔基準日）語意不同**：該 `date` 實查
-  `build_postmkt.py:768-769` 的 `dates = [...]`／`latest = max(dates)`，**只取 margin／lend／
+  `build_postmkt.py:777-778` 的 `dates = [...]`／`latest = max(dates)`（2026-09-13 由 :768-769
+  更新——同批在 `build_lending()` 的排序上方加了 9 行說明註解，把 `main()` 整段往下推；
+  **行號會漂、宣告式不會**，要 grep 的話用 `dates = [d for d in (d_margin`），**只取 margin／lend／
   short／dt／block／inst／hold 七支 FinMind dataset 的日期**，**不含**兩支 TWSE 零股日期
-  `d_oddi`／`d_odda`（`build_postmkt.py:765-766`），所以寫成「所有資料源的最大日」是過寬的。
+  `d_oddi`／`d_odda`（`build_postmkt.py:774-775`），所以寫成「所有資料源的最大日」是過寬的。
   脫鉤後常態相等，但只要有任何一支資料源比法人更新，兩者就會再度分開，**相等不是保證**。
   脫鉤前的實測是系統性差一天（線上 `44ef7e7`：頂列 `2026-09-09`、本區塊 `2026-09-08`）
   ——那是本軸的成因證據，脫鉤只縮小發生頻率、**沒有消滅這個狀態**，所以本軸的**規範**一字不改。同一畫面同時
@@ -226,6 +232,15 @@
     **刻意不新增紅黃綠判級**（判級語意未經裁決，CANON 第 8 條），只把「這些數字是哪一天的」講清楚。
   - **兩個資料日並存要明講**：`market_daily.date` ≠ 最上層 `date` 時，說明列會指出頂列那個是全檔
     基準日、本區塊另以自己的資料日為準（比照 CLAUDE.md 個股摘要側欄「每段自帶自己的資料日」）。
+  - **頂列不會改成跟隨本區塊——這是刻意的，不是還沒做**（2026-09-13 使用者裁決：`pmStatus()`
+    維持讀 `pm.date`，**不改程式**）。兩者是**不同的軸**，不是同一個數字的兩種寫法：
+    頂列答的是「**這份資料檔整體走到哪一天**」（給的是全檔新鮮度，`pmStatus()` 據此判「正常／延遲／
+    休市定格」），本區塊答的是「**這張表本身是哪一天的**」。要讓頂列跟隨單一區塊，就得從 14 個 tab
+    裡挑一個當代表——而各 tab 吃的 dataset 不同、資料日本來就會不一樣（借券 tab 走 `lend_date`、
+    當沖走 `d_dt`、本區塊走 `d_inst`…），綁死其中一個會讓**其餘 13 個 tab 的頂列變得不準**：
+    例如法人日領先短賣日的那天，頂列若改顯示 `market_daily.date`，借券 tab 的使用者看到的頂列
+    就比該 tab 自己的資料日還新。正解是**每段自帶自己的資料日**＋兩者不同時明講（本軸的規範），
+    而不是把頂列改成某一段的日期。
 
 - **第六軸：整表不可用時，頂列徽章不得把它報成正常涵蓋**（2026-09-09 補；修完第五軸後主動自查找到）。
   舊版 `renderStats()` 的 `mychg` 分支自己算 `(md.rows||[]).length`，與內文的健康度判斷各寫一份，

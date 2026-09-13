@@ -3,6 +3,97 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-09-13 收尾批：`build_lending` 排序決定性、兩個資料日的定位、三條待辦結案
+
+使用者裁決在先，本批照做：①頂列 `pmStatus` 維持用 `pm.date`、**不改程式**，只補文件；
+②`MYCHG_STALE_LAG` **不標「無回測依據」**，只寫清楚它為何不落在 CANON 第 8 條的射程內；
+③`build_lending` 的排序**要修**（加次鍵）；④`LIVE_TTL` 不在本 repo，略過。
+
+### 唯一的程式變更：`build_lending()` 排序加次鍵 `c`（代號）
+
+`rows_out.sort(key=lambda x: -(x["sys_bal"] + x["otc_bal"]))` 原為**單鍵**，而同函式的
+`codes = set(...)` 是集合、迭代序隨 `PYTHONHASHSEED` 每個行程都不同 → **同分列的相對位置
+每次建置都重洗**。這不是理論風險，是已落地的實況（本批以 repo 內既有產物實測）：
+
+- `data/postmkt.json`（`generated_at` `2026-09-12T01:20:49+08:00`）`lending.rows` **2,233 列**，
+  其中 `sys_bal+otc_bal` 同為 0 者 **164 列**；連同其餘並列值，共 **836 列（37.4%）**落在有並列的鍵上。
+- 資料日同為 `2026-09-11`、**成員集合完全相同**的兩個版本（`4b0476e` 與 `068d960`），
+  2,233 個位置中有 **552 個**的代號不同——整片與資料無關的位移。
+
+改成 `key=lambda x: (-(x["sys_bal"] + x["otc_bal"]), x["c"])`。**代號欄名實查是 `c`**（不是猜的）。
+
+**⚠ 一次性大 diff**：下一班 `build.yml` 產出的 `data/postmkt.json` 會因為列序重排而有一次
+很大的 diff（上面那 552 個位置起跳，實際數字視當天並列分布而定），**之後才穩定下來**。
+這是預期行為，不要誤判成資料壞掉。
+
+**逐項確認過、不受影響的東西**（讀過程式碼，不是「應該不影響」）：
+
+- **三處衍生欄公式**：`index.html` 的 `augmentLending()`（`for (const r of rows)`）與
+  `build_summary.py` 的 `_augment_lending()`（`for r in rows`）都是**逐列就地計算**，
+  只讀該列自己的欄位、不讀前後列、不用索引 → 與列序無關。
+- **會消費列序的是切片**：`build_summary.py` 的 `lr[:25]`（摘要取前 25）與前端排行榜的 `TOP_N`。
+  它們的行為**只會變得更確定**（同分列不再隨機）；且現行資料**前 50 名沒有任何並列**
+  （實測 `data/postmkt.json`，`k[i] == k[i+1]` 在前 50 內零命中），所以當下輸出不變。
+- **既有測試沒有綁順序**：`tests/test_postmkt_build.py` 的 lending 三支測試都用單列 fixture
+  取 `["rows"][0]`，`tests/test_summary_gates.py` 的 `_augment_lending` 四支是純函式對照，
+  兩者都與多列排序無關。
+
+### 新測試三組（各做過突變測試，證明會紅）
+
+| 測試 | 守什麼 | 突變 → 結果 |
+|---|---|---|
+| `test_lending_row_order_is_stable_across_hash_seeds` | 三個 `PYTHONHASHSEED`（0／1／12345）各開一個子行程跑 `build_lending`，列序必須**逐字相同**，且等於確定性期望值（主鍵降冪＋同分段代號升冪） | 拿掉次鍵 → **紅**（`At index 12 diff: '8629' != '8543'`） |
+| `test_main_never_passes_mismatched_inst_date_to_market_daily`（3 個情境） | 釘住「`build_market_daily` 的 `inst_date != date` 守門從 `main()` 呼叫恆假」這個**前提**——攔截該函式記錄實際參數，斷言 `date == inst_date` 或 `inst_date` 為空 | ①`md_date = d_inst or lend_date` → `lend_date`：**紅**；②把 `inst_date` 引數由 `d_inst` 改成 `d_dt`：**紅**（這一個**既有測試抓不到**，證明本測試不是冗餘） |
+| `test_main_extra_price_query_when_all_three_dates_differ` | `main()` 選價格的 `else` 分支（`d_inst`／`d_dt`／`lend_date` 三者互異 → 額外查一次 `TaiwanStockPrice`），原本**零覆蓋** | `else` 改成沿用 `r_price` → **紅** |
+| `test_pm_cutoff_does_not_bind_after_midnight`（`tests/test_summary_batch.py`） | `batch_deadline` 的**跨午夜**路徑：`now` 在台北 00:xx 時牌鐘（同日 23:00）不綁、回落 180 分上界；原本只有註解描述、零測試 | 把清晨的牌鐘當成「昨天那個 23:00」→ **紅**（回 0＝整包跳過 batch） |
+
+**`PM_BATCH_CUTOFF_HM` 的值與 `batch_deadline` 的算式一個字都沒動**，新測試只是把既有行為釘住。
+
+### 文件與註解（無行為變更）
+
+1. **兩個資料日的定位**（裁決 1，純文件）：`CLAUDE.md` 持股異動節與 `README.md` 第五軸都補上
+   「頂列與區塊是**不同的軸**、刻意不統一」的理由——頂列答「這份檔整體走到哪一天」，
+   區塊答「這張表是哪一天」；要頂列跟隨單一區塊就得從 14 個 tab 挑一個當代表，
+   會讓**其餘 13 個 tab 的頂列變得不準**。正解是每段自帶自己的資料日＋不同時明講。
+2. **`pm.date` 的定義修正**：原寫「各段 date 取 max」是**過寬**的——實為
+   **七支 FinMind dataset**（margin／lend／short／dt／block／inst／hold）取 max，
+   **不含兩支 TWSE 零股日** `d_oddi`／`d_odda`。改了 `CLAUDE.md` 與
+   `docs/date-semantics.md`（後者的 `date` 列與 `market_daily.date` 列各一處）。
+3. **`README.md` 架構節的 `market_daily.date` ＝ `lending.date` 是舊事實**（2026-09-09 脫鉤那批
+   漏改這一句）→ 改成「＝法人日 `d_inst`，取不到才退回 `lend_date`」。這條**不在本批驗收條件內**，
+   是改文件時撞見的直接矛盾，順手修掉並記在這裡。
+4. **`MYCHG_STALE_LAG` 的註解重寫**（裁決 2）：**拿掉「無回測依據」標記**，改寫清楚它為何不適用
+   CANON 第 8 條——它不參與排序／篩選／達標判定／分級，只決定「要不要多出一段資料偏舊的說明」，
+   改它**畫面上列出的股票與數字一個都不會變**，屬同條後半的「純描述性顯示」。
+   同時點明它與 `±100 張`／`±3%` **性質不同、刻意不同標**（那兩個會決定哪幾檔出現在使用者眼前
+   ＝影響候選排序，所以三處畫面文案都帶「無回測依據，不是買賣訊號」；本常數不進畫面文案）。
+   也誠實寫明「2」這個值**本身沒有量測依據，是餘裕的選擇**。
+5. **`index.html` 兩個自我指涉計數改正**（結案「待下批同步」前兩條）：
+   `grep -o 'location.hash = ' index.html | wc -l` ＝ **3**（上方例外說明 1、計數說明本行 1、
+   實作賦值 1）——**「全站唯一的『賦值』是它」為真、「唯一命中」為假**；
+   `grep -o data-mychg index.html | wc -l` ＝ **5**（舊寫 4，少算的正是宣稱句自己）。
+   **兩個數字都在改完之後重數過**，並把「怎麼數的」寫進註解：固定用 `grep -o …|wc -l`（出現次數），
+   `grep -c`（行數）在這兩個字串上**恰好也是 3 與 5**，因為沒有任何一行出現兩次——**巧合相等、
+   不可互相取代**。計數範圍僅限 `index.html`。
+6. **六軸序號對齊**（結案第三條）：`index.html` 的 ③④ 以 **README 的軸序**為準對調
+   （③＝`chg`／`f`／`t` 三欄全 `null`、④＝整表殘缺），三方的**集合**與**序號**現已一致。
+   **六軸的規範內容一字未改**，只動序號與兩段的先後。`CLAUDE.md` 裡引用舊編號的那句歷史敘述
+   （「與 `index.html` ③ 直接相反」）同批標明「當時編號 ③、重編號後為 ④」，免得日後對不上。
+7. **`README.md` 第五軸的 `build_postmkt.py` 行號**由 `:768-769`／`:765-766` 更新為
+   `:777-778`／`:774-775`——本批在 `build_lending()` 排序上方加了 9 行說明註解，把 `main()`
+   整段往下推。同時補一句「行號會漂、宣告式不會」並給出可 grep 的宣告式錨點。
+
+### 沒做／不確定（誠實列出）
+
+- **本批未經 fresh-context subagent 驗收**（CANON 第 3 條要求由主對話另行派工）。
+- **`data/postmkt.json` 沒有重跑**（需要 `FINMIND_TOKEN` 與網路），所以「一次性大 diff」的
+  實際規模只有**推估**（以歷史兩版的 552 個位移為下界），**不是實測**。排序修正本身
+  由離線三 seed 測試守著。
+- 前端只跑了 `node --check`（語法），**沒有**做 14 tab 逐一點擊的 console 檢查——
+  本批對 `index.html` 的改動實查（`git diff -U0 | grep -v '^[+-]//'`）只有**一行非註解**：
+  `const MYCHG_STALE_LAG = 2;` 的**行尾註解被移到上方**、常數值與語句本身逐字不變，
+  其餘全是 `//` 註解行。但「沒實際開過瀏覽器」這件事要說清楚。
+
 ## 2026-09-09（同日修正之六）`market_daily` 基準日與 `lend_date` 脫鉤：修「每晚 f/t 整欄 null」
 
 **線上實證的缺陷，不是推測。** raw main 的 `data/postmkt.json`（`generated_at`
@@ -299,12 +390,15 @@ fixture；fixture 改自本機 `data/postmkt.json`，`market_daily` 資料日 20
 
 ### 待下批同步（本批刻意不動：那些是程式檔註解，改了會動到 `index.html` 位元組）
 
-- `index.html` 的 `grep 'location.hash = '` 註解仍寫「全站唯一命中」（應為「唯一的賦值」）。
-- `index.html` 的 `grep data-mychg` 註解仍寫「則有 4 處」（應為 5 處）。
-- `index.html` 的 `myChgHtml()` 內註解稱「三欄全 `null`」為**第四軸**，但 README 把它列為**軸3**、
-  整表殘缺列為**軸4**；`index.html` 的 ③④ 與 README 的軸3／軸4 **順序互換**。
-  六項的**集合**三方一致（本批已確保），只有**序號**對不上，屬敘述性差異、不影響判準。
-  下批統一時以 README 的軸序為準。
+**✅ 三條全數於 2026-09-13 結案**（見本檔最上方該日條目）：
+
+- ~~`index.html` 的 `grep 'location.hash = '` 註解仍寫「全站唯一命中」（應為「唯一的賦值」）。~~
+  → 已改成 **3 處**（上方例外說明 1、計數說明 1、實作賦值 1），並明講「唯一賦值為真、唯一命中為假」。
+- ~~`index.html` 的 `grep data-mychg` 註解仍寫「則有 4 處」（應為 5 處）。~~ → 已改成 **5 處**，
+  逐處列出並附數法（`grep -o …|wc -l`）。
+- ~~`index.html` 的 `myChgHtml()` 內註解稱「三欄全 `null`」為**第四軸**…③④ 與 README 的軸3／軸4
+  **順序互換**。~~ → 已以 README 軸序為準對調（③＝三欄全 `null`、④＝整表殘缺），
+  **六軸規範內容一字未改**。
 
 ### 範圍外、只記錄不處理（本批不動，CANON 第 5 條）
 
