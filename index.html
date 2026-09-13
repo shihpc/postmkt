@@ -1268,7 +1268,7 @@ function myChgDateInfo(md, nowStr){
 const myChgWhen = i => i.d ? `在資料日 ${i.d}` : "在本區塊資料日（不明）";
 const myChgAt = i => i.d ? `資料日 ${i.d}` : "本區塊資料日（不明）";
 
-// 整表健康度（README 必要條件第三軸）——**畫面上任何地方都以它為準**。
+// 整表健康度（README 必要條件第四軸）——**畫面上任何地方都以它為準**。
 // 抽成共用函式的理由（2026-09-09 第六軸）：舊版 renderStats() 的徽章自己算 `(md.rows||[]).length`，
 // 於是 cols 形狀不符時徽章照樣報「資料日 2026-09-08 · 2757 檔涵蓋」，內文卻是「無法取得異動資料」
 // ——**把一份本 tab 根本用不了的資料呈現成正常涵蓋**，與前五軸同型。兩處共用同一支就不會再分岔。
@@ -1297,7 +1297,7 @@ function myChgHtml(){
   if (!codes.length){
     return disc + `<div class="empty">尚未設定持股。<br>請到 <a class="slink" href="#tab=diag">持股診斷</a> tab 新增代號與股數（只存本機瀏覽器，不上傳）。</div>`;
   }
-  // 整表健康度（README 必要條件第三軸）：整包缺失／形狀不符／列數殘缺一律整段「無法取得異動資料」，
+  // 整表健康度（README 必要條件第四軸）：整包缺失／形狀不符／列數殘缺一律整段「無法取得異動資料」，
   // 不得進入逐檔三分狀態、也不得靜默當成「今天沒有異動」。判定走共用的 myChgUnusable()（徽章同源）；
   // idx 為 null 是同一件事的雙保險（myChgIndex 自己也驗 cols）。
   const rows = Array.isArray(md && md.rows) ? md.rows : null;
@@ -1323,7 +1323,7 @@ function myChgHtml(){
     else if (MYCHG_WARRANT_RE.test(c)) warrants.push(c);
     else unknown.push(c);
   });
-  // 查得到的列再分兩類（互斥）：**三欄全 null＝該資料日完全沒有資料**，不可併進「未達門檻」（README 第四軸）；
+  // 查得到的列再分兩類（互斥）：**三欄全 null＝該資料日完全沒有資料**，不可併進「未達門檻」（README 第三軸）；
   // 其餘至少有一欄有值者才判得動門檻（myChgSig 對兩者都回 false，差別在「判過」還是「無從判起」）。
   const isBlank = r => r.chg == null && r.f == null && r.t == null;
   const blank = found.filter(isBlank);
@@ -1362,7 +1362,7 @@ function myChgHtml(){
   const at = myChgAt(di);   // 「資料日 YYYY-MM-DD」或「本區塊資料日（不明）」
   const quiet = rated.length - sig.length;
   if (quiet > 0) notes.push(`${shown.length ? "其餘 " : ""}${quiet} 檔未達門檻（${at} 查得到的欄位變化都不到門檻）`);
-  // 第四軸：三欄全 null＝完全沒有資料。**不可**說成「查得到但變化小」，也不是「查無此代號」（它在表內）。
+  // 第三軸：三欄全 null＝完全沒有資料。**不可**說成「查得到但變化小」，也不是「查無此代號」（它在表內）。
   if (blank.length) notes.push(`${blank.length} 檔（${blank.slice(0, 5).map(r => r.c).join("／")}${blank.length > 5 ? " 等" : ""}）在${at} 的漲跌%／外資／投信三欄全部缺值——這幾檔確實在本表內，但在${at} 完全沒有資料可比對，既不是「查得到但變化不到門檻」，也不是「查無此代號」`);
   if (instMiss.length) notes.push(`${instMiss.length} 檔的外資／投信欄是「${at} 的法人資料未到」（法人資料日與本區塊資料日不一致時整欄留空；單檔查無法人資料時該檔留空）——不是 0、也不是「無顯著異動」${instMissPx === instMiss.length ? `；這些列的漲跌% 在${at} 仍然有效` : instMissPx > 0 ? `；其中 ${instMissPx} 檔的漲跌% 在${at} 仍然有效` : ""}`);
   if (pxMiss > 0) notes.push(`${pxMiss} 檔在${at} 沒有漲跌%（價格資料缺，顯示「—」不是 0%）——該列的法人欄仍有值，照常判讀`);

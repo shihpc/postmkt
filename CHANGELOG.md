@@ -22,9 +22,26 @@
 
 改成 `key=lambda x: (-(x["sys_bal"] + x["otc_bal"]), x["c"])`。**代號欄名實查是 `c`**（不是猜的）。
 
-**⚠ 一次性大 diff**：下一班 `build.yml` 產出的 `data/postmkt.json` 會因為列序重排而有一次
-很大的 diff（上面那 552 個位置起跳，實際數字視當天並列分布而定），**之後才穩定下來**。
-這是預期行為，不要誤判成資料壞掉。
+**一次性重排的量級（實測，2026-09-13 驗收者量測後更正——原寫「⚠ 一次性大 diff」是把量級放大了）**：
+
+- **前提：`data/postmkt.json` 是單行 JSON**（`build_postmkt.py` 的 `json.dumps(..., separators=(",",":"))`，
+  `wc -l` ＝ 0），所以**文字層面的 git diff 每次 data commit 本來就是整行變更**——
+  無論有沒有這次修改都一樣。「diff 變大／變小」在文字層面根本不成立，能談的只有 packfile。
+- **packfile 實測**：單版 base **306,103 B**；「同資料重跑、舊碼（單鍵）」增量 **≈4,375 B**；
+  「一次性重排」增量 **≈3,794 B**（2,233 個位置中 **536 個**代號不同＝24.0%）。
+- 也就是說，這次修改的帳是 **一次性約 3.8KB ＋ 此後每次重跑省下約 4.4KB 的噪音**，
+  **不是「很大的 diff」**。方向正確、值得修，但量級要照實說。
+- **不會**額外得到「重跑產物逐位元組相同因此不 commit」的好處：`generated_at` 每次都變。
+
+下一班 `build.yml` 的產出會帶上述一次性重排，之後才穩定下來；這是預期行為，不要誤判成資料壞掉。
+
+**已知行為改變：異常日的切片會從「隨機」變成「代號最小的前 N」**（不改程式，記為已知）。
+像 `44ef7e7` 那種「TWSE 借券整批抓空、全表 `sys_bal+otc_bal` 並列 0」的日子，
+`build_summary.py` 的 `lr[:25]` 與前端排行榜前 50 取到的會從**隨機 25／50 檔**變成
+**代號最小的 25／50 檔**。兩者都沒有意義（資料本來就壞了），但**確定性版本在畫面上更像真的、
+反而可能掩蓋異常**——隨機順序至少每次重跑都不一樣，看久了還看得出不對勁。
+權衡後仍選確定性（可重現 > 靠抖動示警），異常日的示警責任本來就在
+`sys_available`／`otc_available` 兩個旗標與管線警告，不該由排序抖動兼任。
 
 **逐項確認過、不受影響的東西**（讀過程式碼，不是「應該不影響」）：
 
@@ -45,6 +62,7 @@
 | `test_lending_row_order_is_stable_across_hash_seeds` | 三個 `PYTHONHASHSEED`（0／1／12345）各開一個子行程跑 `build_lending`，列序必須**逐字相同**，且等於確定性期望值（主鍵降冪＋同分段代號升冪） | 拿掉次鍵 → **紅**（`At index 12 diff: '8629' != '8543'`） |
 | `test_main_never_passes_mismatched_inst_date_to_market_daily`（3 個情境） | 釘住「`build_market_daily` 的 `inst_date != date` 守門從 `main()` 呼叫恆假」這個**前提**——攔截該函式記錄實際參數，斷言 `date == inst_date` 或 `inst_date` 為空 | ①`md_date = d_inst or lend_date` → `lend_date`：**紅**；②把 `inst_date` 引數由 `d_inst` 改成 `d_dt`：**紅**（這一個**既有測試抓不到**，證明本測試不是冗餘） |
 | `test_main_extra_price_query_when_all_three_dates_differ` | `main()` 選價格的 `else` 分支（`d_inst`／`d_dt`／`lend_date` 三者互異 → 額外查一次 `TaiwanStockPrice`），原本**零覆蓋** | `else` 改成沿用 `r_price` → **紅** |
+| `test_build_lending_sort_tolerates_none_code` | 次鍵**引進的新當機路徑**：`margin_by_c`／`short_by_c` 以 `r.get("stock_id")` 建鍵且無預設值 → `codes` 可能混進 `None`，主鍵並列時 `str` vs `None` 會拋 `TypeError`（單鍵版不會炸）。修法 `x["c"] or ""`，本測試斷言不拋例外、列數正確、並列段仍為確定性順序 | 拿掉 `or ""` → **紅**（`TypeError: '<' not supported between instances of 'str' and 'NoneType'`；1 failed / 125 passed，還原後 126 passed） |
 | `test_pm_cutoff_does_not_bind_after_midnight`（`tests/test_summary_batch.py`） | `batch_deadline` 的**跨午夜**路徑：`now` 在台北 00:xx 時牌鐘（同日 23:00）不綁、回落 180 分上界；原本只有註解描述、零測試 | 把清晨的牌鐘當成「昨天那個 23:00」→ **紅**（回 0＝整包跳過 batch） |
 
 **`PM_BATCH_CUTOFF_HM` 的值與 `batch_deadline` 的算式一個字都沒動**，新測試只是把既有行為釘住。
@@ -79,6 +97,10 @@
    （③＝`chg`／`f`／`t` 三欄全 `null`、④＝整表殘缺），三方的**集合**與**序號**現已一致。
    **六軸的規範內容一字未改**，只動序號與兩段的先後。`CLAUDE.md` 裡引用舊編號的那句歷史敘述
    （「與 `index.html` ③ 直接相反」）同批標明「當時編號 ③、重編號後為 ④」，免得日後對不上。
+   **2026-09-13 補完**：首版只對齊了 ①–⑥ 列舉區塊，同檔另有**四行**引用舊軸號且明文寫「README 第N軸」
+   （`index.html` 的整表健康度兩處寫「第三軸」應為**第四軸**、三欄全 `null` 兩處寫「第四軸」應為**第三軸**），
+   於是變成同檔自我矛盾。四處已改正，判準＝`grep -n '第三軸\|第四軸' index.html` 每一處都與 README 軸序一致。
+   純註解變更。
 7. **`README.md` 第五軸的 `build_postmkt.py` 行號**由 `:768-769`／`:765-766` 更新為
    `:777-778`／`:774-775`——本批在 `build_lending()` 排序上方加了 9 行說明註解，把 `main()`
    整段往下推。同時補一句「行號會漂、宣告式不會」並給出可 grep 的宣告式錨點。
@@ -86,9 +108,10 @@
 ### 沒做／不確定（誠實列出）
 
 - **本批未經 fresh-context subagent 驗收**（CANON 第 3 條要求由主對話另行派工）。
-- **`data/postmkt.json` 沒有重跑**（需要 `FINMIND_TOKEN` 與網路），所以「一次性大 diff」的
-  實際規模只有**推估**（以歷史兩版的 552 個位移為下界），**不是實測**。排序修正本身
-  由離線三 seed 測試守著。
+- **`data/postmkt.json` 沒有重跑**（需要 `FINMIND_TOKEN` 與網路）。**但一次性重排的規模已由
+  驗收者離線實測**（拿既有產物重排後量 packfile，見上方「一次性重排的量級」：536/2,233＝24.0%、
+  pack 增量 ≈3,794 B），不再是推估。真正沒驗到的是「下一班線上產出確實如此」。
+  排序修正本身由離線三 seed 測試守著。
 - 前端只跑了 `node --check`（語法），**沒有**做 14 tab 逐一點擊的 console 檢查——
   本批對 `index.html` 的改動實查（`git diff -U0 | grep -v '^[+-]//'`）只有**一行非註解**：
   `const MYCHG_STALE_LAG = 2;` 的**行尾註解被移到上方**、常數值與語句本身逐字不變，
