@@ -47,7 +47,10 @@
 （**2026-09-13 更正**：原寫「前端排行榜前 50／50 檔」是虛構的截斷——`index.html` 實查
 `grep -n 'slice(0,50)\|TOP_N' index.html` **零命中**；`TOP_N = 50` 只存在於
 `build_postmkt.py`，且**不套用在 `lending.rows`**——`build_lending()` 回傳完整 `rows_out`，
-TOP_N 只用於 `build_short_balance()` 的 `margin_short`／`sbl` 與漲跌幅／使用率／當沖那幾張榜。
+TOP_N 用於別的函式產的榜：`build_margin()` 的融資增加／減少／使用率（排序鍵 `chg = bal - prev`
+＝**融資餘額異動**，**不是漲跌幅**）、`build_short_balance()` 的 `margin_short`／`sbl`、
+`build_daytrading()` 的當沖金額榜。（**二次更正**：上一版寫成「漲跌幅／使用率／當沖」且
+全掛在 `build_short_balance()` 名下，兩點都錯，覆驗抓到——修事實錯誤的 commit 自己又寫錯一次。）
 2,233 為 `data/postmkt.json` 的 `lending.rows` 實測列數，資料日 2026-09-11。）
 這些順序都沒有意義（資料本來就壞了），但**確定性版本在畫面上更像真的、
 反而可能掩蓋異常**——隨機順序至少每次重跑都不一樣，看久了還看得出不對勁。
