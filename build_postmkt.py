@@ -520,7 +520,15 @@ def build_daytrading(date: str, rows: list, price_rows: list, nm: dict) -> dict:
         vol = r.get("Volume") or 0
         if vol <= 0:
             continue
-        c = r.get("stock_id", "")
+        # 寫 `or ""`（不是 `.get("stock_id", "")`）：**預設值只在 key 不存在時生效**，
+        # 上游任一列的 stock_id 是顯式 `None` 時 `.get` 照樣回 None，於是下面的
+        # `codes = sorted({x["c"] for x in by_amount})` 會在 None 與某個 str 相比時拋
+        # `TypeError: '<' not supported between instances of 'str' and 'NoneType'`
+        # ——而那行排在 `if date and codes:` **之前**，`date=""` 也擋不住、無條件執行
+        # （集合只剩一個元素時不比較，所以要 None 與至少一個一般代號並存才會炸）。
+        # 與 build_lending 次鍵那條（2026-09-13）同型、同一種修法。守門測試
+        # test_daytrading_sort_tolerates_none_code。對正常資料輸出逐位不變。
+        c = r.get("stock_id") or ""
         amt = ((r.get("BuyAmount") or 0) + (r.get("SellAmount") or 0)) / 2
         total = tv.get(c) or 0
         p = px_map.get(c, {})

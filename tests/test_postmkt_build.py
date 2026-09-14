@@ -97,6 +97,37 @@ def test_daytrading_no_by_ratio_and_metrics():
     assert "traders" not in r             # date="" 跳過分點推估
 
 
+def test_daytrading_sort_tolerates_none_code():
+    """`stock_id` 為顯式 None 時 `codes = sorted({...})` 不得拋 TypeError（2026-09-14）。
+
+    可達性：`c` 原本寫 `r.get("stock_id", "")`，而**預設值只在 key 不存在時生效**，
+    上游給顯式 `None` 時照樣回 None → 集合混進 None → 與任一 str 相比拋
+    `TypeError: '<' not supported between instances of 'str' and 'NoneType'`。
+    那行排在 `if date and codes:` **之前**，`date=""` 也擋不住、無條件執行
+    （集合只剩一個元素時不比較，所以要 None 與至少一個一般代號並存才會炸；
+    「缺 key」那形本來就不會炸，預設值對它有效）。修法 `r.get("stock_id") or ""`，
+    與 build_lending 次鍵那條（test_build_lending_sort_tolerates_none_code）同型。
+
+    mutation 守門：把 `build_postmkt.py` 的 `or ""` 改回 `.get("stock_id", "")`，本測試必須轉紅。
+    """
+    base = {"Volume": 1_000}
+    rows = [
+        {**base, "stock_id": "2330", "BuyAmount": 600, "SellAmount": 400},   # amt 500
+        {**base, "stock_id": None, "BuyAmount": 2_000, "SellAmount": 2_000},  # amt 2000（顯式 None）
+        {**base, "stock_id": "1101", "BuyAmount": 100, "SellAmount": 100},   # amt 100
+        {**base, "BuyAmount": 300, "SellAmount": 300},                       # amt 300（缺 key）
+    ]
+    out = bp.build_daytrading("", rows, [], {})   # date="" → 不查分點、不碰網路
+
+    # 綁確切期望序列：依 -amt 降冪，None 與缺 key 兩列都正規化成 ""
+    assert [(x["c"], x["amt"]) for x in out["by_amount"]] == [
+        ("", 2_000), ("2330", 500), ("", 300), ("1101", 100),
+    ], out["by_amount"]
+    # 就是會炸的那個運算式本身：代號集合可排序且確定性
+    assert sorted({x["c"] for x in out["by_amount"]}) == ["", "1101", "2330"]
+    assert all("traders" not in x for x in out["by_amount"])
+
+
 # ---------- twseclient.resolve_cols：fields metadata 欄位定位＋固定索引後備 ----------
 
 def test_resolve_cols_by_field_names():

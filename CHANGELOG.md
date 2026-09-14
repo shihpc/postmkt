@@ -3,6 +3,24 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-09-14 `build_daytrading()` 代號為 None 的當機路徑
+
+`c = r.get("stock_id", "")` 的預設值**只在 key 不存在時生效**，上游給顯式 `None` 時
+照樣回 `None`，於是 `codes = sorted({x["c"] for x in by_amount})` 在 None 與任一 str
+相比時拋 `TypeError: '<' not supported between instances of 'str' and 'NoneType'`；
+該行排在 `if date and codes:` **之前**，`date=""` 也擋不住、無條件執行。與 2026-09-13
+`build_lending` 次鍵那條同型。修法：`c = r.get("stock_id") or ""`。
+
+**修正範圍的兩點精確性**（實跑確認，不是推論）：①**單列 None 不會炸**——集合只剩一個
+元素時 `sorted` 不做比較，要 None 與至少一個一般代號並存才觸發；②**「缺 key」那形本來
+就不會炸**，預設值對它有效，會炸的只有顯式 `None`。
+
+**正常資料輸出逐位不變**：以 repo 內真實 `data/postmkt.json`（資料日 2026-09-14）的
+`daytrading.by_amount` 50 列反推輸入（反推後餵回 `build_daytrading` 與真實輸出逐位相同，
+`traders` 除外——`date=""` 不查分點），對跑改動前後，輸出 JSON 5,207 bytes、sha256
+`04d72e25…62e4` 兩邊相同。守門測試 `test_daytrading_sort_tolerates_none_code`
+（綁確切期望序列；拿掉修正該測試轉紅，已實跑 mutation 驗證）。
+
 ## 2026-09-13 收尾批：`build_lending` 排序決定性、兩個資料日的定位、三條待辦結案
 
 使用者裁決在先，本批照做：①頂列 `pmStatus` 維持用 `pm.date`、**不改程式**，只補文件；
