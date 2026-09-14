@@ -15,11 +15,32 @@
 元素時 `sorted` 不做比較，要 None 與至少一個一般代號並存才觸發；②**「缺 key」那形本來
 就不會炸**，預設值對它有效，會炸的只有顯式 `None`。
 
-**正常資料輸出逐位不變**：以 repo 內真實 `data/postmkt.json`（資料日 2026-09-14）的
-`daytrading.by_amount` 50 列反推輸入（反推後餵回 `build_daytrading` 與真實輸出逐位相同，
-`traders` 除外——`date=""` 不查分點），對跑改動前後，輸出 JSON 5,207 bytes、sha256
-`04d72e25…62e4` 兩邊相同。守門測試 `test_daytrading_sort_tolerates_none_code`
-（綁確切期望序列；拿掉修正該測試轉紅，已實跑 mutation 驗證）。
+**正常資料輸出逐位不變**（量法可重現，臨時腳本不進 repo）：取當日 `data/postmkt.json`
+`market_daily` 的 **2,753 個真實代號**為母體合成輸入——固定亂數種子 `20260914`，
+每檔 `Volume` 由 `[0,0,1,500,1000,250000]` 抽（含 `vol<=0` 被濾的路徑）、`BuyAmount`／
+`SellAmount` 由 `[1e6,5e8,5e8,5e8]` 抽（**大量 `amt` 並列**以壓排序穩定性）、約 **1/7 檔
+刻意不給對應 price 列**、`close`／`spread` 隨機為 `None`。以 `e060b49`（改動前）與本 commit
+分別跑 `build_daytrading("", dt_rows, price_rows, {})`，輸出 `json.dumps(sort_keys=True,
+separators=(",",":"))` 皆 **4,580 bytes、sha256 `aaef3f4345843c81…`**，逐位相同。
+
+> **前一版這段寫的是「以真實 `by_amount` 50 列**反推**輸入再對跑，5,207 bytes／sha256
+> `04d72e25…`」——2026-09-14 覆驗退回，兩個問題**：①那個 sha **重現不出來**（bytes 完全
+> 重現、sha 不同，最可能是反推在某個等長欄位還原不精確）；②更根本的是**該量法近乎恆真**
+> ——反推出來的 `stock_id` 必為真值字串，而對真值字串 `d.get(k,"")` 與 `d.get(k) or ""`
+> 是可證明逐點相等的兩個運算式，**比對在建構上就不可能失敗**，對本次改動提供約 0 資訊；
+> 且 50 列全是倖存者，碰不到 `[:TOP_N]` 截斷與 `vol<=0` 過濾。已整段換成上面的量法。
+
+**一個未被測試涵蓋的行為改變（退化資料限定，不是回歸）**：`tv`／`px_map`／`close_map`
+都是 `{r.get("stock_id"): …}`（**無預設值**），所以 price_rows 有列缺 `stock_id` 時它們
+**自己也會有 `None` 鍵**。`c` 由 `None` 變 `""` 後，那一列改去查 `""` 鍵 → `ratio`／
+`chg_pct`／`amp_pct` 會由「有值」變 `null`（`vol` 不受影響，它取自當沖列自己的 `Volume`）。
+**但舊碼跑得到這裡的唯一形狀是「前 50 名代號集合 == `{None}`」**（只要混進任一一般代號，
+舊碼就是 `TypeError`），而那個「有值」本身是拿缺代號的當沖列去對缺代號的價格列、
+**純屬 `None` 當字典鍵的誤配**。換成 `null` 是變誠實。新測試傳 `price_rows=[]`，
+**這條路徑零覆蓋**，記在此處備查。
+
+守門測試 `test_daytrading_sort_tolerates_none_code`（綁確切期望序列，fixture 有 3 個相異
+代號故確實走到比較；拿掉修正該測試轉紅，已實跑 mutation 驗證）。
 
 ## 2026-09-13 收尾批：`build_lending` 排序決定性、兩個資料日的定位、三條待辦結案
 
