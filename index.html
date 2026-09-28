@@ -309,6 +309,20 @@
   .cr-disc{margin-top:14px;color:var(--muted);font-size:.72rem;border-top:1px solid var(--line);padding-top:8px}
   .cr a{color:var(--accent);text-decoration:none}
   @media (max-width:560px){ .cr-two{grid-template-columns:1fr} }
+  /* 手機窄寬（≤480px）：本站手機驗收條件②要求表格各欄全部可見。大戶兩表（7 欄約 504–535px）與社群表（9 欄約 481px）
+     在 375／390 放不下，改藏次要欄、關鍵欄全留：大戶表藏「產業／外資5日張／投信5日張」，外資／投信改以兩行小字放在名稱下方
+     （.cr-nw，寬螢幕不顯示）；社群表藏「推／噓／作者態度分布」（三者在點代號展開的「依據（事實）」段仍逐一列出），
+     股名欄併進代號欄第二行（.soc-nm2），省一欄內距、不用省略號裁切。 */
+  .cr-nw,.soc-nm2{display:none}
+  @media (max-width:480px){
+    .cr-hold .mtable th:nth-child(3),.cr-hold .mtable td:nth-child(3),
+    .cr-hold .mtable th:nth-child(6),.cr-hold .mtable td:nth-child(6),
+    .cr-hold .mtable th:nth-child(7),.cr-hold .mtable td:nth-child(7){display:none}
+    .cr-nw{display:block;font-size:.68rem;color:var(--muted);line-height:1.3}
+    .soc-tbl th:nth-child(2),.soc-tbl td:nth-child(2),.soc-tbl th:nth-child(4),.soc-tbl td:nth-child(4),
+    .soc-tbl th:nth-child(5),.soc-tbl td:nth-child(5),.soc-tbl th:nth-child(6),.soc-tbl td:nth-child(6){display:none}
+    .soc-nm2{display:block;font-size:.72rem;color:var(--muted);line-height:1.3}
+  }
   /* 社群聲量 tab（2026-09-28 由 taiwan-stock-news 搬來，規格正本 taiwan-stock-news/docs/social-display.md §1b）：
      使用者裁決紅綠——偏多紅、偏空綠（台股慣例），只限本 tab。原站的 .row/.lbl/.chip/.meta/.tblwrap
      本站沒有，搬來時一律改成 soc- 前綴（避免與本站既有 class 撞名）。 */
@@ -1970,14 +1984,14 @@ function crRender(){
       `</select></label>`+(R.rind!=="all"?`<span class="mut" style="font-size:.72rem;align-self:center">篩選後 ${H.filtered} 檔</span>`:"")+`</div>`;
     const cols=[
       {h:"代號",cls:"code",f:r=>crYahoo(esc(r.code))},
-      {h:"名稱",cls:"cr-l",f:r=>esc(r.name)},
+      {h:"名稱",cls:"cr-l",sortVal:r=>r.name,f:r=>esc(r.name)+`<span class="cr-nw">外資 ${sgn(r.f5,num(r.f5))}</span><span class="cr-nw">投信 ${sgn(r.t5,num(r.t5))}</span>`},
       {h:"產業",cls:"cr-l",f:r=>esc(r.ind)},
       {h:"大戶持股%",f:r=>r.hd==null?"—":r.hd.toFixed(2)},
       {h:"週變化 pp",f:r=>sgn(r.hdw,(r.hdw>0?"+":"")+r.hdw.toFixed(2))},
       {h:"外資5日張",f:r=>sgn(r.f5,num(r.f5))},
       {h:"投信5日張",f:r=>sgn(r.t5,num(r.t5))}];
     const tie=(a,b)=>a.code<b.code?-1:a.code>b.code?1:0;
-    const blk=(ttl,rows,dir)=>`<div><div class="mut" style="font-size:.78rem;margin:4px 0">${ttl}（${rows.length} 檔）</div>`+
+    const blk=(ttl,rows,dir)=>`<div class="cr-hold"><div class="mut" style="font-size:.78rem;margin:4px 0">${ttl}（${rows.length} 檔）</div>`+
       (rows.length?tbl(cols,rows,{sortI:4,sortD:dir,tie}):`<div class="mut" style="font-size:.78rem">無</div>`)+`</div>`;
     // 本站版心 880px：大戶兩表（7 欄）並排時各約 433px 放不下（實測需約 556px），改上下疊放、桌機全欄可見（原站版心較寬才並排）
     html+=`<div class="cr-stack">`+blk("增加最多",H.up,-1)+blk("減少最多",H.down,1)+`</div>`;
@@ -2288,7 +2302,7 @@ function renderSocial(){
   const th = (k, t) => SOCIAL.rank !== "all" ? `<th>${t}</th>`
     : `<th class="soc-th${SOCIAL.sort === k ? " on" : ""}" data-soc-sort="${k}">${t}${SOCIAL.sort === k ? " ▼" : ""}</th>`;
   const diagRows = SOCIAL.diag ? SOCIAL.diag.stocks : null;
-  h += `<div class="mcard"><div class="soc-tblwrap"><table class="mtable"><thead><tr><th>代號</th><th style="text-align:left">股名</th>`
+  h += `<div class="mcard"><div class="soc-tblwrap"><table class="mtable soc-tbl"><thead><tr><th>代號</th><th style="text-align:left">股名</th>`
     + th("n", "篇數") + th("push", "推") + th("boo", "噓")
     + `<th style="text-align:left">作者態度分布</th>` + th("ratio", "偏多比") + `<th>標籤</th><th>建議</th></tr></thead><tbody>`;
   for (const { code, s, d } of rows){
@@ -2301,7 +2315,7 @@ function renderSocial(){
     const r = socialPosRatio(d);
     const nm = s.name == null || s.name === "" ? code : String(s.name);
     const op = SOCIAL.open === code;
-    h += `<tr><td><span class="soc-code" data-soc-code="${esc(code)}">${op ? "▾" : "▸"} ${esc(code)}</span></td>`
+    h += `<tr><td><span class="soc-code" data-soc-code="${esc(code)}">${op ? "▾" : "▸"} ${esc(code)}</span><span class="soc-nm2">${esc(nm)}</span></td>`
       + `<td style="text-align:left">${esc(nm)}</td><td>${Number(s.n) || 0}</td><td>${Number(s.push) || 0}</td><td>${Number(s.boo) || 0}</td>`
       + `<td style="text-align:left"><span class="soc-bar" title="${esc(tip)}">${SOCIAL_SENT_KEYS.map(seg).join("")}</span></td>`
       + `<td>${r == null ? "—" : Math.round(r * 100) + "%"}</td>`

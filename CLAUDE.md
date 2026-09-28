@@ -63,10 +63,10 @@
     屬性的字串，2026-09-09 更正原本寫錯的位置）。但
     `grep 'location.hash = '` 在 `index.html` 有 **3 處命中**（兩行註解＋這一處賦值）：
     **「唯一賦值」為真、「唯一命中」為假**，兩者不可混講。同理 `grep data-mychg` 在
-    `index.html` 有 **5 處**（不是 4）：註解 3 行（`:396` 「入口站改連」那句／`:409` 計數說明本身
+    `index.html` 有 **5 處**（不是 4）：註解 3 行（`:477` 「入口站改連」那句／`:490` 計數說明本身
     ——現行措辭是「`grep -o` … `wc -l` ＝ 5 處（舊版寫 4）」，**宣稱句自己也算一次命中**，
-    那正是上一版少算的那一次／`:410` 拆解裡的 handler 錨點）＋`myChgHtml()` 表格欄的屬性（`:1351`）
-    ＋handler 本體（`:1395`）。**引用時只寫現行措辭**——舊版那句「則有 4 處」已隨本批改寫、
+    那正是上一版少算的那一次／`:491` 拆解裡的 handler 錨點）＋`myChgHtml()` 表格欄的屬性（`:1455`）
+    ＋handler 本體（`:1499`）。**引用時只寫現行措辭**——舊版那句「則有 4 處」已隨本批改寫、
     現在 grep 不到了。
     **`index.html` 那段註解的舊數字已於 2026-09-13 改正並結案**（原寫「唯一命中」與「4 處」，
     現已改成上述的 3 處／5 處，並把「怎麼數的」寫進註解；CHANGELOG 對應待辦條目同批結案）。
@@ -158,7 +158,7 @@
     `trust`｜`dealer`）只在 `tab=chipradar` 讀寫（產業下拉不進 hash），`sd`（YYYY-MM-DD，須在非 fixture 日期清單內）
     只在 `tab=social` 讀寫；白名單在 `HASH_CR`／`HASH_SD_RE`，非法值靜默丟棄。搬來時為避撞名改的東西：`tbl()` 多了
     選填 opts `sortI`／`sortD`／`tie`（不帶時行為逐字不變）、CSS 一律 `.cr-*`／`.soc-*` 前綴、原站 `.row/.lbl/.chip/.meta/.tblwrap`
-    → `.soc-row/.soc-lbl/.soc-chip/.soc-meta/.soc-tblwrap`。大戶兩表在本站版心（880px）改上下疊放（原站並排）。
+    → `.soc-row/.soc-lbl/.soc-chip/.soc-meta/.soc-tblwrap`。大戶兩表在本站版心（880px）改上下疊放（原站並排）。手機窄寬（≤480px）為滿足下方手機驗收條件②改藏次要欄、關鍵欄全留：大戶表藏產業／外資5日張／投信5日張（外資／投信改成名稱下方兩行小字 `.cr-nw`），社群表藏推／噓／作者態度分布（點代號展開的依據段仍列出）、股名併入代號欄第二行（`.soc-nm2`）；量測見 docs/move-radar-social.md §3。
     測試：`tests/test_chipradar.mjs`（17 項，pytest 由 `tests/test_frontend_moved.py` 代跑，上半用
     `tests/fixtures/chipradar_sector_ranges_r5r20.json` 快照）、`tests/test_social_display.py`（13 案）、
     `tests/test_frontend_moved.py`（hash 白名單＋首屏）。本機驗證 http.server 要起在三個 repo 的**上一層**
