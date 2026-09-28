@@ -284,6 +284,70 @@
     padding:5px 10px;font-size:.78rem;color:var(--txt);text-decoration:none}
   .stk-links a:hover{border-color:var(--accent);color:var(--accent)}
   .stk-note{color:var(--muted);font-size:.72rem;line-height:1.6;margin:6px 0 0}
+  /* 籌碼雷達 tab（2026-09-28 由 taiwan-flows 搬來，規格正本 taiwan-flows/docs/radar-tab.md）。
+     全部以 .cr 為範圍：SVG 沿用原站的 var(--up/--down/--dim/--fg) 寫法，這裡在 .cr 內就地定義，
+     值取本站既有 .up/.down 的紅綠（不改全站 :root）。grid 子項 min-width:0，否則表格 min-content 會撐出視窗。 */
+  .cr{--up:#ef5b5b;--down:#2fbf71;--dim:var(--muted);--fg:var(--txt)}
+  .cr-toggles{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 4px}
+  .cr-seg{display:flex;gap:4px;flex-wrap:wrap}
+  .cr-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cr-two>*{min-width:0}
+  .cr-stack{display:grid;grid-template-columns:1fr;gap:10px}
+  .cr-stack>*{min-width:0}
+  .cr .tblbox{max-height:440px}
+  .cr .mtable td.cr-l,.cr .mtable th.cr-l{text-align:left}
+  .cr-badges{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 6px}
+  .cr-badge{display:inline-block;font-size:.7rem;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  .cr-svg{display:block;width:100%;height:auto;max-width:560px}
+  .cr-svg text{font-family:inherit}
+  .cr-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.72rem;color:var(--muted);margin:4px 0}
+  .cr-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+  .cr-note{color:var(--muted);font-size:.72rem;line-height:1.6;margin:6px 0}
+  .cr-note b{color:var(--txt)}
+  .cr select{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:6px;
+    padding:3px 6px;font-family:inherit;font-size:.78rem;color-scheme:dark;max-width:220px}
+  .cr-disc{margin-top:14px;color:var(--muted);font-size:.72rem;border-top:1px solid var(--line);padding-top:8px}
+  .cr a{color:var(--accent);text-decoration:none}
+  @media (max-width:560px){ .cr-two{grid-template-columns:1fr} }
+  /* 社群聲量 tab（2026-09-28 由 taiwan-stock-news 搬來，規格正本 taiwan-stock-news/docs/social-display.md §1b）：
+     使用者裁決紅綠——偏多紅、偏空綠（台股慣例），只限本 tab。原站的 .row/.lbl/.chip/.meta/.tblwrap
+     本站沒有，搬來時一律改成 soc- 前綴（避免與本站既有 class 撞名）。 */
+  .soc-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+  .soc-lbl{color:var(--muted);font-size:.72rem;margin-right:2px}
+  .soc-chip{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:6px 12px;
+    font-size:.8rem;color:var(--muted);cursor:pointer;transition:.15s;user-select:none;white-space:nowrap}
+  .soc-chip:hover{border-color:#33507e}
+  .soc-chip.active{color:var(--txt);border-color:var(--accent);background:var(--card-hover)}
+  .soc-chip.soc-src{cursor:default}
+  .soc-chip.soc-src:hover{border-color:var(--accent)}
+  .soc-sel{background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:5px 8px;font-size:.84rem}
+  .soc-status{color:var(--muted);font-size:.78rem;line-height:1.7;margin:6px 2px}
+  .soc-status b{color:var(--txt);font-weight:600}
+  .soc-tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+  .soc-meta{display:flex;align-items:center;gap:7px;font-size:.72rem;color:var(--muted);flex-wrap:wrap}
+  .soc-bar{display:inline-flex;width:96px;height:10px;border:1px solid #5c6066;border-radius:3px;overflow:hidden;vertical-align:middle}
+  .soc-bar i{display:block;height:100%}
+  .soc-pos{background:#ef5b5b}
+  .soc-neu{background:#9aa3ae}
+  .soc-neg{background:#2fbf71}
+  .soc-unk{background:repeating-linear-gradient(45deg,#2e3136 0 3px,#44484e 3px 6px)}
+  .soc-legend{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:.72rem;margin:6px 2px}
+  .soc-legend .soc-sw{display:inline-block;width:12px;height:10px;border:1px solid #5c6066;border-radius:2px;vertical-align:middle;margin-right:4px}
+  .soc-code{color:var(--accent);cursor:pointer;text-decoration:underline dotted}
+  .soc-th{cursor:pointer}
+  .soc-th.on{color:var(--txt)}
+  .soc-art{padding:7px 0;border-bottom:1px solid rgba(36,53,86,.4);line-height:1.5;overflow-wrap:anywhere}
+  .soc-art:last-child{border-bottom:none}
+  .soc-art a{color:var(--txt);text-decoration:none}
+  .soc-art a:hover{color:var(--accent);text-decoration:underline}
+  .soc-att{border:1px solid #5c6066;border-radius:5px;padding:0 6px;font-size:.68rem;color:var(--txt);white-space:nowrap}
+  .soc-tag{border:1px solid var(--line);border-radius:5px;padding:0 6px;font-size:.72rem;white-space:nowrap;color:var(--muted)}
+  .soc-tag.bull,.soc-tag.buy{color:#ef5b5b;border-color:#ef5b5b}
+  .soc-tag.bear,.soc-tag.sell{color:#2fbf71;border-color:#2fbf71}
+  .soc-adv{margin:6px 0 8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;line-height:1.75;font-size:.8rem;white-space:normal}
+  .soc-adv .hd{font-weight:700;font-size:.86rem}
+  .soc-adv .hd.buy{color:#ef5b5b} .soc-adv .hd.sell{color:#2fbf71} .soc-adv .hd.hold{color:var(--muted)}
+  .soc-adv .k{color:var(--muted)}
   /* 手機（2026-09-06 批次二 #12）：全檔原本 0 條 @media。原則＝表格內允許橫捲（.tblbox overflow:auto），
      整頁不得出現水平捲軸；tabs 改單列橫向可捲不換行；外距與字級略縮。
      ⚠ 不動 .tblbox 的 padding（凍結欄 left:-12px／50px 是拿它補償的，改了 sticky 會穿幫）。 */
@@ -345,7 +409,8 @@ const TABS = [
   ["summary","彙總分析"],
   ["aetf","主動ETF"],["lending","融借券"],["daytrade","當沖"],
   ["block","鉅額"],["oddlot","零股"],["broker","分點"],["mktbal","大盤餘額"],
-  ["rrgd","輪動雷達"],["screen","選股"],["mychg","持股異動"],["diag","持股診斷"],["dates","日期"],
+  ["rrgd","輪動雷達"],["screen","選股"],["mychg","持股異動"],["diag","持股診斷"],
+  ["chipradar","籌碼雷達"],["social","社群聲量"],["dates","日期"],
 ];
 const SUBS = {
   insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、只存本機瀏覽器。非投資建議、非預測，僅描述歷史統計傾向。",
@@ -361,6 +426,8 @@ const SUBS = {
   dates:"各資料源目前的資料日與產出時間；判斷哪些已是最新交易日、哪些尚未更新。資料為排程產出，當日盤後資料通常於當晚 21:00 後才更新，故白天多半看到前一交易日。",
   screen:"選股：以分析師預估（FactSet 經鉅亨網／TradingView）篩選明年預估 EPS 達門檻之個股，並列今明年預估 EPS／本益比、目標價中位數與潛在漲幅、營收動能與評等分布。預估值為券商共識、隨時修訂，屬 AI 彙整之市場預期而非買賣建議與保證。",
   mychg:"持股異動：拿本機持股清單比對全市場逐檔資料（外資／投信買賣超張數、漲跌%），只列達門檻者，一眼看完再決定要不要進「持股診斷」細看。講的是 market_daily 資料日那一天的狀態、不是「今天」（資料日寫在段落標題與免責卡）。門檻為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒。持股清單只存本機瀏覽器，比對全在瀏覽器端完成，持股代號不進任何網路請求（本 tab 不新增網路請求）。",
+  chipradar:"籌碼雷達：上半為類股資金四象限（固定比較近 5 日與近 20 日三大法人／外資／投信／自營日均淨額，資料源 taiwan-flows 類股資金流）；下半為千張大戶持股週變化（本站持股診斷素材庫，約 1,200 檔、非全市場）。類股象限與大戶變化為現況描述，非買賣訊號；無回測依據。",
+  social:"社群聲量：PTT Stock 板每日提及各股的篇數、推噓數與作者態度（AI 判讀），並依情緒＋千張大戶雙確認給規則式建議。AI 研判，未經回測，非保證。",
   diag:"持股診斷：輸入持股後逐檔彙整籌碼／價量／題材／基本面／系統五面向事實與紅黃綠風險燈號，附近3日新聞命中與可選的 AI 解讀（按了才呼叫、token 自備）。證據彙整工具、非投資建議，不輸出買賣指令；持股資料僅存於本機瀏覽器（localStorage），不上傳任何伺服器。素材庫每交易日約 22:10 更新（全市場通用資料）。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
@@ -416,6 +483,11 @@ const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQu
 const HASH_TABS = new Set(TABS.map(t => t[0]));
 const HASH_SUBS = { oddlot:["intraday","after"], broker:["branch","stock","list"] };
 const HASH_CODE_RE = /^[0-9A-Z]{4,6}$/;
+// 籌碼雷達（2026-09-28 由 taiwan-flows 搬來）：rcls／rinv 只在 tab=chipradar 時讀寫（產業下拉刻意不進 hash，
+// 同原站）；社群聲量（2026-09-28 由 taiwan-stock-news 搬來）：sd 只在 tab=social 時讀寫，格式先過
+// HASH_SD_RE，日期清單（index.json）到手後再由 loadSocial() 比對白名單，不在清單內靜默退回最新一天。
+const HASH_CR = { rcls:["exchange","chain"], rinv:["total","foreign","trust","dealer"] };
+const HASH_SD_RE = /^\d{4}-\d{2}-\d{2}$/;
 function parseHash(){
   let q;
   try{ q = new URLSearchParams(String(location.hash || "").replace(/^#/, "")); }catch(e){ return {}; }
@@ -428,6 +500,8 @@ function parseHash(){
   if (out.tab && HASH_SUBS[out.tab] && HASH_SUBS[out.tab].includes(sub)) out.sub = sub;
   const stock = String(q.get("stock") || "").trim().toUpperCase();
   if (HASH_CODE_RE.test(stock)) out.stock = stock;
+  if (out.tab === "chipradar") for (const k of ["rcls","rinv"]){ const v = q.get(k); if (v && HASH_CR[k].includes(v)) out[k] = v; }
+  if (out.tab === "social"){ const sd = String(q.get("sd") || "").trim(); if (HASH_SD_RE.test(sd)) out.sd = sd; }
   return out;
 }
 // 把 hash 套進 state（載入時與 hashchange 時呼叫；之後由 render() 接手）
@@ -442,6 +516,9 @@ function applyHash(){
     state.bkPending = (h.code && state.bkSub !== "list") ? h.code : null;
   }
   if (state.tab === "lending") state.openLend = h.code || null;
+  if (state.tab === "chipradar"){ CR.rcls = h.rcls || "exchange"; CR.rinv = h.rinv || "total"; }
+  // sd：暫存到 SOCIAL.hashSd，由 loadSocial() 在拿到 index.json 後比對白名單（原站同一套延後套用）
+  if (state.tab === "social") SOCIAL.hashSd = h.sd || "";
   if (state.tab === "diag"){
     state.diagPrefill = "";
     if (h.code){
@@ -464,6 +541,15 @@ function currentHash(){
   }
   if (state.tab === "lending" && state.openLend && HASH_CODE_RE.test(state.openLend)) p.push("code=" + state.openLend);
   if (state.tab === "diag" && state.diagOpen && HASH_CODE_RE.test(state.diagOpen)) p.push("code=" + state.diagOpen);
+  if (state.tab === "chipradar"){
+    if (CR.rcls !== "exchange" && HASH_CR.rcls.includes(CR.rcls)) p.push("rcls=" + CR.rcls);
+    if (CR.rinv !== "total" && HASH_CR.rinv.includes(CR.rinv)) p.push("rinv=" + CR.rinv);
+  }
+  if (state.tab === "social"){
+    if (SOCIAL.days){
+      if (SOCIAL.date && SOCIAL.days.length && SOCIAL.date !== SOCIAL.days[0]) p.push("sd=" + SOCIAL.date);
+    } else if (SOCIAL.hashSd && HASH_SD_RE.test(SOCIAL.hashSd)) p.push("sd=" + SOCIAL.hashSd);  // 清單未到前保留網址原值
+  }
   if (state.stkOpen && HASH_CODE_RE.test(state.stkOpen)) p.push("stock=" + state.stkOpen);
   return p.length ? "#" + p.join("&") : "";
 }
@@ -507,10 +593,13 @@ const VIRTUAL_THRESHOLD = 200;
 const VIRTUAL_BUFFER = 15;
 // opts（可選）：totals=各欄加總列的cell HTML陣列（顯示在表頭下方、跟表頭一起
 // sticky、不參與排序）；s2=true時凍結前兩欄（代號+名稱，配合.mtable-s2固定欄寬）。
+// sortI/sortD（2026-09-28 籌碼雷達搬來時加）：初始排序欄與方向，只影響表頭 ▲▼ 標示（rows 由呼叫端
+// 自己排好）；tie(a,b)＝點欄位排序時主鍵同值的次鍵。三者不帶時行為與原本逐字相同。
 function tbl(cols, rows, opts){
   if (!rows || !rows.length) return `<div class="empty">無資料</div>`;
   const id = "tb" + (++TBLID);
-  TBLS[id] = { cols, rows: [...rows], sort: { i: null, d: 1 },
+  TBLS[id] = { cols, rows: [...rows], sort: { i: (opts && opts.sortI != null) ? opts.sortI : null, d: (opts && opts.sortD) || 1 },
+    tie: (opts && opts.tie) || null,
     virtual: rows.length > VIRTUAL_THRESHOLD, rowH: 45, winStart: 0,
     totals: (opts && opts.totals) || null, s2: !!(opts && opts.s2) };
   return `<div class="tblbox" data-tbl="${id}">${tblInner(id)}</div>`;
@@ -640,12 +729,13 @@ document.addEventListener("click", e => {
   // 從渲染後的文字反推排序值不可靠，改直接從資料算。沒給sortVal的欄位維持
   // 原本「渲染文字轉數字」的通用做法。
   const val = r => col.sortVal ? col.sortVal(r) : tblCellVal(tblCellText(col.f(r)));
-  o.rows.sort((a,b) => {
+  const cmp = (a,b) => {
     const x = val(a), y = val(b);
     if (x === null) return 1;
     if (y === null) return -1;
     return typeof x==="number" && typeof y==="number" ? (x-y)*d : String(x).localeCompare(String(y),"zh-Hant")*d;
-  });
+  };
+  o.rows.sort(o.tie ? (a,b) => cmp(a,b) || o.tie(a,b) : cmp);
   wrap.scrollTop = 0;
   wrap.innerHTML = tblInner(wrap.dataset.tbl);
 });
@@ -1645,7 +1735,8 @@ function renderStats(){
     const dg = state.diag;
     el.innerHTML = dg ? `<div class="stat">素材庫資料日 <b>${esc(dg.date||"—")}</b></div>`
       + `<div class="stat"><b>${dg.n||0}</b> 檔</div>` : "";
-  } else if (state.tab === "dates"){
+  } else if (state.tab === "dates" || state.tab === "chipradar" || state.tab === "social"){
+    // dates：本身就是各源日期總覽；籌碼雷達／社群聲量：頁內每段自帶自己的資料日徽章，不借用 postmkt 的資料日
     el.innerHTML = "";  // 本 tab 本身就是各源日期總覽，不重複顯示單一資料日
   } else {
     const d = pmMeta();  // insight 首屏只有檔頭速讀（date/generated_at/date_mismatch 齊全）
@@ -1673,6 +1764,9 @@ function render(){
   // 持股異動：吃 state.pm.market_daily（走既有 ensurePm()，本 tab 零新增請求）。**必須有自己的分支**
   //（下方 else 是 fallback 到 renderPM()，沒加分支會掉進去而顯示「無資料」）
   else if (state.tab === "mychg"){ ensurePm(); renderMyChg(); }
+  // 籌碼雷達／社群聲量（2026-09-28 搬來）：資料只在切到本 tab 時才抓（首屏零新增請求），各自讀跨站同源檔
+  else if (state.tab === "chipradar") crRender();
+  else if (state.tab === "social") loadSocial();
   // insight 的標題資料日與五個盤後 tab 都吃 state.pm；summary／diag 不需要（各自的一鍵流程再 await ensure*）
   else {
     if (state.tab === "diag") ensureDiag();
@@ -1688,6 +1782,557 @@ function renderTabs(){
     `<div class="tab ${state.tab===k?"active":""}" data-tab="${k}">${label}</div>`).join("");
   document.querySelectorAll(".tab").forEach(t=>t.onclick = ()=>{ state.tab = t.dataset.tab; render(); });
 }
+
+// ================= 籌碼雷達 tab（2026-09-28 由 taiwan-flows `radar` tab 搬來；規格正本 taiwan-flows/docs/radar-tab.md）=================
+// 搬家、不改口徑：radarQuad／radarPoints／radarHolders／radarSvg 與原站逐字相同（tests/test_chipradar.mjs 守門）。
+// 純描述性顯示（鐵律 8）：象限只是「近 20 日日均 vs 近 5 日日均」的現況分類，不進任何排序／訊號，
+// 顏色是唯一的區分（台股慣例：流入紅系 --up、流出綠系 --down；放緩＝同色降透明度，不新增色票）。
+// 資料：上半讀 taiwan-flows 的 sector_ranges_lite.json 的 r5/r20 窗（同 origin shihpc.github.io，CSP connect-src 'self'
+// 已涵蓋）；下半讀本站持股診斷素材庫 data/diag/diag.json（沿用本站 ensureDiag()／state.diag，與「持股診斷」tab 共用
+// 同一份、不重抓）。兩者都只在切到本 tab 時才抓，首屏零新增請求。
+// 搬來時的改名（本站既有名稱／class 避撞）：原 renderRadar→crRender、ensureSectorRanges→crEnsureSr、ensureDiag→沿用本站、
+// table()→本站 tbl()（opts 加 sortI/sortD/tie）、sign→sgn、fmtLot→num、INV_SEG/INV_LABEL→CR_INV_SEG/CR_INV_LABEL、
+// chainNoteHtml→crChainNoteHtml、state.sub.radar→CR；CSS .radar/.twocol/.srcdate/.seg→.cr/.cr-two/.cr-badge/.subtab。
+const CR_SECT_URL = "../taiwan-flows/data/sector_ranges_lite.json";
+const CR_INV_SEG = [["total","三大法人"],["foreign","外資"],["trust","投信"],["dealer","自營"]];
+const CR_INV_LABEL = {total:"三大法人",foreign:"外資",trust:"投信",dealer:"自營"};
+const CR = { rcls:"exchange", rinv:"total", rind:"all", sr:null, srErr:null, srLoading:false };
+const RADAR_MIN_N=8;
+const RADAR_Q={acc_in:"加速流入",slow_in:"流入放緩",acc_out:"加速流出",slow_out:"流出放緩"};
+const RADAR_QSTYLE={acc_in:["--up",0.9],slow_in:["--up",0.4],acc_out:["--down",0.9],slow_out:["--down",0.4]};
+const radarSq=v=>Math.sign(v)*Math.sqrt(Math.abs(v));
+// 億、一位小數、千分位（不帶單位，給表格與 tooltip）
+const radarYi=v=>(v==null||!isFinite(v))?"—":v.toLocaleString("en-US",{minimumFractionDigits:1,maximumFractionDigits:1});
+// 象限：x≥0,y≥0 加速流入；x≥0,y<0 流入放緩；x<0,y<0 加速流出；x<0,y≥0 流出放緩（0 歸非負側）
+function radarQuad(x,y){
+  if(x>=0) return y>=0?"acc_in":"slow_in";
+  return y<0?"acc_out":"slow_out";
+}
+// r5／r20：sector_*_lite.json 的 windows.r5 / windows.r20；classify＝exchange|chain；inv＝total|foreign|trust|dealer
+// 回傳 [{sector,n,v20,v5,x,y,q}]（v20/v5＝該窗淨額 億；x＝近 20 日日均 億/日；y＝近 5 日日均 − x）
+// 交易日數取各窗 trading_days（不寫死 5／20；缺值才退回 dates.length）。只取兩窗都有、且 r20 的 n ≥ 8 的類股。
+function radarPoints(r5, r20, classify, inv){
+  const pick=w=>(((w&&w.classifications&&w.classifications[classify])||{}).investors||{})[inv]||[];
+  const td=w=>(w&&w.trading_days)||(w&&w.dates&&w.dates.length)||0;
+  const d5=td(r5), d20=td(r20);
+  if(!d5||!d20) return [];
+  const m5={}; for(const r of pick(r5)) m5[r.sector]=r;
+  const out=[];
+  for(const b of pick(r20)){
+    const a=m5[b.sector];
+    if(!a||!(b.n>=RADAR_MIN_N)) continue;
+    const v20=b.net_amt_k/1e5, v5=a.net_amt_k/1e5;
+    const x=v20/d20, y=v5/d5-x;
+    out.push({sector:b.sector,n:b.n,v20,v5,x,y,q:radarQuad(x,y)});
+  }
+  return out.sort((p,q)=>(q.v20-p.v20)||(p.sector<q.sector?-1:p.sector>q.sector?1:0));
+}
+// diag：本站 data/diag/diag.json。stocks[code].hd＝[最新週%, 前一週%]（src/build_diag.py 的定義，
+// **第 0 個才是本週**）、hdw＝週變化 pp、hdd＝集保資料日。缺 hdw（非有限數）的檔整檔排除。
+// ind＝"all" 或產業名。回傳 {up, down, cover, filtered, hdd, stale, inds}：up＝hdw>0 依 hdw 由大到小前 20，
+// down＝hdw<0 依 hdw 由小到大前 20，同值以代號為次鍵；cover＝全體有 hdw 的檔數（不受篩選影響）。
+function radarHolders(diag, ind){
+  const st=(diag&&diag.stocks)||{}, all=[], inds=new Set();
+  for(const code in st){
+    const s=st[code];
+    if(!s||typeof s.hdw!=="number"||!isFinite(s.hdw)) continue;
+    const hd=Array.isArray(s.hd)&&typeof s.hd[0]==="number"?s.hd[0]:null;
+    const r={code,name:s.n==null?"":String(s.n),ind:s.ind==null?"":String(s.ind),hd,hdw:s.hdw,
+      hdd:typeof s.hdd==="string"?s.hdd:null,f5:typeof s.f5==="number"?s.f5:null,t5:typeof s.t5==="number"?s.t5:null};
+    all.push(r); if(r.ind) inds.add(r.ind);
+  }
+  const hdd=all.reduce((m,r)=>r.hdd&&(!m||r.hdd>m)?r.hdd:m,null);
+  const stale=all.filter(r=>hdd&&r.hdd!==hdd).length;
+  const pool=(ind&&ind!=="all")?all.filter(r=>r.ind===ind):all;
+  const byCode=(a,b)=>a.code<b.code?-1:a.code>b.code?1:0;
+  const up=pool.filter(r=>r.hdw>0).sort((a,b)=>(b.hdw-a.hdw)||byCode(a,b)).slice(0,20);
+  const down=pool.filter(r=>r.hdw<0).sort((a,b)=>(a.hdw-b.hdw)||byCode(a,b)).slice(0,20);
+  return {up,down,cover:all.length,filtered:pool.length,hdd,stale,inds:[...inds].sort((a,b)=>a.localeCompare(b,"zh-Hant"))};
+}
+// 散佈圖：inline SVG、兩軸 signed-sqrt。名稱標籤最多 8 個（依離原點遠近挑），估算外框後貪婪放置、互不重疊。
+function radarSvg(pts){
+  const W=460,H=380,L=40,R=10,T=12,B=34, pw=W-L-R, ph=H-T-B;
+  const mx=Math.max(0.5,...pts.map(p=>Math.abs(radarSq(p.x))))*1.12;
+  const my=Math.max(0.5,...pts.map(p=>Math.abs(radarSq(p.y))))*1.12;
+  const X=v=>L+(radarSq(v)+mx)/(2*mx)*pw, Y=v=>T+(my-radarSq(v))/(2*my)*ph;
+  const f1=v=>v.toFixed(1), x0=X(0), y0=Y(0);
+  const col=q=>`var(${RADAR_QSTYLE[q][0]})`;
+  let g="";
+  // 象限底色（極淡）
+  [[x0,T,W-R-x0,y0-T,"acc_in"],[x0,y0,W-R-x0,H-B-y0,"slow_in"],[L,y0,x0-L,H-B-y0,"acc_out"],[L,T,x0-L,y0-T,"slow_out"]]
+    .forEach(([x,y,w,h,q])=>{ if(w>0&&h>0) g+=`<rect x="${f1(x)}" y="${f1(y)}" width="${f1(w)}" height="${f1(h)}" style="fill:${col(q)}" fill-opacity="0.05"/>`; });
+  // 刻度：候選值在 sqrt 空間間距 ≥ 26px 才畫
+  const TICKS=[1000,500,200,100,50,20,10,5,2,1,0.5];
+  const ticks=(m,scale,px)=>{ const acc=[0]; for(const s of [1,-1]) for(const t of TICKS.slice().reverse()){ const v=s*t;
+      if(Math.abs(radarSq(v))>=m) continue; if(acc.every(a=>Math.abs(scale(a)-scale(v))>=px)) acc.push(v); } return acc; };
+  const fmtT=v=>String(v);
+  for(const v of ticks(mx,X,30)){ const x=f1(X(v));
+    g+=`<line x1="${x}" x2="${x}" y1="${T}" y2="${H-B}" style="stroke:var(--line)"/><text x="${x}" y="${H-B+12}" text-anchor="middle" font-size="10" style="fill:var(--dim)">${fmtT(v)}</text>`; }
+  for(const v of ticks(my,Y,20)){ const y=f1(Y(v));
+    g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" style="stroke:var(--line)"/><text x="${L-4}" y="${f1(Y(v)+3)}" text-anchor="end" font-size="10" style="fill:var(--dim)">${fmtT(v)}</text>`; }
+  g+=`<line x1="${f1(x0)}" x2="${f1(x0)}" y1="${T}" y2="${H-B}" style="stroke:var(--dim)"/><line x1="${L}" x2="${W-R}" y1="${f1(y0)}" y2="${f1(y0)}" style="stroke:var(--dim)"/>`;
+  g+=`<text x="${f1(L+pw/2)}" y="${H-4}" text-anchor="middle" font-size="10" style="fill:var(--dim)">近20日日均淨額（億／日，√刻度）</text>`;
+  g+=`<text x="${W-R-4}" y="${T+12}" text-anchor="end" font-size="11" style="fill:var(--up)">加速流入</text>`+
+     `<text x="${W-R-4}" y="${H-B-5}" text-anchor="end" font-size="11" style="fill:var(--up)" fill-opacity="0.7">流入放緩</text>`+
+     `<text x="${L+4}" y="${H-B-5}" font-size="11" style="fill:var(--down)">加速流出</text>`+
+     `<text x="${L+4}" y="${T+12}" font-size="11" style="fill:var(--down)" fill-opacity="0.7">流出放緩</text>`;
+  const rad=p=>Math.min(14,3+Math.sqrt(p.n)/2.2);
+  // 點：大的先畫，小的疊在上面才點得到
+  for(const p of pts.slice().sort((a,b)=>b.n-a.n||(a.sector<b.sector?-1:1))){
+    const [c,op]=RADAR_QSTYLE[p.q];
+    g+=`<circle class="rpt" cx="${f1(X(p.x))}" cy="${f1(Y(p.y))}" r="${rad(p).toFixed(1)}" style="fill:var(${c});stroke:var(${c})" fill-opacity="${op}" stroke-opacity="0.9"><title>${esc(p.sector)}｜${RADAR_Q[p.q]}｜近20日 ${radarYi(p.v20)} 億｜近5日 ${radarYi(p.v5)} 億</title></circle>`;
+  }
+  // 標籤：依 sqrt 空間離原點距離挑 8 個；字寬以 11px/字估（CJK 全形），依序試右／左／下／上，
+  // 與已放標籤、圖框、象限角標重疊就放棄該標籤（寧可少標也不重疊）
+  const placed=[[W-R-54,T,W-R,T+14],[W-R-54,H-B-17,W-R,H-B],[L,H-B-17,L+54,H-B],[L,T,L+54,T+14]];
+  const hit=(a,b)=>a[0]<b[2]&&b[0]<a[2]&&a[1]<b[3]&&b[1]<a[3];
+  let nlab=0;
+  for(const p of pts.slice().sort((a,b)=>Math.hypot(radarSq(b.x),radarSq(b.y))-Math.hypot(radarSq(a.x),radarSq(a.y))||(a.sector<b.sector?-1:1))){
+    if(nlab>=8) break;
+    const cx=X(p.x), cy=Y(p.y), r=rad(p), w=[...p.sector].length*11, h=13;
+    // 候選位置：右、左、下、上，再試下／上的左右對齊版（貼圖框邊的點用得到）；box＝[x1,y1,x2,y2]，文字基線＝y2−3
+    const dn=cy+r+1, up=cy-r-1-h;
+    const cands=[[cx+r+2,cy-h/2],[cx-r-2-w,cy-h/2],[cx-w/2,dn],[cx-w/2,up],[cx-w,dn],[cx,dn],[cx-w,up],[cx,up]];
+    for(const [x1,y1] of cands){
+      const box=[x1,y1,x1+w,y1+h];
+      if(box[0]<L||box[2]>W-R||box[1]<T||box[3]>H-B) continue;
+      if(placed.some(b=>hit(b,box))) continue;
+      placed.push(box); nlab++;
+      g+=`<text class="rlab" x="${f1(x1)}" y="${f1(y1+h-3)}" font-size="11" style="fill:var(--fg)">${esc(p.sector)}</text>`;
+      break;
+    }
+  }
+  return `<svg class="cr-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="類股資金四象限散佈圖">${g}</svg>`;
+}
+// 類股區間檔（taiwan-flows）：只在本 tab 首次需要時載一次；讀不到／形狀不對 → 上半一行灰字，不重試、下半照常
+function crEnsureSr(){
+  if (CR.sr || CR.srErr || CR.srLoading) return;
+  CR.srLoading = true;
+  loadJSON(CR_SECT_URL)
+    .then(j=>{ if (j && j.windows && typeof j.windows === "object") CR.sr = j; else CR.srErr = "shape"; })
+    .catch(e=>{ CR.srErr = e; })
+    .finally(()=>{ CR.srLoading = false; if (state.tab === "chipradar") render(); });
+}
+// 大戶資料＝本站 state.diag（ensureDiag 載入）；形狀不對視同讀不到（原站 ensureDiag 的同一道檢查）
+const crDiagOk = () => { const j = state.diag; return !!(j && j.stocks && typeof j.stocks === "object" && !Array.isArray(j.stocks)); };
+// 產業鏈「多對多、非市佔、不含 ETF」說明（原站產業鏈資金流 tab 與籌碼雷達共用的同一句文案）
+function crChainNoteHtml(cov, tail){
+  const c=cov||{};
+  return `<div class="cr-note">產業鏈為<b>多對多</b>分類（一檔可屬多類）：各類股加總會<b>重疊、非市佔</b>，代表主題曝險；不含 ETF/權證（涵蓋 ${c.stocks_with_chain||"—"}/${c.stocks_total||"—"} 檔）。${tail||""}</div>`;
+}
+const crYahoo = c => `<a href="https://tw.stock.yahoo.com/quote/${c}" target="_blank" rel="noopener">${c}</a>`;
+function crRender(){
+  const main = document.getElementById("main");
+  const R=CR, cls=R.rcls, inv=R.rinv;
+  let html=`<div class="cr"><div class="cr-toggles"><div class="cr-seg">`+
+    [["exchange","產業別"],["chain","產業鏈"]].map(([v,l])=>`<button class="subtab${cls===v?" active":""}" data-crseg="rcls" data-v="${v}">${l}</button>`).join("")+
+    `</div><div class="cr-seg">`+
+    CR_INV_SEG.map(([v,l])=>`<button class="subtab${inv===v?" active":""}" data-crseg="rinv" data-v="${v}">${l}</button>`).join("")+`</div></div>`;
+  // ---- 上半：類股資金四象限 ----
+  html+=sec("類股資金四象限","固定比較近 5 日與近 20 日");
+  const sr=CR.sr, W=sr&&sr.windows;
+  if(!sr && !CR.srErr){ crEnsureSr(); html+=`<div class="empty">載入類股區間資料…</div>`; }
+  else if(!W||!W.r5||!W.r20) html+=`<div class="empty">讀不到類股區間資料（taiwan-flows data/sector_ranges_lite.json）</div>`;
+  else {
+    const pts=radarPoints(W.r5,W.r20,cls,inv);
+    const b=(t,title)=>`<span class="cr-badge"${title?` title="${esc(title)}"`:""}>${esc(t)}</span>`;
+    html+=`<div class="cr-badges">`+b(`近5日 ${W.r5.start||"—"}~${W.r5.end||"—"}`)+b(`近20日 ${W.r20.start||"—"}~${W.r20.end||"—"}`)+
+      b(`資料日 ${sr.date||"—"}`)+b(`${pts.length} 類股`,`兩窗都有且近 20 日成分股 ≥ ${RADAR_MIN_N} 檔`)+`</div>`;
+    if(cls==="chain") html+=crChainNoteHtml(W.r20.classifications&&W.r20.classifications.chain&&W.r20.classifications.chain.coverage);
+    if(!pts.length) html+=`<div class="empty">沒有符合條件的類股</div>`;
+    else {
+      const cols=[
+        {h:"類股",cls:"cr-l",f:p=>esc(p.sector)},
+        {h:"象限",cls:"cr-l",f:p=>`<span class="${RADAR_QSTYLE[p.q][0]==="--up"?"up":"down"}">${RADAR_Q[p.q]}</span>`},
+        {h:"近20日 億",f:p=>sgn(p.v20,radarYi(p.v20))},
+        {h:"近5日 億",f:p=>sgn(p.v5,radarYi(p.v5))}];
+      html+=`<div class="cr-two"><div>${radarSvg(pts)}`+
+        `<div class="cr-legend">`+Object.keys(RADAR_Q).map(q=>`<span><i style="background:var(${RADAR_QSTYLE[q][0]});opacity:${RADAR_QSTYLE[q][1]}"></i>${RADAR_Q[q]}</span>`).join("")+`</div>`+
+        `<div class="cr-note">橫軸＝近 20 日${CR_INV_LABEL[inv]}日均淨額（億／日）；縱軸＝近 5 日日均減近 20 日日均，正值表示最近 5 日比 20 日均更偏買。兩軸為帶正負號的平方根刻度（signed-sqrt，刻度數字仍是原值），讓小類股不擠在原點。點大小依成分股數；滑過點看數值。</div></div>`+
+        `<div>`+tbl(cols,pts,{sortI:2,sortD:-1,tie:(a,b)=>a.sector<b.sector?-1:a.sector>b.sector?1:0})+`</div></div>`;
+    }
+  }
+  // ---- 下半：千張大戶持股週變化 ----
+  html+=sec("千張大戶持股週變化");
+  if(!state.diag && !state.diagErr){ ensureDiag(); html+=`<div class="empty">載入大戶資料…</div>`; }
+  else if(!crDiagOk()) html+=`<div class="mut" style="font-size:.78rem;margin:4px 0">讀不到大戶資料（postmkt 診斷素材庫）</div>`;
+  else {
+    const inds=radarHolders(state.diag,"all").inds;
+    if(R.rind!=="all"&&!inds.includes(R.rind)) R.rind="all";
+    const H=radarHolders(state.diag,R.rind);
+    const b=t=>`<span class="cr-badge">${esc(t)}</span>`;
+    html+=`<div class="cr-badges">`+b(`集保資料日 ${H.hdd||"—"}`)+b(`法人資料日 ${state.diag.date||"—"}`)+b(`涵蓋 ${H.cover} 檔`)+`</div>`;
+    html+=`<div class="cr-note"><b>涵蓋 postmkt 診斷素材庫 ${H.cover} 檔，非全市場。</b>`+
+      (H.stale?`其中 ${H.stale} 檔的集保資料日早於 ${esc(H.hdd)}。`:"")+
+      `口徑：集保分級「千張以上」大戶持股比的週變化（百分點），週頻；與籌碼K線以成交金額分級推估的「大戶／散戶買賣超」不同。外資／投信 5 日張為診斷素材庫的近 5 日合計。</div>`;
+    html+=`<div class="cr-toggles"><label class="mut" style="font-size:.78rem">產業 <select id="crInd"><option value="all">全部</option>`+
+      inds.map(i=>`<option value="${esc(i)}"${i===R.rind?" selected":""}>${esc(i)}</option>`).join("")+
+      `</select></label>`+(R.rind!=="all"?`<span class="mut" style="font-size:.72rem;align-self:center">篩選後 ${H.filtered} 檔</span>`:"")+`</div>`;
+    const cols=[
+      {h:"代號",cls:"code",f:r=>crYahoo(esc(r.code))},
+      {h:"名稱",cls:"cr-l",f:r=>esc(r.name)},
+      {h:"產業",cls:"cr-l",f:r=>esc(r.ind)},
+      {h:"大戶持股%",f:r=>r.hd==null?"—":r.hd.toFixed(2)},
+      {h:"週變化 pp",f:r=>sgn(r.hdw,(r.hdw>0?"+":"")+r.hdw.toFixed(2))},
+      {h:"外資5日張",f:r=>sgn(r.f5,num(r.f5))},
+      {h:"投信5日張",f:r=>sgn(r.t5,num(r.t5))}];
+    const tie=(a,b)=>a.code<b.code?-1:a.code>b.code?1:0;
+    const blk=(ttl,rows,dir)=>`<div><div class="mut" style="font-size:.78rem;margin:4px 0">${ttl}（${rows.length} 檔）</div>`+
+      (rows.length?tbl(cols,rows,{sortI:4,sortD:dir,tie}):`<div class="mut" style="font-size:.78rem">無</div>`)+`</div>`;
+    // 本站版心 880px：大戶兩表（7 欄）並排時各約 433px 放不下（實測需約 556px），改上下疊放、桌機全欄可見（原站版心較寬才並排）
+    html+=`<div class="cr-stack">`+blk("增加最多",H.up,-1)+blk("減少最多",H.down,1)+`</div>`;
+  }
+  html+=`<div class="cr-disc">類股象限與大戶變化為現況描述，非買賣訊號；無回測依據。</div></div>`;
+  main.innerHTML = html;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest("[data-crseg]");
+  if (!b) return;
+  const k = b.dataset.crseg, v = b.dataset.v;
+  if (HASH_CR[k] && HASH_CR[k].includes(v)){ CR[k] = v; render(); }
+});
+document.addEventListener("change", e => {
+  if (e.target && e.target.id === "crInd"){ CR.rind = e.target.value; render(); }
+});
+
+// ==== 社群聲量（2026-09-28 由 taiwan-stock-news `social` tab 搬來；規格正本 taiwan-stock-news/docs/social-display.md，
+// §1b 為使用者裁決的紅綠／排行／建議）====
+// 搬家、不改口徑：social-pure 區段（純函式）與原站逐字相同（tests/test_social_display.py 守門）。
+// 資料：taiwan-stock-news 的 data/social/index.json（日期清單）＋ data/social/<YYYY-MM-DD>.json（單日產物，schema 見
+// taiwan-stock-news docs/social-phase1.md §2），同 origin shihpc.github.io、CSP connect-src 'self' 已涵蓋。
+// **只在切到本 tab 時才抓**（首屏不載），走本站 loadJSON（cache:"no-cache"，同原站 fetchFresh）。
+// 使用者 2026-09-28 裁決：態度用紅綠、偏多比可排序、偏多／偏空排行、每檔標籤，並依「情緒＋千張大戶週變化」
+// 雙確認產生規則式買賣建議與參考價位——門檻與規則皆**未經回測**，畫面一律標「AI 研判，未經回測，非保證」（鐵律 8）。
+// 籌碼資料＝本站 data/diag/diag.json（沿用 ensureDiag()／state.diag，與「持股診斷」「籌碼雷達」共用同一份、不重抓）。
+// 其餘硬約束：②排除 fixture:true 的日子（index.json 與單日檔兩層都檢查）；
+// ③外來字串（標題／股名／作者／錯誤路徑）一律 esc()，文章連結只接受 https://www.ptt.cc/ 開頭；
+// ④hash 只新增 tab 值 social 與 key sd（日期），sd 須在「日期選單列出的非 fixture 日子」內。
+// 搬來時的改名：原站 .row/.lbl/.chip/.meta/.tblwrap → .soc-row/.soc-lbl/.soc-chip/.soc-meta/.soc-tblwrap；
+// fetchFresh → loadJSON；#socialView → #main；原站自己抓 diag 的 loadSocialDiag → socialSyncDiag（讀本站 state.diag）。
+// ---- social-pure:begin（純函式，tests/test_social_display.py 以 node 抽出來測，勿依賴 DOM）----
+const SOCIAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const SOCIAL_DAYS_MAX = 7;
+const SOCIAL_URL_PREFIX = "https://www.ptt.cc/";
+const SOCIAL_SENT_KEYS = ["pos", "neu", "neg", "unk"];
+const SOCIAL_SENT_LABEL = { pos: "偏多", neu: "中性", neg: "偏空", unk: "無法判斷" };
+const SOCIAL_SKIP_LABEL = { "no-key": "未設金鑰", "no-llm": "未分類", robots: "站方限制未抓",
+  "no-articles": "無文章", pending: "分類中", error: "分類失敗" };
+const SOCIAL_VIA_LABEL = { batch: "batch", sync: "sync", mixed: "mixed" };
+const SOCIAL_ROBOTS_LABEL = { allow: "allow（允許）", disallow: "disallow（規則禁止，未抓）",
+  absent: "absent（robots.txt 4xx，照抓）", unreachable: "unreachable（讀不到，未抓）" };
+const SOCIAL_SRC_LABEL = { "ptt-stock": "PTT Stock" };
+// fixture 判定：鍵存在且為真值即排除（線上產物沒有這個鍵）
+function socialIsFixture(o){ return !!(o && typeof o === "object" && o.fixture); }
+// index.json → 最近 SOCIAL_DAYS_MAX 個非 fixture 日子（新到舊、去重、格式不合者丟棄）
+function socialDays(idx){
+  const days = (idx && Array.isArray(idx.days)) ? idx.days : [];
+  const out = new Set();
+  for (const d of days){
+    if (!d || socialIsFixture(d)) continue;
+    const s = String(d.date || "");
+    if (SOCIAL_DATE_RE.test(s)) out.add(s);
+  }
+  return [...out].sort().reverse().slice(0, SOCIAL_DAYS_MAX);
+}
+// hash sd 白名單：格式合法且在選單日子內，否則 null（呼叫端靜默退回預設＝最新一天）
+function socialPickSd(v, days){
+  const s = String(v == null ? "" : v).trim();
+  return SOCIAL_DATE_RE.test(s) && Array.isArray(days) && days.includes(s) ? s : null;
+}
+// 文章連結白名單：只接受 https://www.ptt.cc/ 開頭、且不含空白／引號／角括號／反斜線；其餘 null（不出連結）
+function socialSafeUrl(u){
+  if (typeof u !== "string") return null;
+  if (!u.startsWith(SOCIAL_URL_PREFIX)) return null;
+  if (/[\s"'<>\\`]/.test(u)) return null;
+  return u;
+}
+// 單篇對某代號的態度：sent 為 null／缺該代號／值不在三類 → unk（無法判斷）
+function socialArticleSent(a, code){
+  const v = a && a.sent && typeof a.sent === "object" ? a.sent[code] : null;
+  return v === "pos" || v === "neg" || v === "neu" ? v : "unk";
+}
+// 個股態度分布：LLM 整批跳過（via 為 null 且有 skipped）時全計 unk；其餘取產物計數，缺的以 n 補進 unk
+function socialDist(s, llm){
+  const n = Math.max(0, Number(s && s.n) || 0);
+  const skipped = llm && llm.via == null && llm.skipped != null;
+  const o = { pos: 0, neu: 0, neg: 0, unk: 0 };
+  if (!skipped){
+    for (const k of ["pos", "neu", "neg"]){ const v = Number(s && s[k]); o[k] = Number.isFinite(v) && v > 0 ? v : 0; }
+  }
+  o.unk = Math.max(0, n - o.pos - o.neu - o.neg);
+  return o;
+}
+// 偏多比＝pos/(pos+neg+neu)；分母 0 → null（畫面顯「—」）。
+function socialPosRatio(d){
+  const den = (d.pos || 0) + (d.neg || 0) + (d.neu || 0);
+  return den > 0 ? d.pos / den : null;
+}
+// ---- 使用者 2026-09-28 裁決上線：門檻未經回測 ----
+const SOCIAL_RANK_MIN_N = 3;     // 有判斷篇數（偏多＋中性＋偏空）至少幾篇才貼標籤、才進排行
+const SOCIAL_BULL_TH = 0.65;     // 偏多比 ≥ 此值 → 偏多
+const SOCIAL_BEAR_TH = 0.35;     // 偏多比 ≤ 此值 → 偏空
+const SOCIAL_TAG_LABEL = { bull: "偏多", bear: "偏空", mixed: "分歧", few: "樣本不足" };
+const SOCIAL_ADV_LABEL = { buy: "買進", sell: "賣出", hold: "觀望" };
+function socialJudged(d){ return (d.pos || 0) + (d.neu || 0) + (d.neg || 0); }
+function socialTag(d){
+  const j = socialJudged(d);
+  if (j < SOCIAL_RANK_MIN_N) return "few";
+  const r = d.pos / j;
+  return r >= SOCIAL_BULL_TH ? "bull" : (r <= SOCIAL_BEAR_TH ? "bear" : "mixed");
+}
+// 個股列排序：n／push／boo／ratio（降序；ratio 的 null 排最後），次鍵篇數降序、代號升序
+const SOCIAL_SORT_KEYS = ["n", "push", "boo", "ratio"];
+function socialSortRows(stocks, key, llm){
+  const k = SOCIAL_SORT_KEYS.includes(key) ? key : "n";
+  const rows = Object.entries(stocks && typeof stocks === "object" ? stocks : {})
+    .filter(([c, s]) => s && typeof s === "object")
+    .map(([code, s]) => { const d = socialDist(s, llm); return { code, s, d, ratio: socialPosRatio(d) }; });
+  const val = r => k === "ratio" ? r.ratio : (Number(r.s[k]) || 0);
+  return rows.sort((a, b) => {
+    const va = val(a), vb = val(b);
+    if (va == null && vb != null) return 1;
+    if (vb == null && va != null) return -1;
+    return ((vb || 0) - (va || 0)) || ((Number(b.s.n) || 0) - (Number(a.s.n) || 0))
+      || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
+  });
+}
+// 偏多／偏空排行：只納入有判斷篇數 ≥ SOCIAL_RANK_MIN_N 者；bull 依偏多比降序、bear 依偏多比升序，次鍵篇數降序、代號
+function socialRankRows(rows, mode){
+  if (mode !== "bull" && mode !== "bear") return rows;
+  return rows.filter(r => socialJudged(r.d) >= SOCIAL_RANK_MIN_N && r.ratio != null)
+    .slice().sort((a, b) => (mode === "bull" ? b.ratio - a.ratio : a.ratio - b.ratio)
+      || ((Number(b.s.n) || 0) - (Number(a.s.n) || 0))
+      || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
+}
+// 千張大戶週變化（postmkt diag.json 的 stocks[code].hdw，百分點）；缺值或非數字 → null
+function socialHdw(h){
+  if (!h || h.hdw == null || h.hdw === "") return null;
+  const v = Number(h.hdw);
+  return Number.isFinite(v) ? v : null;
+}
+// 雙確認建議：偏多＋大戶增持 → buy；偏空＋大戶減持 → sell；其餘（含籌碼未涵蓋、持平）→ hold
+function socialAdvice(tag, h){
+  const w = socialHdw(h);
+  if (tag === "bull" && w != null && w > 0) return "buy";
+  if (tag === "bear" && w != null && w < 0) return "sell";
+  return "hold";
+}
+// 由「現價距 MA% 」反推均線價位：MA＝c÷(1＋dist/100)（postmkt src/build_diag.py 的 ma5/ma20/ma60 定義）
+function socialMaPrice(c, dist){
+  if (c == null || dist == null || dist === "") return null;
+  const cv = Number(c), dv = Number(dist);
+  if (!(cv > 0) || !Number.isFinite(dv) || dv <= -100) return null;
+  return cv / (1 + dv / 100);
+}
+// 參考價位：buy → 進場參考＝min(現價, MA20)、停損參考＝MA60（僅在低於現價時）；sell → 減碼參考＝max(現價, MA20)；hold → null
+function socialLevels(adv, h){
+  if (!h || adv === "hold") return null;
+  const c = Number(h.c);
+  if (!(c > 0)) return null;
+  const m20 = socialMaPrice(c, h.ma20), m60 = socialMaPrice(c, h.ma60);
+  if (adv === "buy") return { c, entry: m20 != null ? Math.min(c, m20) : c, stop: m60 != null && m60 < c ? m60 : null };
+  if (adv === "sell") return { c, exit: m20 != null ? Math.max(c, m20) : c };
+  return null;
+}
+// ---- social-pure:end ----
+
+const SOCIAL = { idx: null, idxErr: null, days: null, date: null, hashSd: null,
+  cache: {}, err: {}, open: null, sort: "n", rank: "all", loading: false,
+  diag: null, diagErr: null };
+const SOCIAL_BASE = "../taiwan-stock-news/data/social/";   // 同源（shihpc.github.io），CSP connect-src 'self' 已涵蓋
+
+// 千張大戶／價位來源＝本站 state.diag：只在本 tab 首次需要時由 ensureDiag() 載一次（載完 render() 會回到這裡）；
+// 讀不到或形狀不對只讓建議退回觀望、不影響聲量表（原站 loadSocialDiag 的同一套語意與文案）
+function socialSyncDiag(){
+  if (!state.diag && !state.diagErr){ ensureDiag(); SOCIAL.diag = null; SOCIAL.diagErr = null; return; }
+  const j = state.diag;
+  if (j && typeof j === "object" && j.stocks && typeof j.stocks === "object"){ SOCIAL.diag = j; SOCIAL.diagErr = null; }
+  else { SOCIAL.diag = null; SOCIAL.diagErr = "讀不到籌碼資料（postmkt 診斷素材庫），建議一律退回觀望"; }
+}
+
+async function loadSocial(){
+  socialSyncDiag();
+  if (SOCIAL.days === null && !SOCIAL.loading && !SOCIAL.idxErr){
+    SOCIAL.loading = true; renderSocial();
+    try{
+      SOCIAL.idx = await loadJSON(SOCIAL_BASE + "index.json");
+      SOCIAL.days = socialDays(SOCIAL.idx);
+      SOCIAL.idxErr = null;
+    }catch(e){ SOCIAL.days = null; SOCIAL.idxErr = "日期清單載入失敗"; }
+    SOCIAL.loading = false;
+    if (SOCIAL.days){
+      SOCIAL.date = socialPickSd(SOCIAL.hashSd, SOCIAL.days) || SOCIAL.days[0] || null;
+      SOCIAL.hashSd = null;
+      if (state.tab === "social") syncHash();
+    }
+  } else if (SOCIAL.days && SOCIAL.hashSd !== null){
+    SOCIAL.date = socialPickSd(SOCIAL.hashSd, SOCIAL.days) || SOCIAL.days[0] || null;
+    SOCIAL.hashSd = null;
+  }
+  renderSocial();
+  const d = SOCIAL.date;
+  if (d && !(d in SOCIAL.cache) && !(d in SOCIAL.err)){
+    SOCIAL.err[d] = null;   // 載入中佔位：render() 會反覆呼叫本函式，佔位避免同一天重複發請求
+    try{
+      const j = await loadJSON(SOCIAL_BASE + d + ".json");
+      if (socialIsFixture(j)) SOCIAL.err[d] = "該日檔案為樣本資料（fixture），已排除不顯示";
+      else if (!j || typeof j !== "object" || String(j.date || "") !== d){ SOCIAL.err[d] = "檔案內容與日期不符"; }
+      else { SOCIAL.cache[d] = j; delete SOCIAL.err[d]; }
+    }catch(e){ SOCIAL.err[d] = "單日資料載入失敗"; }
+    if (SOCIAL.date === d) renderSocial();
+  }
+}
+
+function socialStatusHtml(j){
+  const llm = j.llm || {};
+  const num = v => Number.isFinite(Number(v)) ? String(Number(v)) : "—";
+  const robots = SOCIAL_ROBOTS_LABEL[j.robots] || esc(String(j.robots == null ? "—" : j.robots));
+  const cls = llm.via != null
+    ? `<b>${esc(SOCIAL_VIA_LABEL[llm.via] || String(llm.via))}</b>（已分類 ${num(llm.classified_n)} 篇${Number(llm.failed_n) > 0 ? `、失敗 ${num(llm.failed_n)}` : ""}）`
+    : `<b>${esc(SOCIAL_SKIP_LABEL[llm.skipped] || (llm.skipped == null ? "—" : String(llm.skipped)))}</b>`;
+  return `<div class="soc-status">資料日 <b>${esc(j.date)}</b>｜抓取 <b>${num(j.pages_fetched)}</b> 頁、<b>${num(j.articles_n)}</b> 篇（失敗 ${num(j.failed_n)}）`
+    + `｜robots <b>${robots}</b>｜情緒分類 ${cls}｜產出 ${esc(fmtGenTaipei(j.generated_at))}</div>`;
+}
+
+function socialEmptyHtml(j){
+  const llm = j.llm || {};
+  let why;
+  if (j.robots === "disallow") why = "robots.txt 規則不允許抓取本板，依規範本日未抓任何文章。";
+  else if (j.robots === "unreachable") why = "robots.txt 讀不到（伺服器錯誤或連線失敗），依規範視同禁止，本日未抓任何文章。";
+  else if (llm.skipped === "robots") why = "站方限制，本日未抓任何文章。";
+  else why = "本日抓取結果為 0 篇文章。";
+  const errs = Array.isArray(j.fetch_errors) ? j.fetch_errors.slice(0, 10) : [];
+  const cnt = {};
+  errs.forEach(e => {
+    if (!e) return;
+    const k = String(e.path || "?") + " → " + (e.status != null ? "HTTP " + e.status : String(e.err || "錯誤").slice(0, 80));
+    cnt[k] = (cnt[k] || 0) + 1;
+  });
+  const lines = Object.entries(cnt).map(([k, n]) => `<div>${esc(k)}${n > 1 ? ` ×${n}` : ""}</div>`).join("");
+  return `<div class="mcard"><div class="empty" style="padding:18px 10px">${esc(why)}</div>`
+    + (lines ? `<div class="soc-status">抓取紀錄（原樣列出，不代表判讀）：${lines}</div>` : "") + `</div>`;
+}
+
+const fmtPx = v => v == null ? "—" : (v >= 100 ? v.toFixed(1) : v.toFixed(2));
+function socialAdviceHtml(j, code, s, d, tag, adv, h){
+  const hd = h && Array.isArray(h.hd) && h.hd.length && h.hd[0] != null && Number.isFinite(Number(h.hd[0])) ? Number(h.hd[0]) : null;
+  const w = socialHdw(h);
+  const head = adv === "buy" ? "建議：偏多操作（買進）" : adv === "sell" ? "建議：偏空操作（賣出或避開）" : "建議：觀望";
+  const facts = `${socialJudged(d)} 篇有判斷，其中偏多 ${d.pos}、偏空 ${d.neg}、中性 ${d.neu}（無法判斷 ${d.unk}）；推 ${Number(s.push) || 0}、噓 ${Number(s.boo) || 0}；社群資料日 ${esc(String(j.date))}。`
+    + (h ? `千張大戶持股 ${hd == null ? "—" : hd.toFixed(2) + "%"}，週變化 ${w == null ? "—" : (w > 0 ? "+" : "") + w.toFixed(2) + " pp"}（集保 ${esc(String(h.hdd || "—"))}）。`
+         : (SOCIAL.diag ? "籌碼資料未涵蓋此檔（postmkt 診斷素材庫外）。" : "籌碼資料未載入。"));
+  const chip = w == null ? "未知" : w > 0 ? "增持" : w < 0 ? "減持" : "持平";
+  const both = adv !== "hold" ? "兩者同向，雙確認成立。" : "兩者未同向或資料不足，雙確認未成立。";
+  const infer = `社群作者態度${SOCIAL_TAG_LABEL[tag]}，大戶${chip}；${both}門檻未經回測，屬 AI 研判，非保證。`;
+  const lv = socialLevels(adv, h);
+  let lvHtml = "";
+  if (lv){
+    const dd = SOCIAL.diag && SOCIAL.diag.date ? `（素材庫資料日 ${esc(String(SOCIAL.diag.date))}）` : "";
+    lvHtml = adv === "buy"
+      ? `<div><span class="k">參考價位：</span>收盤 ${fmtPx(lv.c)}${dd}；進場參考約 ${fmtPx(lv.entry)}（現價與 MA20 取低者）`
+        + (lv.stop != null ? `；停損參考約 ${fmtPx(lv.stop)}（MA60）` : "；MA60 不在現價下方，不列停損參考")
+        + `。均線價位由素材庫「現價距 MA%」反推，為近似值，未經回測。</div>`
+      : `<div><span class="k">參考價位：</span>收盤 ${fmtPx(lv.c)}${dd}；減碼參考約 ${fmtPx(lv.exit)}（現價與 MA20 取高者）。均線價位由素材庫「現價距 MA%」反推，為近似值，未經回測。</div>`;
+  }
+  return `<div class="soc-adv"><div class="hd ${adv}">${head}</div>`
+    + `<div><span class="k">依據（事實）：</span>${facts}</div>`
+    + `<div><span class="k">研判（推論）：</span>${infer}</div>${lvHtml}</div>`;
+}
+
+function socialArticlesHtml(j, code){
+  const arts = (Array.isArray(j.articles) ? j.articles : [])
+    .filter(a => a && Array.isArray(a.codes) && a.codes.includes(code));
+  if (!arts.length) return `<div class="mut" style="padding:6px 0">產物中沒有這檔的文章明細。</div>`;
+  return arts.map(a => {
+    const u = socialSafeUrl(a.url);
+    const t = esc(String(a.title || "（無標題）"));
+    const title = u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${t}</a>` : t;
+    const att = SOCIAL_SENT_LABEL[socialArticleSent(a, code)];
+    return `<div class="soc-art">${title}<div class="soc-meta">`
+      + `<span>${esc(String(a.ts || ""))}</span><span>${esc(String(a.author || ""))}</span>`
+      + `<span>推 ${Number(a.push) || 0}／噓 ${Number(a.boo) || 0}</span>`
+      + `<span class="soc-att" title="AI 判讀：作者對此檔的態度">${att}</span></div></div>`;
+  }).join("");
+}
+
+function renderSocial(){
+  // 搬到本站後畫在共用的 #main：非本 tab 時（非同步載入回來晚了）一律不動畫面
+  if (state.tab !== "social") return;
+  const el = document.getElementById("main");
+  if (!el) return;
+  socialSyncDiag();
+  const j = SOCIAL.date ? SOCIAL.cache[SOCIAL.date] : null;
+  const llm = (j && j.llm) || {};
+  let h = `<div class="mcard" style="font-size:.84rem">AI 研判，未經回測，非保證。聲量、態度標籤與買賣建議皆由規則與 AI 判讀產生，僅供參考。`
+    + `<div class="mut" style="font-size:.74rem;margin-top:4px">判讀模型 ${esc(llm.model == null ? "—" : String(llm.model))}`
+    + ` · prompt 版本 ${esc(llm.prompt_ver == null ? "—" : String(llm.prompt_ver))}`
+    + ` · 標籤門檻：偏多比 ≥${Math.round(SOCIAL_BULL_TH * 100)}% 偏多、≤${Math.round(SOCIAL_BEAR_TH * 100)}% 偏空、判斷篇數 <${SOCIAL_RANK_MIN_N} 為樣本不足（未經回測）</div></div>`;
+  if (SOCIAL.loading){ el.innerHTML = h + `<div class="empty">載入中…</div>`; return; }
+  if (SOCIAL.idxErr){ el.innerHTML = h + `<div class="empty">${esc(SOCIAL.idxErr)}</div>`; return; }
+  if (!SOCIAL.days){ el.innerHTML = h + `<div class="empty">載入中…</div>`; return; }
+  if (!SOCIAL.days.length){ el.innerHTML = h + `<div class="empty">尚無可顯示的日子（樣本資料已排除）。</div>`; return; }
+  const src = j ? (SOCIAL_SRC_LABEL[j.source] || String(j.source || "PTT Stock")) : "PTT Stock";
+  h += `<div class="soc-row" style="margin:6px 0 2px"><span class="soc-lbl">來源</span><span class="soc-chip active soc-src">${esc(src)}</span>`
+    + `<span class="soc-lbl" style="margin-left:8px">日期</span><select id="socDate" class="soc-sel">`
+    + SOCIAL.days.map(d => `<option value="${esc(d)}"${d === SOCIAL.date ? " selected" : ""}>${esc(d)}</option>`).join("")
+    + `</select></div>`;
+  if (SOCIAL.err[SOCIAL.date]){ el.innerHTML = h + `<div class="empty">${esc(SOCIAL.err[SOCIAL.date])}</div>`; return; }
+  if (!j){ el.innerHTML = h + `<div class="empty">載入中…</div>`; return; }
+  h += socialStatusHtml(j);
+  if (!(Number(j.articles_n) > 0)){ el.innerHTML = h + socialEmptyHtml(j); return; }
+  const rows = socialRankRows(socialSortRows(j.stocks, SOCIAL.sort, llm), SOCIAL.rank);
+  const rk = (m, t) => `<span class="soc-chip${SOCIAL.rank === m ? " active" : ""}" data-soc-rank="${m}">${t}</span>`;
+  h += `<div class="soc-row" style="margin:4px 0"><span class="soc-lbl">檢視</span>${rk("all", "全部")}${rk("bull", "偏多排行")}${rk("bear", "偏空排行")}</div>`;
+  if (SOCIAL.rank !== "all" && !rows.length){ el.innerHTML = h + `<div class="mcard"><div class="empty" style="padding:18px 10px">沒有判斷篇數達 ${SOCIAL_RANK_MIN_N} 篇的個股，無法排行。</div></div>`; return; }
+  if (!rows.length){ el.innerHTML = h + `<div class="mcard"><div class="empty" style="padding:18px 10px">本日文章未命中任何股票代號或全名。</div></div>`; return; }
+  const th = (k, t) => SOCIAL.rank !== "all" ? `<th>${t}</th>`
+    : `<th class="soc-th${SOCIAL.sort === k ? " on" : ""}" data-soc-sort="${k}">${t}${SOCIAL.sort === k ? " ▼" : ""}</th>`;
+  const diagRows = SOCIAL.diag ? SOCIAL.diag.stocks : null;
+  h += `<div class="mcard"><div class="soc-tblwrap"><table class="mtable"><thead><tr><th>代號</th><th style="text-align:left">股名</th>`
+    + th("n", "篇數") + th("push", "推") + th("boo", "噓")
+    + `<th style="text-align:left">作者態度分布</th>` + th("ratio", "偏多比") + `<th>標籤</th><th>建議</th></tr></thead><tbody>`;
+  for (const { code, s, d } of rows){
+    const n = Math.max(1, d.pos + d.neu + d.neg + d.unk);
+    const tag = socialTag(d);
+    const hrow = diagRows && diagRows[code] && typeof diagRows[code] === "object" ? diagRows[code] : null;
+    const adv = socialAdvice(tag, hrow);
+    const seg = k => d[k] > 0 ? `<i class="soc-${k}" style="width:${(d[k] / n * 100).toFixed(1)}%"></i>` : "";
+    const tip = SOCIAL_SENT_KEYS.map(k => `${SOCIAL_SENT_LABEL[k]} ${d[k]}`).join("／");
+    const r = socialPosRatio(d);
+    const nm = s.name == null || s.name === "" ? code : String(s.name);
+    const op = SOCIAL.open === code;
+    h += `<tr><td><span class="soc-code" data-soc-code="${esc(code)}">${op ? "▾" : "▸"} ${esc(code)}</span></td>`
+      + `<td style="text-align:left">${esc(nm)}</td><td>${Number(s.n) || 0}</td><td>${Number(s.push) || 0}</td><td>${Number(s.boo) || 0}</td>`
+      + `<td style="text-align:left"><span class="soc-bar" title="${esc(tip)}">${SOCIAL_SENT_KEYS.map(seg).join("")}</span></td>`
+      + `<td>${r == null ? "—" : Math.round(r * 100) + "%"}</td>`
+      + `<td><span class="soc-tag ${tag}">${SOCIAL_TAG_LABEL[tag]}</span></td>`
+      + `<td><span class="soc-tag ${adv}">${SOCIAL_ADV_LABEL[adv]}</span></td></tr>`;
+    if (op) h += `<tr><td colspan="9" style="text-align:left;white-space:normal">${socialAdviceHtml(j, code, s, d, tag, adv, hrow)}${socialArticlesHtml(j, code)}</td></tr>`;
+  }
+  h += `</tbody></table></div>`
+    + `<div class="soc-legend">${SOCIAL_SENT_KEYS.map(k => `<span><i class="soc-sw soc-${k}"></i>${SOCIAL_SENT_LABEL[k]}</span>`).join("")}</div>`
+    + `<div class="insight-note">篇數＝提及該檔的篇數；推／噓＝那些篇的推噓數加總。偏多比＝偏多÷（偏多＋中性＋偏空），不含無法判斷，分母 0 顯「—」。`
+    + `建議採雙確認：社群偏多且千張大戶週增持 → 買進；社群偏空且大戶週減持 → 賣出；其餘觀望。點代號展開依據與參考價位。`
+    + `${SOCIAL.diagErr ? "<br>" + esc(SOCIAL.diagErr) : (SOCIAL.diag ? "" : "<br>籌碼資料載入中，建議暫以觀望顯示。")}</div></div>`;
+  el.innerHTML = h;
+}
+
+document.addEventListener("click", e => {
+  if (state.tab !== "social") return;
+  const c = e.target.closest && e.target.closest("[data-soc-code]");
+  if (c){ const k = c.dataset.socCode; SOCIAL.open = SOCIAL.open === k ? null : k; renderSocial(); return; }
+  const rkEl = e.target.closest && e.target.closest("[data-soc-rank]");
+  if (rkEl){ const m = rkEl.dataset.socRank; SOCIAL.rank = (m === "bull" || m === "bear") ? m : "all"; SOCIAL.open = null; renderSocial(); return; }
+  const s = e.target.closest && e.target.closest("[data-soc-sort]");
+  if (s){ SOCIAL.sort = SOCIAL_SORT_KEYS.includes(s.dataset.socSort) ? s.dataset.socSort : "n"; renderSocial(); }
+});
+document.addEventListener("change", e => {
+  if (e.target && e.target.id === "socDate"){
+    const d = socialPickSd(e.target.value, SOCIAL.days || []);
+    if (!d) return;
+    SOCIAL.date = d; SOCIAL.open = null; syncHash(); loadSocial();
+  }
+});
 
 // ---------- 日期 tab（即時彙整各資料源的資料日與產出時間） ----------
 // 日期正規化：斜線→連字號、取前10碼，非 YYYY-MM-DD 一律回空字串（比較前統一格式，見 date-semantics.md）
@@ -4286,7 +4931,7 @@ function ensureDiag(){
   state.diagLoading = true;
   loadJSON("data/diag/diag.json")
     .then(j=>{ state.diag = j; }).catch(e=>{ state.diagErr = e; })
-    .finally(()=>{ state.diagLoading = false; if (state.tab === "diag") render(); });
+    .finally(()=>{ state.diagLoading = false; if (["diag","chipradar","social"].includes(state.tab)) render(); });
 }
 function ensureScreen(){
   if (state.screen || state.screenErr || state.screenLoading) return;

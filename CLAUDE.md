@@ -49,9 +49,9 @@
 
 ## 佈局
 
-- `index.html`：14 個 tab 全部前端（CSS/JS 內嵌）。`render()` 分派各 tab；共用表格框架 `tbl()`
+- `index.html`：16 個 tab 全部前端（CSS/JS 內嵌；2026-09-28 由 14 加到 16，見下方「籌碼雷達／社群聲量」）。`render()` 分派各 tab；共用表格框架 `tbl()`
   （排序/分組表頭/凍結欄/虛擬捲動，sticky 的坑記在 `<style>` 註解）。
-  - **hash 路由（2026-09-07）**：`#tab=&code=&sub=`，只放非預設值。`parseHash()`／`applyHash()`
+  - **hash 路由（2026-09-07）**：`#tab=&code=&sub=`（2026-09-28 另加 `rcls`／`rinv`／`sd`，僅限各自 tab，見下方籌碼雷達／社群聲量），只放非預設值。`parseHash()`／`applyHash()`
     （grep `function parseHash`／`function applyHash`）於 `load()` 套用，`syncHash()`
     （grep `function syncHash`）掛在 `render()` 結尾以 `history.replaceState` 寫回
     （**不塞歷史、不觸發 hashchange**），外部改網址走 `hashchange`
@@ -126,8 +126,8 @@
     `d_oddi`／`d_odda`；原寫「各段 date 取 max」是過寬的，2026-09-13 更正）。
     **頂列與本區塊是兩個不同的軸，刻意不統一**（2026-09-13 使用者裁決：`pmStatus` 維持用
     `pm.date`、不改程式）：頂列答的是「**這份檔整體走到哪一天**」，本區塊答的是「**這張表是哪一天**」。
-    要頂列跟隨單一區塊就得挑一個區塊當代表，而本檔有 14 個 tab、各自吃不同的 dataset，
-    綁 `market_daily.date` 會讓其餘 13 個 tab 的頂列變得不準（例：借券 tab 走 `lend_date`，
+    要頂列跟隨單一區塊就得挑一個區塊當代表，而本檔有 16 個 tab、各自吃不同的 dataset，
+    綁 `market_daily.date` 會讓其餘 15 個 tab 的頂列變得不準（例：借券 tab 走 `lend_date`，
     法人日領先短賣日那天頂列就會比借券 tab 自己的資料日新）。所以正解是**每段自帶自己的資料日**
     （同個股摘要側欄的立場），並在兩者不同時明講，而不是把頂列改成某一段的日期。**2026-09-09 起本區塊基準日改綁法人日 `d_inst`、與借券 tab 的 `lend_date`
     脫鉤**（`build_postmkt.py` grep `md_date = d_inst or lend_date`）：原本共用 `lend_date`
@@ -142,6 +142,27 @@
     **股名在本 tab 刻意不完整**：`stkName()` 的 `diag`／`screen`／`aetf` 三個來源在本 tab 都沒載，
     只剩 `BK_NM`（只由 `oddlot`／`lending` 三張表建），查不到就顯示代號——那是「零新增網路請求」的
     代價，**不得為了補股名而新增請求**；細節與量級見 README 同節。
+  - **籌碼雷達 `chipradar`／社群聲量 `social`（2026-09-28 由 taiwan-flows `radar`、taiwan-stock-news `social` 搬來，
+    原站已移除；驗收條件 `docs/move-radar-social.md`）**：`index.html` grep `// ================= 籌碼雷達 tab`
+    與 `// ==== 社群聲量` 兩段（接在「日期 tab」之前）。**搬家不改口徑**——規格正本仍是
+    `taiwan-flows/docs/radar-tab.md` 與 `taiwan-stock-news/docs/social-display.md`（含 §1b，紅綠／排行／雙確認建議／
+    參考價位是使用者 2026-09-28 裁決、**未經回測**，畫面標「AI 研判，未經回測，非保證」）；純函式
+    （`radarQuad`／`radarPoints`／`radarHolders`／`radarSvg` 與 `social-pure:begin`～`end` 區段）與原站逐字相同。
+    **資料不搬、改讀同源相對路徑**（CSP `connect-src 'self'` 已涵蓋、未改）：`../taiwan-flows/data/sector_ranges_lite.json`
+    （`CR_SECT_URL`）、`../taiwan-stock-news/data/social/`（`SOCIAL_BASE`）；大戶／價位讀本站 `data/diag/diag.json`
+    ——**沿用既有 `ensureDiag()`／`state.diag`**（與持股診斷共用一份，`ensureDiag` 載完後在 diag／chipradar／social
+    三個 tab 都會重繪）。副作用：先開過這兩個 tab 後，`stkName()` 的 diag 來源會變成可用（同「先開過持股診斷」）。
+    **兩個 tab 的資料都只在切到該 tab 時才抓，首屏請求清單不變**。本站變成**另兩個 repo 資料檔的前端消費者**：
+    taiwan-flows `sector_ranges_lite.json` 的 `windows.r5/r20.classifications`、taiwan-stock-news `data/social/*.json`
+    的 schema 改名或改語意＝跨站變更。**hash 新 key**：`rcls`（`exchange`｜`chain`）／`rinv`（`total`｜`foreign`｜
+    `trust`｜`dealer`）只在 `tab=chipradar` 讀寫（產業下拉不進 hash），`sd`（YYYY-MM-DD，須在非 fixture 日期清單內）
+    只在 `tab=social` 讀寫；白名單在 `HASH_CR`／`HASH_SD_RE`，非法值靜默丟棄。搬來時為避撞名改的東西：`tbl()` 多了
+    選填 opts `sortI`／`sortD`／`tie`（不帶時行為逐字不變）、CSS 一律 `.cr-*`／`.soc-*` 前綴、原站 `.row/.lbl/.chip/.meta/.tblwrap`
+    → `.soc-row/.soc-lbl/.soc-chip/.soc-meta/.soc-tblwrap`。大戶兩表在本站版心（880px）改上下疊放（原站並排）。
+    測試：`tests/test_chipradar.mjs`（17 項，pytest 由 `tests/test_frontend_moved.py` 代跑，上半用
+    `tests/fixtures/chipradar_sector_ranges_r5r20.json` 快照）、`tests/test_social_display.py`（13 案）、
+    `tests/test_frontend_moved.py`（hash 白名單＋首屏）。本機驗證 http.server 要起在三個 repo 的**上一層**
+    （例 `/home/user`），以 `/postmkt/` 開頁，`../taiwan-flows/`、`../taiwan-stock-news/` 才可達。
   - **持股清單匯出／匯入／清除（2026-09-07）**：`holdExportPayload`／`holdParseImport`／
     `holdExport`／`holdImportFile`（grep `const HOLD_SCHEMA` 起至 `async function holdImportFile`
     該函式結尾止）。**仍只走 localStorage `pm_holdings` 與使用者本機檔案，不進任何網路 payload**
@@ -212,11 +233,11 @@
 ```bash
 python -m pytest tests/ -q        # 離線單元測試（免 token/網路）
 python src/build_diag.py --sample # diag 管線本地驗證（免 token）
-python -m http.server 8000        # 前端本機驗證；慣例＝14 個 tab 逐一點擊 console 零 error
+python -m http.server 8000        # 前端本機驗證；慣例＝16 個 tab 逐一點擊 console 零 error
 ruff check .                      # lint（設定在 pyproject.toml）
 ```
 
-改前端後務必實測 14 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
+改前端後務必實測 16 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
 
 **手機驗收條件（2026-09-09 更正，舊寫法已被實測推翻）**：375／390／1280 三寬度下
 ①**整頁 `document.documentElement.scrollWidth == window.innerWidth`**（無**頁面級**水平捲軸）、
