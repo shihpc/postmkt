@@ -2437,7 +2437,7 @@ function sentStats(series, n){
   for (const v of vals){ if (v <= x) le++; sum += v; }
   return { n: N, full: N >= w, pct: Math.round(le / N * 100), mean: sum / N };
 }
-// 均線：第 i 點＝含自身往前 n 筆的平均；不足 n 筆的前段為 null（不畫，不以部分筆數冒充 n 日均）
+// 均線：第 i 點＝含自身往前 n 筆的平均；不足 n 筆的前段為 null（不畫，不以部分筆數冒充 n 筆均）
 function sentMa(series, n){
   const w = n || SENT_WIN, out = [];
   let sum = 0;
