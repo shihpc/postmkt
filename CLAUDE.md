@@ -163,6 +163,20 @@
     `tests/fixtures/chipradar_sector_ranges_r5r20.json` 快照）、`tests/test_social_display.py`（13 案）、
     `tests/test_frontend_moved.py`（hash 白名單＋首屏）。本機驗證 http.server 要起在三個 repo 的**上一層**
     （例 `/home/user`），以 `/postmkt/` 開頁，`../taiwan-flows/`、`../taiwan-stock-news/` 才可達。
+  - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
+    `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／
+    `prevTradingDay`／`holLoad`）。`load()` 末尾 `holLoad()` 以**同源相對路徑** `../taiwan-flow-live-v2/data/twse_holidays.json`
+    非阻塞讀取（CSP `connect-src 'self'` 已涵蓋、未改 CSP；首屏多這一支小檔）；載入成功才重繪頂列＋`dates`／`mychg`／`rrgd`
+    三個 tab 一次。**休市日比照週末**：`pmStatus`（休市日＝「休市定格」、上一交易日跳過休市日）、`dayDiff`（日期 tab
+    `dateStatus` 與持股異動第五軸 `myChgDateInfo` 的交易日差）、`rrgdLagDays`。今日為休市日且 `lag`＝0 時第五軸文案寫
+    「今日 X（假日名）休市，此為最近交易日」而非「即今日」（**週末同型的「即今日」屬既有行為、未改**）。
+    **fail-open**：讀不到／非 2xx／壞檔／`schema` 不是整數 1（`true` 不收）／`years` 無合法年度 → `HOL=null`
+    ＝只排週末＝改動前行為（Playwright 以行事曆 404 對跑 origin/main，16 tab `#topbar`＋`#main` 逐字相同）；某年不在
+    `years`＝該年未知、只排週末。**不新增判級／門檻、不改資料欄位**；`MYCHG_STALE_LAG` 仍為 2。颱風臨時停市仍會誤報。
+    刻意不改：`twDayList`（雲端歷史近 3 個**日曆日**，休市日檔案本來就 404 靜默略過）、`diagNewsFor`（用 news.json 自帶
+    `trading_days`）、大盤餘額「異動」（跟陣列前一筆比，不做日期推算）。同規則在 taiwan-flows／taiwan-backtest 前端與
+    Worker `parseHolidayCal` 各一份（前端無共用模組）。測試 `tests/test_holidays_frontend.mjs`（pytest 由
+    `tests/test_holidays_frontend.py` 代跑；fixture `tests/fixtures/twse_holidays_2026.json` 為 2026-09-29 快照）。
   - **持股清單匯出／匯入／清除（2026-09-07）**：`holdExportPayload`／`holdParseImport`／
     `holdExport`／`holdImportFile`（grep `const HOLD_SCHEMA` 起至 `async function holdImportFile`
     該函式結尾止）。**仍只走 localStorage `pm_holdings` 與使用者本機檔案，不進任何網路 payload**

@@ -1356,14 +1356,16 @@ const myChgPct = v => v == null ? '<span class="mut" title="該資料日無漲�
 
 // ---- 第五軸：資料日 ----
 // 回 {d, today, lag, txt, stale}：d=""＝日期缺失或格式不合；lag=null＝日期不明或資料日晚於今日；
-// lag 為交易日數（只排週末、國定假日不扣，沿用 dayDiff 的已知近似，與日期 tab／頂列同口徑）。
+// lag 為交易日數（沿用 dayDiff：排除週末與行事曆休市日，行事曆讀不到時只排週末；與日期 tab／頂列同口徑）。
 // stale=true 只代表「要多講一句」，**不是紅黃綠判級**。
 function myChgDateInfo(md, nowStr){
   const d = dateNorm(md && md.date), today = (nowStr || twNow()).slice(0, 10);
   if (!d) return { d:"", today, lag:null, txt:"資料日不明（market_daily.date 缺失或格式不合）", stale:true };
   if (d > today) return { d, today, lag:null, txt:`資料日 ${d}（晚於今日 ${today}）`, stale:true };
   const lag = dayDiff(today, d);
-  const txt = lag === 0 ? `資料日 ${d}（即今日）`
+  // 今日為行事曆休市日時 lag 可能為 0 但 d≠today：不得說成「即今日」（週末的同型措辭屬既有行為，本批不動）
+  const txt = lag === 0 && d !== today && holClosed(today) ? `資料日 ${d}（今日 ${today} ${holName(today)}休市，此為最近交易日）`
+    : lag === 0 ? `資料日 ${d}（即今日）`
     : lag === 1 ? `資料日 ${d}（今日 ${today} 的前 1 個交易日）`
     : `資料日 ${d}（落後今日 ${today} ${lag} 個交易日）`;
   return { d, today, lag, txt, stale: lag >= MYCHG_STALE_LAG };
@@ -2358,14 +2360,57 @@ const dateNorm = s => { const t = String(s||"").replace(/\//g,"-").slice(0,10); 
 //   該 ts 另有兩個坑：收盤後會被盤後定盤/零股推進到 14:30–15:00（非 13:30 收盤）、非交易日可能是
 //   當日盤前殘留值（日期與內容資料日不符）。完整語意見 docs/date-semantics.md 的「Worker `/live`」段。
 const dateDisplay = raw => { const m = String(raw||"").replace(/\//g,"-").trim().match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?/); return m ? (m[2] ? `${m[1]} ${m[2]}` : m[1]) : ""; };
-// baseline 早於 date 幾個「平日」（正值＝該源落後 baseline N 個交易日）。
-// 只排除週六日，國定假日/颱風假不扣——跨假日仍可能高估 1-2 日，屬已知近似
+// ---------- 家族休市行事曆（2026-09-29 批次二；規格 taiwan-flow-live-v2/docs/holiday-calendar.md §1／§2／§5b） ----------
+// 同源相對路徑讀 taiwan-flow-live-v2 的 data/twse_holidays.json（全家族同在 shihpc.github.io origin，
+// CSP connect-src 'self' 已涵蓋、不改 CSP）。**非阻塞**：load() 發出後照舊渲染，載入成功才重繪頂列＋
+// 受影響 tab 一次。**fail-open**：讀不到／非 2xx／壞檔／schema 不是整數 1（true 不收）／years 無合法年度
+// → HOL 維持 null＝只排週末＝改動前行為（逐字相同）。某年不在 years＝該年未知、一律只排週末。
+// 休市日＝週末 ∪ closed；只影響「交易日差／最近應有資料日」，不新增判級、不改門檻、不改資料欄位。
+// 同規則另有 taiwan-flows／taiwan-backtest 前端與 Worker parseHolidayCal 各一份（前端無共用模組），改一處要一起看。
+const HOL_URL = "../taiwan-flow-live-v2/data/twse_holidays.json";
+let HOL = null;   // {years:Set<number>, closed:Set<string>, names:{}}；null＝未載入或 fail-open
+function holParse(j){
+  if (!j || typeof j !== "object" || j.schema !== 1 || !Array.isArray(j.years) || !Array.isArray(j.closed)) return null;
+  const years = new Set(j.years.filter(y => Number.isInteger(y) && y >= 2000 && y <= 2100));
+  if (!years.size) return null;
+  const closed = new Set(j.closed.filter(d => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)));
+  const names = (j.names && typeof j.names === "object") ? j.names : {};
+  return { years, closed, names };
+}
+function holClosed(d){
+  return !!HOL && typeof d === "string" && HOL.years.has(+d.slice(0, 4)) && HOL.closed.has(d);
+}
+const holName = d => (HOL && typeof HOL.names[d] === "string" && HOL.names[d]) || "國定假日";
+// 交易日＝非週末且非行事曆休市日（HOL=null 時退化為「非週末」＝舊行為）
+function isTradingDay(d){
+  const w = new Date(d + "T00:00:00Z").getUTCDay();
+  return w !== 0 && w !== 6 && !holClosed(d);
+}
+// d 之前最近的交易日（不含 d 本身）；上限 60 天防呆（行事曆再怎麼壞也不會無窮迴圈）
+function prevTradingDay(d){
+  let t = Date.parse(d + "T00:00:00Z");
+  for (let i = 0; i < 60; i++){
+    t -= 864e5;
+    const s = new Date(t).toISOString().slice(0, 10);
+    if (isTradingDay(s)) return s;
+  }
+  return new Date(t).toISOString().slice(0, 10);
+}
+function holLoad(){
+  loadJSON(HOL_URL).then(j => { HOL = holParse(j); }).catch(() => { HOL = null; })
+    .then(() => {
+      if (!HOL) return;   // fail-open：畫面維持首輪渲染，不重繪（＝改動前行為）
+      renderTopbar();
+      if (["dates", "mychg", "rrgd"].includes(state.tab)) render();
+    });
+}
+// baseline 早於 date 幾個交易日（正值＝該源落後 baseline N 個交易日）。
+// 排除週末與行事曆休市日；行事曆讀不到時只排週末（國定假日不扣，跨假日可能高估 1-2 日）。颱風臨時停市仍不扣
 const dayDiff = (b,d) => {
   const DAY = 86400000, end = Date.parse(b+"T00:00:00Z");
   let n = 0;
   for (let t = Date.parse(d+"T00:00:00Z") + DAY; t <= end; t += DAY){
-    const w = new Date(t).getUTCDay();
-    if (w !== 0 && w !== 6) n++;
+    if (isTradingDay(new Date(t).toISOString().slice(0, 10))) n++;
   }
   return n;
 };
@@ -2450,7 +2495,7 @@ function renderDates(){
     + `<th>資料源</th><th>資料日</th><th>產出時間(台北)</th><th>狀態</th></tr></thead>`
     + `<tbody>${body}</tbody></table></div>`;
   const refresh = `<div style="text-align:right;margin:2px 4px"><span class="clk" data-datesrefresh style="font-size:.78rem">↻ 重新整理（本頁為進入時快照）</span></div>`;
-  main.innerHTML = intro + sec("各資料源日期", `基準交易日 ${esc(dd.baseline || "—")} · 綠＝最新／琥珀＝落後（僅排除週末，國定假日不扣） · 時間均為台北時間`) + refresh + table;
+  main.innerHTML = intro + sec("各資料源日期", `基準交易日 ${esc(dd.baseline || "—")} · 綠＝最新／琥珀＝落後（${HOL ? "排除週末與國定假日" : "僅排除週末，國定假日不扣"}） · 時間均為台北時間`) + refresh + table;
 }
 document.addEventListener("click", e=>{
   const el0 = e.target.closest("[data-datesrefresh]");
@@ -2671,13 +2716,12 @@ function rrgdPersistList(coords, t, q, n, sortKey = RRGD_SORT_MOM){
   out.sort((a, b) => (coords[b][t][sortKey] - coords[a][t][sortKey]) || (a < b ? -1 : a > b ? 1 : 0));
   return out;
 }
-// 資料落後幾個「平日」（只排除週六日，國定假日不扣，同 dayDiff 的已知近似）
+// 資料落後幾個交易日（排除週末與行事曆休市日；行事曆讀不到時只排週末＝平日粗略計，同 dayDiff）
 function rrgdLagDays(today, last){
   const DAY = 86400000, end = Date.parse(today + "T00:00:00Z");
   let n = 0;
   for (let t = Date.parse(last + "T00:00:00Z") + DAY; t <= end; t += DAY){
-    const w = new Date(t).getUTCDay();
-    if (w !== 0 && w !== 6) n++;
+    if (isTradingDay(new Date(t).toISOString().slice(0, 10))) n++;
   }
   return n;
 }
@@ -2891,11 +2935,11 @@ function renderRrgd(){
   const j = state.rrgd;
   if (!j){ main.innerHTML = `<div class="empty">載入中…</div>`; return; }
   const t = rrgdSelT(), dates = j.dates, lastDate = dates[dates.length - 1];
-  // 新鮮度：落後今日超過 3 個平日（粗略近似，國定假日不扣）→ 提示資料未更新
+  // 新鮮度：落後今日超過 3 個交易日（行事曆讀不到時為平日粗略近似，國定假日不扣）→ 提示資料未更新
   const lag = rrgdLagDays(twNow().slice(0, 10), lastDate);
   const stale = lag > 3
     ? `<div class="mcard" style="border-color:#e8b339;color:#e8b339">⚠ 資料未更新：`
-      + `series.json 最後日期 ${esc(lastDate)}，已落後今日約 ${lag} 個平日（假日以平日粗略計）。`
+      + `series.json 最後日期 ${esc(lastDate)}，已落後今日約 ${lag} 個${HOL ? "交易日" : "平日（假日以平日粗略計）"}。`
       + `上游增量更新（taiwan-flow-live-v2 baseline 班掛載）可能中斷。</div>` : "";
   // 日期選擇（僅列可算出座標的日期；預設最新日）
   const vi = RRGD.valid, pos = vi.indexOf(t);
@@ -4900,10 +4944,10 @@ function ensurePmHead(){
 const pmMeta = () => state.pm || state.pmHead || null;
 // ---------- 頂列：資料日｜本站更新｜狀態 ----------
 // 欄位語意依 docs/date-semantics.md §4：date＝盤後主資料交易日（台北）、generated_at＝產出時刻（台北 +08:00，
-// 顯示走 fmtGenTaipei）。狀態判準（台北時區；交易日只排週末、國定假日不扣，與日期 tab dayDiff 同口徑，
-// 平日國定假日 22:30 後會誤判「延遲」一次，屬已知近似）：
+// 顯示走 fmtGenTaipei）。狀態判準（台北時區；交易日＝排除週末與家族行事曆休市日，與日期 tab dayDiff 同口徑；
+// 行事曆讀不到時 fail-open 只排週末＝改動前行為，平日國定假日 22:30 後會誤判「延遲」一次）：
 //   正常＝資料日為今日；或資料日為上一交易日且尚未過 22:30（盤後 build 21:53 起跑、含延遲約 22:10 完成）
-//   休市定格＝週末且資料日為上一交易日（週五）——非延遲，資料本來就停在那
+//   休市定格＝週末或行事曆休市日，且資料日為上一交易日——非延遲，資料本來就停在那
 //   延遲＝平日 22:30 後資料日仍非今日；或資料日落後超過一個交易日；或週末資料日早於週五
 //   查詢失敗（未知）＝檔頭速讀與全檔皆載入失敗（不知道資料好壞，不是資料異常）
 //   載入中＝尚未載入（懶載：insight 檔頭 4KB 到達前、或 summary tab 尚未觸發任何載入）
@@ -4916,10 +4960,10 @@ function pmStatus(meta, err, nowStr){
   const now = nowStr || twNow();
   const today = now.slice(0, 10), hm = now.slice(11, 16);
   const dow = new Date(today + "T00:00:00Z").getUTCDay();
-  const back = n => new Date(Date.parse(today + "T00:00:00Z") - n * 864e5).toISOString().slice(0, 10);
-  const prevTd = dow === 1 ? back(3) : dow === 0 ? back(2) : back(1);  // 上一交易日（僅排週末）
-  if (dow === 0 || dow === 6){
-    return date === prevTd ? { txt:"休市定格", cls:"tb-mut", title:`週末休市，資料停在上一交易日 ${prevTd}` }
+  const prevTd = prevTradingDay(today);  // 上一交易日（排週末＋行事曆休市日；HOL=null 時只排週末，與舊的 dow 查表逐字等價）
+  if (dow === 0 || dow === 6 || holClosed(today)){
+    const why = (dow === 0 || dow === 6) ? "週末休市" : `${holName(today)}休市`;
+    return date === prevTd ? { txt:"休市定格", cls:"tb-mut", title:`${why}，資料停在上一交易日 ${prevTd}` }
                            : { txt:"延遲", cls:"tb-lag", title:`資料日 ${date} 早於上一交易日 ${prevTd}` };
   }
   if (date === today) return { txt:"正常", cls:"tb-ok", title:`資料日即今日 ${today}` };
@@ -4937,7 +4981,7 @@ function renderTopbar(){
     + `<span class="tb-sep">｜</span>狀態 <b class="${st.cls}" title="${esc(st.title || "")}">${esc(st.txt)}</b>`;
 }
 // 頂列「資料日｜本站更新｜狀態」不分 tab 都要填：首屏一律先讀檔頭 4KB（與各 tab 的 ensurePm 並行、全檔到後以 state.pm 為準）
-function load(){ applyHash(); renderTabs(); render(); ensurePmHead(); }
+function load(){ applyHash(); renderTabs(); render(); ensurePmHead(); holLoad(); }
 // 懶載（不在 load() 首屏抓）：diag.json(~2.5MB) 與 market_balance_history.json 只有
 // 該 tab 用到，切入時才抓，首屏傳輸量約砍半；render() 分派時觸發，重入以 *Loading 防抖
 function ensureDiag(){
