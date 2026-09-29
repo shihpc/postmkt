@@ -18,7 +18,7 @@ const pure = html.slice(html.indexOf(B), html.indexOf(E));
 const sb = { console };
 vm.createContext(sb);
 new vm.Script(pure + `
-Object.assign(this, { SENT_DATE_RE, SENT_WIN, SENT_DISCLAIMER, sentNum, sentRows, sentSeries, sentDiff, sentStats, sentMa, sentRange, sentPath, sentFmt, sentSigned });`).runInContext(sb);
+Object.assign(this, { SENT_DATE_RE, SENT_WIN, SENT_DISCLAIMER, sentNum, sentGenOk, sentRows, sentSeries, sentDiff, sentStats, sentMa, sentRange, sentPath, sentFmt, sentSigned });`).runInContext(sb);
 const S = sb;
 const J = JSON.parse(fs.readFileSync(path.join(ROOT, "tests", "fixtures", "sentiment_sample.json"), "utf8"));
 
@@ -151,6 +151,21 @@ ok("M4／M5：SENT_URL 同源相對路徑、只在 sentEnsure 內載入、load()
   assert.ok(ens.includes("loadJSON(SENT_URL)"));
   const load = html.match(/^function load\(\)\{.*\}$/m)[0];
   assert.ok(!/sent/i.test(load), load);
+});
+ok("sentGenOk：generated_at 須以 ISO 8601 YYYY-MM-DDTHH:MM 開頭才顯示，否則「—」", () => {
+  for (const v of [J.generated_at, "2026-09-29T21:30:05+08:00", "2026-09-29T21:30", "2026-09-29T13:30:05Z"])
+    assert.equal(S.sentGenOk(v), true, String(v));
+  for (const v of [null, undefined, "", 1759152605, "2026-09-29", "2026-09-29 21:30:05", "<img src=x>2026-09-29T21:30",
+                   " 2026-09-29T21:30", "2026/09/29T21:30", "garbage", {}, ["2026-09-29T21:30"]])
+    assert.equal(S.sentGenOk(v), false, String(v));
+  const rend = html.slice(html.indexOf("function sentRender("), html.indexOf("// ---------- 日期 tab"));
+  assert.ok(rend.includes("sentGenOk(SENT.j.generated_at) ? fmtGenTaipei(SENT.j.generated_at)"), "sentRender 須先過形狀檢查");
+  assert.ok(rend.includes("產出 —"), "形狀不合時顯示「產出 —」");
+});
+ok("措辭：百分位／均值／均線寫「筆有值資料」而非「日」（序列跳過 null，跨度可能多於 N 個交易日）", () => {
+  const rend = html.slice(html.indexOf(B), html.indexOf("// ---------- 日期 tab"));
+  assert.ok(rend.includes("筆有值資料第 ${st.pct} 百分位"));
+  assert.ok(!/近 \$\{st\.n\} 日/.test(rend) && !rend.includes("60 日均線"));
 });
 ok("M7：區段內 innerHTML 拼接的外來字串都過 esc()（日期／generated_at）", () => {
   // 所有 ${…date…} 插值都必須包在 esc( ) 裡

@@ -472,7 +472,7 @@ const SUBS = {
   mychg:"持股異動：拿本機持股清單比對全市場逐檔資料（外資／投信買賣超張數、漲跌%），只列達門檻者，一眼看完再決定要不要進「持股診斷」細看。講的是 market_daily 資料日那一天的狀態、不是「今天」（資料日寫在段落標題與免責卡）。門檻為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒。持股清單只存本機瀏覽器，比對全在瀏覽器端完成，持股代號不進任何網路請求（本 tab 不新增網路請求）。",
   chipradar:"籌碼雷達：上半為類股資金四象限（固定比較近 5 日與近 20 日三大法人／外資／投信／自營日均淨額，資料源 taiwan-flows 類股資金流）；下半為千張大戶持股週變化（本站持股診斷素材庫，約 1,200 檔、非全市場）。類股象限與大戶變化為現況描述，非買賣訊號；無回測依據。",
   social:"社群聲量：PTT Stock 板每日提及各股的篇數、推噓數與作者態度（AI 判讀），並依情緒＋千張大戶雙確認給規則式建議。AI 研判，未經回測，非保證。",
-  sentiment:"市場情緒：臺指 VIX、臺指選擇權 Put/Call 比（未平倉／成交量）、小台散戶多空比三項交易行為類指標（資料源 taiwan-flows，FinMind 每交易日盤後）。各卡列最新值與資料日、與前一筆差、近 60 日百分位與均值、全部歷史折線。純現況描述，非買賣訊號；無回測依據。",
+  sentiment:"市場情緒：臺指 VIX、臺指選擇權 Put/Call 比（未平倉／成交量）、小台散戶多空比三項交易行為類指標（資料源 taiwan-flows，FinMind 每交易日盤後）。各卡列最新值與資料日、與前一筆差、近 60 筆有值資料（缺值日跳過，跨度可能多於 60 個交易日）的百分位與均值、全部歷史折線。純現況描述，非買賣訊號；無回測依據。",
   diag:"持股診斷：輸入持股後逐檔彙整籌碼／價量／題材／基本面／系統五面向事實與紅黃綠風險燈號，附近3日新聞命中與可選的 AI 解讀（按了才呼叫、token 自備）。證據彙整工具、非投資建議，不輸出買賣指令；持股資料僅存於本機瀏覽器（localStorage），不上傳任何伺服器。素材庫每交易日約 22:10 更新（全市場通用資料）。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
@@ -2388,7 +2388,7 @@ document.addEventListener("change", e => {
 // 資料：taiwan-flows 的 data/sentiment.json（後端 src/sentiment.py 產出，schema 見規格 §2），以同源相對路徑讀
 //（shihpc.github.io，CSP connect-src 'self' 已涵蓋、未改 CSP）。**只在切到本 tab 時才抓**（首屏零新增請求），
 // 載入中共享 in-flight、失敗記 SENT.err 不重試（比照籌碼雷達 crEnsureSr）。
-// **純描述性顯示（鐵律 8／規格 M6）**：只列最新值、與前一筆差、近 N 日百分位位置、均值與折線，
+// **純描述性顯示（鐵律 8／規格 M6）**：只列最新值、與前一筆差、近 N 筆有值資料的百分位位置、均值與折線，
 // 不做任何多空判讀、不進排序或訊號；線條一律中性色（不以紅綠暗示方向）。免責句逐字照規格 §3。
 // 外來字串只有日期（白名單 SENT_DATE_RE）與 generated_at（esc）；數值一律 typeof number＋isFinite 才用、toFixed 輸出（M7）。
 // 不接休市行事曆、不做「今天」判斷：資料日照實顯示（規格 §3 末條）。CSS 一律 .sent-* 前綴。
@@ -2400,6 +2400,9 @@ const SENT_WIN = 60;
 const SENT_DISCLAIMER = "情緒指標為現況描述，非買賣訊號；無回測依據。VIX 歷史自 2026-03-02 起。";
 // 數值型別保證：只收有限的 number（字串數字、NaN、Infinity、null、缺欄一律視為 null）
 function sentNum(v){ return (typeof v === "number" && isFinite(v)) ? v : null; }
+// generated_at 形狀檢查：須為字串且以 ISO 8601「YYYY-MM-DDTHH:MM」開頭才顯示，否則畫面顯示「—」
+const SENT_GEN_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+function sentGenOk(v){ return typeof v === "string" && SENT_GEN_RE.test(v); }
 // rows：只收日期合白名單的物件列；同日以後出現者為準；依日期升序。整檔形狀不對回 null
 function sentRows(j){
   if (!j || typeof j !== "object" || !Array.isArray(j.rows)) return null;
@@ -2490,7 +2493,7 @@ function sentEnsure(){
     .catch(e => { SENT.err = e; })
     .finally(() => { SENT.loading = false; if (state.tab === "sentiment") render(); });
 }
-// 折線圖：全部歷史＋60 日均線（虛線）；軸標籤只標實際出現的最小／最大值與首末資料日；中性色
+// 折線圖：全部歷史＋60 筆有值資料均線（虛線；缺值日不入序列，跨度可能多於 60 個交易日）；軸標籤只標實際出現的最小／最大值與首末資料日；中性色
 function sentSvg(series, dp){
   const W = 560, H = 150, L = 50, R = 8, T = 8, B = 20;
   const vals = series.map(p => p.v), ma = sentMa(series, SENT_WIN);
@@ -2507,9 +2510,9 @@ function sentSvg(series, dp){
   if (d1 !== d0) g += `<text x="${x1}" y="${H - 5}" text-anchor="end" class="sent-tk">${esc(d1)}</text>`;
   if (maLine) g += `<path d="${maLine}" class="sent-ma"/>`;
   g += `<path d="${line}" class="sent-ln"/>`;
-  return `<svg class="sent-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="折線圖（全部歷史與 60 日均線）">${g}</svg>`;
+  return `<svg class="sent-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="折線圖（全部歷史與 60 筆有值資料均線）">${g}</svg>`;
 }
-// 單張卡的主體：最新值（自帶資料日）／與前一筆差／近 N 日百分位與均值／折線。series 空＝此欄目前無資料
+// 單張卡的主體：最新值（自帶資料日）／與前一筆差／近 N 筆有值資料百分位與均值／折線。series 空＝此欄目前無資料
 function sentMain(rows, key, o){
   const s = sentSeries(rows, key);
   if (!s.length) return `<div class="sent-na">${esc(o.label)}：目前無資料（該欄全部缺值或尚未產出）</div>`;
@@ -2524,11 +2527,11 @@ function sentMain(rows, key, o){
     ? `較前一筆（${esc(df.prevDate)}，${sentFmt(df.prev, o.dp)}${o.unit}）${sentSigned(df.d, o.dp)} ${o.dunit}`
     : `無前一筆可比`) + `</div>`;
   const st = sentStats(s, SENT_WIN);
-  h += `<div class="sent-row">近 ${st.n} 日第 ${st.pct} 百分位｜近 ${st.n} 日均值 ${sentFmt(st.mean, o.dp)}${o.unit}`
+  h += `<div class="sent-row">近 ${st.n} 筆有值資料第 ${st.pct} 百分位｜均值 ${sentFmt(st.mean, o.dp)}${o.unit}`
     + (st.full ? "" : `<span class="sent-na">（資料僅 ${st.n} 筆，不足 ${SENT_WIN} 筆，以實有筆數計）</span>`) + `</div>`;
   if (o.chart !== false){
     h += sentSvg(s, o.dp);
-    h += `<div class="sent-leg"><i class="sent-sw"></i>${esc(o.label)}　<i class="sent-sw sent-sw-ma"></i>60 日均線`
+    h += `<div class="sent-leg"><i class="sent-sw"></i>${esc(o.label)}　<i class="sent-sw sent-sw-ma"></i>60 筆有值資料均線`
       + (s.length < SENT_WIN ? `（不足 ${SENT_WIN} 筆，未畫）` : "") + `</div>`;
   }
   return h;
@@ -2546,10 +2549,10 @@ function sentRender(){
     return;
   }
   const rows = sentRows(SENT.j), lastRow = rows[rows.length - 1];
-  const gen = SENT.j.generated_at ? fmtGenTaipei(SENT.j.generated_at) : "";
+  const gen = sentGenOk(SENT.j.generated_at) ? fmtGenTaipei(SENT.j.generated_at) : "";
   let h = `<div class="sent"><div class="sent-badges"><span class="sent-badge">最新列資料日 ${esc(lastRow.date)}</span>`
     + `<span class="sent-badge">共 ${rows.length} 筆（${esc(rows[0].date)} 起）</span>`
-    + (gen ? `<span class="sent-badge">產出 ${esc(gen)}（台灣）</span>` : "") + `</div><div class="sent-grid">`;
+    + (gen ? `<span class="sent-badge">產出 ${esc(gen)}（台灣）</span>` : `<span class="sent-badge">產出 —</span>`) + `</div><div class="sent-grid">`;
   h += sentCard("臺指 VIX", sentMain(rows, "vix", { label: "VIX", unit: "", dunit: "點", dp: 2 }),
     "口徑：臺指 VIX（FinMind TaiwanOptionVix，分鐘級），每日取當日最後一筆（實測 13:45:00）。");
   // Put/Call：未平倉比為主（含折線），成交量比為輔（不畫線），並列該日 put／call 口數
