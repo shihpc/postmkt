@@ -168,8 +168,9 @@
     `prevTradingDay`／`holLoad`）。`load()` 末尾 `holLoad()` 以**同源相對路徑** `../taiwan-flow-live-v2/data/twse_holidays.json`
     非阻塞讀取（CSP `connect-src 'self'` 已涵蓋、未改 CSP；首屏多這一支小檔）；載入成功才重繪頂列＋`dates`／`mychg`／`rrgd`
     三個 tab 一次。**休市日比照週末**：`pmStatus`（休市日＝「休市定格」、上一交易日跳過休市日）、`dayDiff`（日期 tab
-    `dateStatus` 與持股異動第五軸 `myChgDateInfo` 的交易日差）、`rrgdLagDays`。今日為休市日且 `lag`＝0 時第五軸文案寫
-    「今日 X（假日名）休市，此為最近交易日」而非「即今日」（**週末同型的「即今日」屬既有行為、未改**）。
+    `dateStatus` 與持股異動第五軸 `myChgDateInfo` 的交易日差）、`rrgdLagDays`。資料日≠今日且 `lag`＝0（今日為休市日或週末）時第五軸文案寫
+    「今日 X（假日名休市／非交易日），此為最近交易日」而非「即今日」（**週末同型的舊錯誤同批於 `7e244f4` 一併修正**；
+    代價：無行事曆時的週末文案與改動前不再逐字相同）。
     **fail-open**：讀不到／非 2xx／壞檔／`schema` 不是整數 1（`true` 不收）／`years` 無合法年度 → `HOL=null`
     ＝只排週末＝改動前行為（Playwright 以行事曆 404 對跑 origin/main，16 tab `#topbar`＋`#main` 逐字相同）；某年不在
     `years`＝該年未知、只排週末。**不新增判級／門檻、不改資料欄位**；`MYCHG_STALE_LAG` 仍為 2。颱風臨時停市仍會誤報。
