@@ -49,7 +49,7 @@
 
 ## 佈局
 
-- `index.html`：16 個 tab 全部前端（CSS/JS 內嵌；2026-09-28 由 14 加到 16，見下方「籌碼雷達／社群聲量」）。`render()` 分派各 tab；共用表格框架 `tbl()`
+- `index.html`：17 個 tab 全部前端（CSS/JS 內嵌；2026-09-28 由 14 加到 16，見下方「籌碼雷達／社群聲量」；2026-09-29 加第 17 個「市場情緒」，見下方同名節）。`render()` 分派各 tab；共用表格框架 `tbl()`
   （排序/分組表頭/凍結欄/虛擬捲動，sticky 的坑記在 `<style>` 註解）。
   - **hash 路由（2026-09-07）**：`#tab=&code=&sub=`（2026-09-28 另加 `rcls`／`rinv`／`sd`，僅限各自 tab，見下方籌碼雷達／社群聲量），只放非預設值。`parseHash()`／`applyHash()`
     （grep `function parseHash`／`function applyHash`）於 `load()` 套用，`syncHash()`
@@ -126,8 +126,8 @@
     `d_oddi`／`d_odda`；原寫「各段 date 取 max」是過寬的，2026-09-13 更正）。
     **頂列與本區塊是兩個不同的軸，刻意不統一**（2026-09-13 使用者裁決：`pmStatus` 維持用
     `pm.date`、不改程式）：頂列答的是「**這份檔整體走到哪一天**」，本區塊答的是「**這張表是哪一天**」。
-    要頂列跟隨單一區塊就得挑一個區塊當代表，而本檔有 16 個 tab、各自吃不同的 dataset，
-    綁 `market_daily.date` 會讓其餘 15 個 tab 的頂列變得不準（例：借券 tab 走 `lend_date`，
+    要頂列跟隨單一區塊就得挑一個區塊當代表，而本檔有 17 個 tab、各自吃不同的 dataset，
+    綁 `market_daily.date` 會讓其餘 16 個 tab 的頂列變得不準（例：借券 tab 走 `lend_date`，
     法人日領先短賣日那天頂列就會比借券 tab 自己的資料日新）。所以正解是**每段自帶自己的資料日**
     （同個股摘要側欄的立場），並在兩者不同時明講，而不是把頂列改成某一段的日期。**2026-09-09 起本區塊基準日改綁法人日 `d_inst`、與借券 tab 的 `lend_date`
     脫鉤**（`build_postmkt.py` grep `md_date = d_inst or lend_date`）：原本共用 `lend_date`
@@ -163,6 +163,26 @@
     `tests/fixtures/chipradar_sector_ranges_r5r20.json` 快照）、`tests/test_social_display.py`（13 案）、
     `tests/test_frontend_moved.py`（hash 白名單＋首屏）。本機驗證 http.server 要起在三個 repo 的**上一層**
     （例 `/home/user`），以 `/postmkt/` 開頁，`../taiwan-flows/`、`../taiwan-stock-news/` 才可達。
+  - **市場情緒 `sentiment`（2026-09-29 新增，第 17 個 tab，排在 `social` 之後、`dates` 之前；規格正本
+    `taiwan-flows/docs/sentiment-tab.md` §3，硬約束 M4–M7）**：`index.html` grep `// ================= 市場情緒 tab`
+    （接在社群聲量之後、「日期 tab」之前）。資料＝`const SENT_URL = "../taiwan-flows/data/sentiment.json"`（**同源相對路徑、
+    CSP 未改**），**只在切到本 tab 時才抓**（`sentRender()` 內呼叫 `sentEnsure()`：in-flight 以 `SENT.loading` 去重、失敗記
+    `SENT.err` 不重試，比照 `crEnsureSr`），首屏請求清單不變。三張卡：臺指 VIX／Put-Call（未平倉比為主含折線、成交量比為輔）／
+    小台散戶多空比（另列最新一列的法人多／空、散戶淨部位、全市場未平倉「全部契約」與「僅月契約」兩種口徑，標「口徑比對中」）。
+    每卡＝最新值＋**自帶資料日**（該欄最後一個非 null 的列；最新列該欄缺值時明講）、與前一筆有值的差、近 N 日第 P 百分位
+    （N＝min(60, 實有筆數)，不足 60 註明；P＝窗內 ≤ 最新值的筆數 ÷ N，四捨五入）、近 N 日均值、全部歷史 inline SVG 折線＋
+    60 日均線（不足 60 筆不畫）、一行口徑說明。**純描述（M6）**：畫面除免責句外不得出現偏多／偏空／建議／訊號等字樣，
+    線條與字色一律中性（`var(--txt)`／`var(--muted)`，不用紅綠）。**M7**：日期白名單 `SENT_DATE_RE`（`^\d{4}-\d{2}-\d{2}$`，
+    不合的列整列丟棄）、數值 `sentNum()`（typeof number＋isFinite，字串數字一律當 null）後 `toFixed`、外來字串插值一律 `esc()`。
+    降級：某欄全 null／缺欄 → 該卡灰字「目前無資料」、其餘卡照常；整檔 404／壞 JSON／`rows` 非陣列或空 → 整段一句
+    「資料尚未產生或讀取失敗」（不報錯）。**不接休市行事曆、不做「今天」判斷**。CSS 一律 `.sent-*` 前綴；**不加新 hash key**
+    （`#tab=sentiment` 由 `HASH_TABS`＝`TABS` 自動白名單）；頂列 stats 列比照籌碼雷達清空（頁內自帶資料日）。
+    **本站因此也是 taiwan-flows `data/sentiment.json` 的前端消費者**：`rows[].date`／`vix`／`pc_oi`／`pc_vol`／`put_oi`／`call_oi`／
+    `put_vol`／`call_vol`／`inst_long`／`inst_short`／`retail_net`／`retail_ratio`／`mtx_oi`／`mtx_oi_monthly_only` 與頂層
+    `generated_at` 改名或改語意＝跨站變更（日期語意見 `docs/date-semantics.md`）。純函式集中在 `sent-pure:begin`～`end` 區段；
+    測試 `tests/test_sentiment_frontend.mjs`（pytest 由 `tests/test_sentiment_frontend.py` 代跑；樣本
+    `tests/fixtures/sentiment_sample.json`＝80 列，最末列 2026-09-24 的 VIX／P/C／法人口數取規格 §0 實測，其餘與 `mtx_oi` 為合成值），
+    另含 M6 字樣／色票、M4/M5 lazy、M7 插值 `esc()` 的讀碼檢查與整段內嵌 script 可編譯檢查。本機驗證同籌碼雷達（http.server 起在上一層）。
   - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
     `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／
     `prevTradingDay`／`holLoad`）。`load()` 末尾 `holLoad()` 以**同源相對路徑** `../taiwan-flow-live-v2/data/twse_holidays.json`
@@ -248,11 +268,11 @@
 ```bash
 python -m pytest tests/ -q        # 離線單元測試（免 token/網路）
 python src/build_diag.py --sample # diag 管線本地驗證（免 token）
-python -m http.server 8000        # 前端本機驗證；慣例＝16 個 tab 逐一點擊 console 零 error
+python -m http.server 8000        # 前端本機驗證；慣例＝17 個 tab 逐一點擊 console 零 error
 ruff check .                      # lint（設定在 pyproject.toml）
 ```
 
-改前端後務必實測 16 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
+改前端後務必實測 17 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
 
 **手機驗收條件（2026-09-09 更正，舊寫法已被實測推翻）**：375／390／1280 三寬度下
 ①**整頁 `document.documentElement.scrollWidth == window.innerWidth`**（無**頁面級**水平捲軸）、

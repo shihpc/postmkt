@@ -362,6 +362,36 @@
   .soc-adv .hd{font-weight:700;font-size:.86rem}
   .soc-adv .hd.buy{color:#ef5b5b} .soc-adv .hd.sell{color:#2fbf71} .soc-adv .hd.hold{color:var(--muted)}
   .soc-adv .k{color:var(--muted)}
+  /* 市場情緒 tab（2026-09-29，規格 taiwan-flows/docs/sentiment-tab.md §3）：純描述，線條與字色一律中性（不用紅綠），
+     全部 .sent-* 前綴避免撞名。卡片在寬螢幕兩欄、≤640px 單欄。 */
+  .sent-badges{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
+  .sent-badge{display:inline-block;font-size:.7rem;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  .sent-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:10px}
+  .sent-grid>*{min-width:0}
+  .sent-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:.82rem;line-height:1.6}
+  .sent-ttl{font-weight:700;font-size:.92rem;margin-bottom:6px;color:var(--txt)}
+  .sent-val{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+  .sent-val b{font-size:1.35rem;color:var(--txt)}
+  .sent-lbl{color:var(--muted);font-size:.78rem}
+  .sent-date{color:var(--muted);font-size:.74rem}
+  .sent-row{color:var(--txt);font-size:.78rem}
+  .sent-sub{color:var(--muted)}
+  .sent-na{color:var(--muted);font-size:.74rem}
+  .sent-note{color:var(--muted);font-size:.72rem;margin-top:6px;border-top:1px solid var(--line);padding-top:6px}
+  .sent-sep{border-top:1px dashed var(--line);margin:8px 0}
+  .sent-kv{display:grid;grid-template-columns:auto auto;justify-content:start;gap:1px 12px;font-size:.78rem}
+  .sent-kv span{color:var(--muted)}
+  .sent-kv b{color:var(--txt);font-weight:600;text-align:right}
+  .sent-svg{display:block;width:100%;height:auto;margin-top:6px}
+  .sent-ax{stroke:var(--line);stroke-width:1}
+  .sent-tk{fill:var(--muted);font-size:13px;font-family:inherit}
+  .sent-ln{fill:none;stroke:var(--txt);stroke-width:1.4;stroke-linejoin:round}
+  .sent-ma{fill:none;stroke:var(--muted);stroke-width:1.2;stroke-dasharray:4 3}
+  .sent-leg{color:var(--muted);font-size:.7rem}
+  .sent-sw{display:inline-block;width:14px;height:0;border-top:2px solid var(--txt);vertical-align:middle;margin-right:4px}
+  .sent-sw-ma{border-top:2px dashed var(--muted);margin-left:8px}
+  .sent-empty{color:var(--muted);font-size:.84rem;margin:12px 2px}
+  .sent-disc{margin-top:14px;color:var(--muted);font-size:.72rem;border-top:1px solid var(--line);padding-top:8px}
   /* 手機（2026-09-06 批次二 #12）：全檔原本 0 條 @media。原則＝表格內允許橫捲（.tblbox overflow:auto），
      整頁不得出現水平捲軸；tabs 改單列橫向可捲不換行；外距與字級略縮。
      ⚠ 不動 .tblbox 的 padding（凍結欄 left:-12px／50px 是拿它補償的，改了 sticky 會穿幫）。 */
@@ -424,7 +454,7 @@ const TABS = [
   ["aetf","主動ETF"],["lending","融借券"],["daytrade","當沖"],
   ["block","鉅額"],["oddlot","零股"],["broker","分點"],["mktbal","大盤餘額"],
   ["rrgd","輪動雷達"],["screen","選股"],["mychg","持股異動"],["diag","持股診斷"],
-  ["chipradar","籌碼雷達"],["social","社群聲量"],["dates","日期"],
+  ["chipradar","籌碼雷達"],["social","社群聲量"],["sentiment","市場情緒"],["dates","日期"],
 ];
 const SUBS = {
   insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、只存本機瀏覽器。非投資建議、非預測，僅描述歷史統計傾向。",
@@ -442,6 +472,7 @@ const SUBS = {
   mychg:"持股異動：拿本機持股清單比對全市場逐檔資料（外資／投信買賣超張數、漲跌%），只列達門檻者，一眼看完再決定要不要進「持股診斷」細看。講的是 market_daily 資料日那一天的狀態、不是「今天」（資料日寫在段落標題與免責卡）。門檻為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒。持股清單只存本機瀏覽器，比對全在瀏覽器端完成，持股代號不進任何網路請求（本 tab 不新增網路請求）。",
   chipradar:"籌碼雷達：上半為類股資金四象限（固定比較近 5 日與近 20 日三大法人／外資／投信／自營日均淨額，資料源 taiwan-flows 類股資金流）；下半為千張大戶持股週變化（本站持股診斷素材庫，約 1,200 檔、非全市場）。類股象限與大戶變化為現況描述，非買賣訊號；無回測依據。",
   social:"社群聲量：PTT Stock 板每日提及各股的篇數、推噓數與作者態度（AI 判讀），並依情緒＋千張大戶雙確認給規則式建議。AI 研判，未經回測，非保證。",
+  sentiment:"市場情緒：臺指 VIX、臺指選擇權 Put/Call 比（未平倉／成交量）、小台散戶多空比三項交易行為類指標（資料源 taiwan-flows，FinMind 每交易日盤後）。各卡列最新值與資料日、與前一筆差、近 60 日百分位與均值、全部歷史折線。純現況描述，非買賣訊號；無回測依據。",
   diag:"持股診斷：輸入持股後逐檔彙整籌碼／價量／題材／基本面／系統五面向事實與紅黃綠風險燈號，附近3日新聞命中與可選的 AI 解讀（按了才呼叫、token 自備）。證據彙整工具、非投資建議，不輸出買賣指令；持股資料僅存於本機瀏覽器（localStorage），不上傳任何伺服器。素材庫每交易日約 22:10 更新（全市場通用資料）。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
@@ -1752,7 +1783,7 @@ function renderStats(){
     const dg = state.diag;
     el.innerHTML = dg ? `<div class="stat">素材庫資料日 <b>${esc(dg.date||"—")}</b></div>`
       + `<div class="stat"><b>${dg.n||0}</b> 檔</div>` : "";
-  } else if (state.tab === "dates" || state.tab === "chipradar" || state.tab === "social"){
+  } else if (state.tab === "dates" || state.tab === "chipradar" || state.tab === "social" || state.tab === "sentiment"){
     // dates：本身就是各源日期總覽；籌碼雷達／社群聲量：頁內每段自帶自己的資料日徽章，不借用 postmkt 的資料日
     el.innerHTML = "";  // 本 tab 本身就是各源日期總覽，不重複顯示單一資料日
   } else {
@@ -1784,6 +1815,8 @@ function render(){
   // 籌碼雷達／社群聲量（2026-09-28 搬來）：資料只在切到本 tab 時才抓（首屏零新增請求），各自讀跨站同源檔
   else if (state.tab === "chipradar") crRender();
   else if (state.tab === "social") loadSocial();
+  // 市場情緒（2026-09-29）：sentiment.json 只在切到本 tab 時才抓（sentRender 內 sentEnsure），首屏零新增請求
+  else if (state.tab === "sentiment") sentRender();
   // insight 的標題資料日與五個盤後 tab 都吃 state.pm；summary／diag 不需要（各自的一鍵流程再 await ensure*）
   else {
     if (state.tab === "diag") ensureDiag();
@@ -2350,6 +2383,198 @@ document.addEventListener("change", e => {
     SOCIAL.date = d; SOCIAL.open = null; syncHash(); loadSocial();
   }
 });
+
+// ================= 市場情緒 tab（2026-09-29 新增；規格正本 taiwan-flows/docs/sentiment-tab.md §3）=================
+// 資料：taiwan-flows 的 data/sentiment.json（後端 src/sentiment.py 產出，schema 見規格 §2），以同源相對路徑讀
+//（shihpc.github.io，CSP connect-src 'self' 已涵蓋、未改 CSP）。**只在切到本 tab 時才抓**（首屏零新增請求），
+// 載入中共享 in-flight、失敗記 SENT.err 不重試（比照籌碼雷達 crEnsureSr）。
+// **純描述性顯示（鐵律 8／規格 M6）**：只列最新值、與前一筆差、近 N 日百分位位置、均值與折線，
+// 不做任何多空判讀、不進排序或訊號；線條一律中性色（不以紅綠暗示方向）。免責句逐字照規格 §3。
+// 外來字串只有日期（白名單 SENT_DATE_RE）與 generated_at（esc）；數值一律 typeof number＋isFinite 才用、toFixed 輸出（M7）。
+// 不接休市行事曆、不做「今天」判斷：資料日照實顯示（規格 §3 末條）。CSS 一律 .sent-* 前綴。
+const SENT_URL = "../taiwan-flows/data/sentiment.json";
+const SENT = { j: null, err: null, loading: false };
+// ---- sent-pure:begin（純函式，tests/test_sentiment_frontend.mjs 以 node 抽出來測，勿依賴 DOM）----
+const SENT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const SENT_WIN = 60;
+const SENT_DISCLAIMER = "情緒指標為現況描述，非買賣訊號；無回測依據。VIX 歷史自 2026-03-02 起。";
+// 數值型別保證：只收有限的 number（字串數字、NaN、Infinity、null、缺欄一律視為 null）
+function sentNum(v){ return (typeof v === "number" && isFinite(v)) ? v : null; }
+// rows：只收日期合白名單的物件列；同日以後出現者為準；依日期升序。整檔形狀不對回 null
+function sentRows(j){
+  if (!j || typeof j !== "object" || !Array.isArray(j.rows)) return null;
+  const by = new Map();
+  for (const r of j.rows){
+    if (!r || typeof r !== "object" || Array.isArray(r)) continue;
+    const d = typeof r.date === "string" ? r.date : "";
+    if (!SENT_DATE_RE.test(d)) continue;
+    by.set(d, r);
+  }
+  return [...by.keys()].sort().map(d => by.get(d));
+}
+// 某欄的有值序列 [{date, v}]（null／缺欄的日子跳過，不當 0）
+function sentSeries(rows, key){
+  const out = [];
+  for (const r of rows || []){ const v = sentNum(r[key]); if (v !== null) out.push({ date: r.date, v }); }
+  return out;
+}
+// 最新一筆與前一筆有值的差；不足兩筆回 null
+function sentDiff(series){
+  if (!series || series.length < 2) return null;
+  const a = series[series.length - 2], b = series[series.length - 1];
+  return { date: b.date, v: b.v, prevDate: a.date, prev: a.v, d: b.v - a.v };
+}
+// 近 n 筆（不足 n 以實有筆數）：N、是否滿 n、最新值的百分位、均值。
+// 百分位＝窗內 ≤ 最新值的筆數 ÷ N × 100，四捨五入取整（含最新值本身，所以最小為 round(100/N)、最大 100）
+function sentStats(series, n){
+  const w = n || SENT_WIN;
+  if (!series || !series.length) return null;
+  const vals = series.slice(-w).map(p => p.v), x = vals[vals.length - 1], N = vals.length;
+  let le = 0, sum = 0;
+  for (const v of vals){ if (v <= x) le++; sum += v; }
+  return { n: N, full: N >= w, pct: Math.round(le / N * 100), mean: sum / N };
+}
+// 均線：第 i 點＝含自身往前 n 筆的平均；不足 n 筆的前段為 null（不畫，不以部分筆數冒充 n 日均）
+function sentMa(series, n){
+  const w = n || SENT_WIN, out = [];
+  let sum = 0;
+  for (let i = 0; i < (series || []).length; i++){
+    sum += series[i].v;
+    if (i >= w) sum -= series[i - w].v;
+    out.push(i >= w - 1 ? sum / w : null);
+  }
+  return out;
+}
+// 值域（只看實際出現的值）；空序列回 null
+function sentRange(vals){
+  let lo = Infinity, hi = -Infinity;
+  for (const v of vals || []) if (v !== null && isFinite(v)){ if (v < lo) lo = v; if (v > hi) hi = v; }
+  return lo === Infinity ? null : { lo, hi };
+}
+// SVG path：vals 依序等距排在 [x0,x1]，值 lo→y1、hi→y0；null 斷線（下一個有值點以 M 重起）。
+// lo===hi（全同值）時畫在垂直中線。座標取一位小數
+function sentPath(vals, x0, x1, y0, y1, lo, hi){
+  const n = (vals || []).length;
+  if (!n) return "";
+  const f = v => Math.round(v * 10) / 10;
+  const X = i => n === 1 ? (x0 + x1) / 2 : x0 + (x1 - x0) * i / (n - 1);
+  const Y = v => hi === lo ? (y0 + y1) / 2 : y1 - (y1 - y0) * (v - lo) / (hi - lo);
+  let d = "", pen = false;
+  for (let i = 0; i < n; i++){
+    const v = vals[i];
+    if (v === null || !isFinite(v)){ pen = false; continue; }
+    d += (pen ? "L" : (d ? " M" : "M")) + f(X(i)) + " " + f(Y(v));
+    pen = true;
+  }
+  return d;
+}
+// 數字格式：dp 位小數（千分位）；帶號版本用於差值（+／-／±0）；非數值一律「—」
+function sentFmt(v, dp){
+  const x = sentNum(v);
+  return x === null ? "—" : x.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+function sentSigned(v, dp){
+  const x = sentNum(v);
+  if (x === null) return "—";
+  const r = Number(x.toFixed(dp));
+  if (r === 0) return "±" + (0).toFixed(dp);
+  return (r > 0 ? "+" : "-") + sentFmt(Math.abs(r), dp);
+}
+// ---- sent-pure:end ----
+
+function sentEnsure(){
+  if (SENT.j || SENT.err || SENT.loading) return;
+  SENT.loading = true;
+  loadJSON(SENT_URL)
+    .then(j => { if (sentRows(j) && sentRows(j).length) SENT.j = j; else SENT.err = "shape"; })
+    .catch(e => { SENT.err = e; })
+    .finally(() => { SENT.loading = false; if (state.tab === "sentiment") render(); });
+}
+// 折線圖：全部歷史＋60 日均線（虛線）；軸標籤只標實際出現的最小／最大值與首末資料日；中性色
+function sentSvg(series, dp){
+  const W = 560, H = 150, L = 50, R = 8, T = 8, B = 20;
+  const vals = series.map(p => p.v), ma = sentMa(series, SENT_WIN);
+  const rg = sentRange(vals);
+  if (!rg) return "";
+  const x0 = L, x1 = W - R, y0 = T, y1 = H - B;
+  const line = sentPath(vals, x0, x1, y0, y1, rg.lo, rg.hi);
+  const maLine = sentPath(ma, x0, x1, y0, y1, rg.lo, rg.hi);
+  const d0 = series[0].date, d1 = series[series.length - 1].date;
+  let g = `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" class="sent-ax"/><line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" class="sent-ax"/>`;
+  g += `<text x="${x0 - 4}" y="${y0 + 9}" text-anchor="end" class="sent-tk">${sentFmt(rg.hi, dp)}</text>`;
+  if (rg.hi !== rg.lo) g += `<text x="${x0 - 4}" y="${y1}" text-anchor="end" class="sent-tk">${sentFmt(rg.lo, dp)}</text>`;
+  g += `<text x="${x0}" y="${H - 5}" class="sent-tk">${esc(d0)}</text>`;
+  if (d1 !== d0) g += `<text x="${x1}" y="${H - 5}" text-anchor="end" class="sent-tk">${esc(d1)}</text>`;
+  if (maLine) g += `<path d="${maLine}" class="sent-ma"/>`;
+  g += `<path d="${line}" class="sent-ln"/>`;
+  return `<svg class="sent-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="折線圖（全部歷史與 60 日均線）">${g}</svg>`;
+}
+// 單張卡的主體：最新值（自帶資料日）／與前一筆差／近 N 日百分位與均值／折線。series 空＝此欄目前無資料
+function sentMain(rows, key, o){
+  const s = sentSeries(rows, key);
+  if (!s.length) return `<div class="sent-na">${esc(o.label)}：目前無資料（該欄全部缺值或尚未產出）</div>`;
+  const last = s[s.length - 1], lastRow = rows[rows.length - 1];
+  let h = "";
+  if (lastRow && lastRow.date !== last.date)
+    h += `<div class="sent-na">最新一筆 ${esc(lastRow.date)} 此欄缺值，以下為最近有值的 ${esc(last.date)}</div>`;
+  h += `<div class="sent-val"><span class="sent-lbl">${esc(o.label)}</span><b>${sentFmt(last.v, o.dp)}${o.unit}</b>`
+    + `<span class="sent-date">資料日 ${esc(last.date)}</span></div>`;
+  const df = sentDiff(s);
+  h += `<div class="sent-row">` + (df
+    ? `較前一筆（${esc(df.prevDate)}，${sentFmt(df.prev, o.dp)}${o.unit}）${sentSigned(df.d, o.dp)} ${o.dunit}`
+    : `無前一筆可比`) + `</div>`;
+  const st = sentStats(s, SENT_WIN);
+  h += `<div class="sent-row">近 ${st.n} 日第 ${st.pct} 百分位｜近 ${st.n} 日均值 ${sentFmt(st.mean, o.dp)}${o.unit}`
+    + (st.full ? "" : `<span class="sent-na">（資料僅 ${st.n} 筆，不足 ${SENT_WIN} 筆，以實有筆數計）</span>`) + `</div>`;
+  if (o.chart !== false){
+    h += sentSvg(s, o.dp);
+    h += `<div class="sent-leg"><i class="sent-sw"></i>${esc(o.label)}　<i class="sent-sw sent-sw-ma"></i>60 日均線`
+      + (s.length < SENT_WIN ? `（不足 ${SENT_WIN} 筆，未畫）` : "") + `</div>`;
+  }
+  return h;
+}
+function sentCard(title, body, note){
+  return `<div class="sent-card"><div class="sent-ttl">${esc(title)}</div>${body}<div class="sent-note">${esc(note)}</div></div>`;
+}
+function sentRender(){
+  sentEnsure();
+  const main = document.getElementById("main");
+  const disc = `<div class="sent-disc">${esc(SENT_DISCLAIMER)}</div>`;
+  if (!SENT.j){
+    main.innerHTML = `<div class="sent">` + (SENT.err
+      ? `<div class="sent-empty">資料尚未產生或讀取失敗</div>` : `<div class="sent-empty">載入中…</div>`) + disc + `</div>`;
+    return;
+  }
+  const rows = sentRows(SENT.j), lastRow = rows[rows.length - 1];
+  const gen = SENT.j.generated_at ? fmtGenTaipei(SENT.j.generated_at) : "";
+  let h = `<div class="sent"><div class="sent-badges"><span class="sent-badge">最新列資料日 ${esc(lastRow.date)}</span>`
+    + `<span class="sent-badge">共 ${rows.length} 筆（${esc(rows[0].date)} 起）</span>`
+    + (gen ? `<span class="sent-badge">產出 ${esc(gen)}（台灣）</span>` : "") + `</div><div class="sent-grid">`;
+  h += sentCard("臺指 VIX", sentMain(rows, "vix", { label: "VIX", unit: "", dunit: "點", dp: 2 }),
+    "口徑：臺指 VIX（FinMind TaiwanOptionVix，分鐘級），每日取當日最後一筆（實測 13:45:00）。");
+  // Put/Call：未平倉比為主（含折線），成交量比為輔（不畫線），並列該日 put／call 口數
+  const pcS = sentSeries(rows, "pc_oi"), pcRow = pcS.length ? rows.find(r => r.date === pcS[pcS.length - 1].date) : null;
+  let pc = sentMain(rows, "pc_oi", { label: "未平倉比", unit: "%", dunit: "百分點", dp: 2 });
+  if (pcRow) pc += `<div class="sent-row sent-sub">${esc(pcRow.date)}：put 未平倉 ${sentFmt(pcRow.put_oi, 0)} 口／call 未平倉 ${sentFmt(pcRow.call_oi, 0)} 口</div>`;
+  pc += `<div class="sent-sep"></div>` + sentMain(rows, "pc_vol", { label: "成交量比", unit: "%", dunit: "百分點", dp: 2, chart: false });
+  const pvS = sentSeries(rows, "pc_vol"), pvRow = pvS.length ? rows.find(r => r.date === pvS[pvS.length - 1].date) : null;
+  if (pvRow) pc += `<div class="sent-row sent-sub">${esc(pvRow.date)}：put 成交 ${sentFmt(pvRow.put_vol, 0)} 口／call 成交 ${sentFmt(pvRow.call_vol, 0)} 口</div>`;
+  h += sentCard("Put/Call 比（臺指選擇權 TXO）", pc,
+    "口徑：未平倉比＝Σ put 未平倉 ÷ Σ call 未平倉，只取一般交易時段（盤後時段未平倉為 0）；成交量比＝Σ put 成交量 ÷ Σ call 成交量，一般＋盤後兩時段合計。");
+  // 小台：散戶多空比為主；另列最新一列的法人多／空、散戶淨部位、全市場未平倉兩種口徑
+  let mx = sentMain(rows, "retail_ratio", { label: "散戶多空比", unit: "%", dunit: "百分點", dp: 2 });
+  mx += `<div class="sent-sep"></div><div class="sent-row sent-sub">${esc(lastRow.date)}（最新一列）：</div>`
+    + `<div class="sent-kv"><span>法人多單</span><b>${sentFmt(lastRow.inst_long, 0)} 口</b>`
+    + `<span>法人空單</span><b>${sentFmt(lastRow.inst_short, 0)} 口</b>`
+    + `<span>散戶淨部位</span><b>${sentSigned(lastRow.retail_net, 0)} 口</b>`
+    + `<span>全市場未平倉（全部契約）</span><b>${sentFmt(lastRow.mtx_oi, 0)} 口</b>`
+    + `<span>全市場未平倉（僅月契約）</span><b>${sentFmt(lastRow.mtx_oi_monthly_only, 0)} 口</b></div>`
+    + `<div class="sent-row sent-sub"><span class="sent-badge">口徑比對中</span> 全市場未平倉是否含週契約尚未定案：散戶多空比目前以「全部契約」為分母，兩種數字並列供比對。</div>`;
+  h += sentCard("小台散戶多空比（小型臺指 MTX）", mx,
+    "口徑：散戶淨部位＝三大法人小台空單合計－多單合計（未平倉口數）；散戶多空比＝散戶淨部位 ÷ 全市場未平倉量（一般交易時段未平倉加總）。");
+  h += `</div>` + disc + `</div>`;
+  main.innerHTML = h;
+}
 
 // ---------- 日期 tab（即時彙整各資料源的資料日與產出時間） ----------
 // 日期正規化：斜線→連字號、取前10碼，非 YYYY-MM-DD 一律回空字串（比較前統一格式，見 date-semantics.md）

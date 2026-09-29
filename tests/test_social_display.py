@@ -187,7 +187,8 @@ def test_sentiment_css_red_green():
 def test_disclaimer_and_tab_order():
     s = _html()
     assert "AI 研判，未經回測，非保證。" in s
-    assert "非買賣訊號" not in s[s.index("// ==== 社群聲量"):s.index("// ---------- 日期 tab")]
+    # 社群聲量區段止於下一段「市場情緒 tab」（2026-09-29 插在社群聲量與日期 tab 之間，它自己的免責句含「非買賣訊號」）
+    assert "非買賣訊號" not in s[s.index("// ==== 社群聲量"):s.index("// ================= 市場情緒 tab")]
     # 本 tab 副標題（SUBS.social）也不得寫舊句，須帶免責措辭
     m = re.search(r'^\s*social:"([^"]*)",', s, re.M)
     assert m, "找不到 SUBS.social"
@@ -197,8 +198,8 @@ def test_disclaimer_and_tab_order():
     body = s[s.index("const TABS = ["):]
     body = body[:body.index("];")]
     tabs = re.findall(r'\["([a-z]+)",', body)
-    assert len(tabs) == 16
-    assert tabs[-3:] == ["chipradar", "social", "dates"]
+    assert len(tabs) == 17   # 2026-09-29 加市場情緒 sentiment（social 之後、dates 之前）
+    assert tabs[-4:] == ["chipradar", "social", "sentiment", "dates"]
     assert "const HASH_TABS = new Set(TABS.map(t => t[0]));" in s
 
 

@@ -120,8 +120,8 @@ def H():
 
 
 def test_hash_tabs_include_moved(H):
-    assert len(H["tabs"]) == 16
-    assert H["tabs"][-3:] == ["chipradar", "social", "dates"]
+    assert len(H["tabs"]) == 17   # 2026-09-29 加市場情緒 sentiment（排在 social 之後、dates 之前）
+    assert H["tabs"][-4:] == ["chipradar", "social", "sentiment", "dates"]
     assert "mychg" in H["tabs"] and "radar" not in H["tabs"]
 
 

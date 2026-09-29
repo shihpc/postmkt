@@ -3,7 +3,7 @@
 台股盤後資料的靜態儀表板（單一 `index.html`，無 build 工具），
 是[股市雷達 Hub](https://shihpc.github.io/) 的子站之一。
 
-## 十六個 Tab（2026-09-28 加「籌碼雷達」「社群聲量」後）
+## 十七個 Tab（2026-09-28 加「籌碼雷達」「社群聲量」、2026-09-29 加「市場情緒」後）
 
 | Tab | 資料源 | 內容 |
 |---|---|---|
@@ -23,6 +23,7 @@
 | 持股診斷 | `data/diag/diag.json`（`src/build_diag.py` 夜間管線）＋ v2 `/live` 現價＋ taiwan-stock-news 新聞 | 輸入持股（僅存 localStorage）→ 逐檔五面向（籌碼/價量/題材/基本面/系統）紅黃綠燈號＋事實清單＋組合層檢查＋近3日新聞命中＋可選 AI 解讀 |
 | 籌碼雷達 | 上半：taiwan-flows `data/sector_ranges_lite.json` 的 r5／r20 窗（跨 repo 同源相對路徑 `../taiwan-flows/…`，切到本 tab 才載）；下半：本站 `data/diag/diag.json`（沿用 `ensureDiag()`，與「持股診斷」共用） | 類股資金四象限（固定比近 5 日 vs 近 20 日日均淨額，產業別／產業鏈 × 三大法人／外資／投信／自營，signed-sqrt 散佈圖＋旁表）＋千張大戶持股週變化增減各前 20 檔（產業篩選）。純描述性、非買賣訊號、無回測依據。**2026-09-28 由 taiwan-flows `radar` tab 搬來**，規格正本仍是 `taiwan-flows/docs/radar-tab.md`，搬遷驗收見 `docs/move-radar-social.md` |
 | 社群聲量 | taiwan-stock-news `data/social/index.json`＋`<YYYY-MM-DD>.json`（跨 repo 同源相對路徑 `../taiwan-stock-news/…`，管線與 Hetzner 排程仍在該 repo）；籌碼／參考價位讀本站 `data/diag/diag.json` | PTT Stock 板每日個股提及篇數、推噓、作者態度分布（AI 判讀），紅綠標籤、偏多／偏空排行、情緒＋千張大戶雙確認的規則式買賣建議與參考價位（**使用者 2026-09-28 裁決、未經回測**，畫面標「AI 研判，未經回測，非保證」）。**2026-09-28 由 taiwan-stock-news `social` tab 搬來**，規格正本仍是 `taiwan-stock-news/docs/social-display.md`（含 §1b） |
+| 市場情緒 | taiwan-flows `data/sentiment.json`（跨 repo 同源相對路徑 `../taiwan-flows/…`，切到本 tab 才載；後端 `src/sentiment.py` 由該 repo `run_daily` 產出，資料源 FinMind `TaiwanOptionVix`／`TaiwanOptionDaily`(TXO)／`TaiwanFuturesDaily`＋`TaiwanFuturesInstitutionalInvestors`(MTX)） | 三張卡：臺指 VIX、Put/Call 比（未平倉比為主、成交量比為輔）、小台散戶多空比（另列法人多／空、散戶淨部位、全市場未平倉兩種口徑「口徑比對中」）。每卡：最新值＋自帶資料日、與前一筆差、近 N 日（N＝min(60,實有筆數)）百分位與均值、全部歷史折線＋60 日均線（中性色）。**純描述、非買賣訊號、無回測依據**；規格正本 `taiwan-flows/docs/sentiment-tab.md` §3 |
 
 原「融資」「融券借券賣出餘額」兩 tab 於 2026-07-11 併入「融資券借券」整合排行（該 tab 為個股層級排行）；
 2026-07-19 新增「大盤餘額」tab 補上大盤層級（全市場合計）視角，兩者並存、口徑用途不同。
@@ -250,9 +251,9 @@
   - **頂列不會改成跟隨本區塊——這是刻意的，不是還沒做**（2026-09-13 使用者裁決：`pmStatus()`
     維持讀 `pm.date`，**不改程式**）。兩者是**不同的軸**，不是同一個數字的兩種寫法：
     頂列答的是「**這份資料檔整體走到哪一天**」（給的是全檔新鮮度，`pmStatus()` 據此判「正常／延遲／
-    休市定格」），本區塊答的是「**這張表本身是哪一天的**」。要讓頂列跟隨單一區塊，就得從 16 個 tab
+    休市定格」），本區塊答的是「**這張表本身是哪一天的**」。要讓頂列跟隨單一區塊，就得從 17 個 tab
     裡挑一個當代表——而各 tab 吃的 dataset 不同、資料日本來就會不一樣（借券 tab 走 `lend_date`、
-    當沖走 `d_dt`、本區塊走 `d_inst`…），綁死其中一個會讓**其餘 15 個 tab 的頂列變得不準**：
+    當沖走 `d_dt`、本區塊走 `d_inst`…），綁死其中一個會讓**其餘 16 個 tab 的頂列變得不準**：
     例如法人日領先短賣日的那天，頂列若改顯示 `market_daily.date`，借券 tab 的使用者看到的頂列
     就比該 tab 自己的資料日還新。正解是**每段自帶自己的資料日**＋兩者不同時明講（本軸的規範），
     而不是把頂列改成某一段的日期。
