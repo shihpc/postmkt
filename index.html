@@ -1363,8 +1363,9 @@ function myChgDateInfo(md, nowStr){
   if (!d) return { d:"", today, lag:null, txt:"資料日不明（market_daily.date 缺失或格式不合）", stale:true };
   if (d > today) return { d, today, lag:null, txt:`資料日 ${d}（晚於今日 ${today}）`, stale:true };
   const lag = dayDiff(today, d);
-  // 今日為行事曆休市日時 lag 可能為 0 但 d≠today：不得說成「即今日」（週末的同型措辭屬既有行為，本批不動）
-  const txt = lag === 0 && d !== today && holClosed(today) ? `資料日 ${d}（今日 ${today} ${holName(today)}休市，此為最近交易日）`
+  // 今日為休市日（國定假日或週末）時 lag 可能為 0 但 d≠today：不得說成「即今日」（第五軸禁用今日代稱）。
+  // 2026-09-29 驗收指出只擋國定假日會在「假日接週末」時漏網，連同週末的同型舊錯誤一併修正。
+  const txt = lag === 0 && d !== today ? `資料日 ${d}（今日 ${today} ${holClosed(today) ? holName(today) + "休市" : "非交易日"}，此為最近交易日）`
     : lag === 0 ? `資料日 ${d}（即今日）`
     : lag === 1 ? `資料日 ${d}（今日 ${today} 的前 1 個交易日）`
     : `資料日 ${d}（落後今日 ${today} ${lag} 個交易日）`;

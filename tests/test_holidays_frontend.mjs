@@ -123,4 +123,20 @@ ok("myChgDateInfo 第五軸：休市日不累計落後；休市日不說「即�
   assert.equal(i.lag, 2); assert.equal(i.stale, true);                        // 改動前行為
   assert.equal(i.txt, "資料日 2026-09-24（落後今日 2026-09-28 2 個交易日）");
 });
+ok("myChgDateInfo 第五軸：週末（含假日接週末）也不說「即今日」（2026-09-29 驗收指出）", () => {
+  sb.setHol(CAL);
+  // 09-26 週六、09-25 假日 → lag 0，但資料日 09-24 不是今日
+  let i = sb.myChgDateInfo({ date: "2026-09-24" }, "2026-09-26 10:00:00");
+  assert.equal(i.lag, 0);
+  assert.ok(!i.txt.includes("即今日"), i.txt);
+  assert.equal(i.txt, "資料日 2026-09-24（今日 2026-09-26 非交易日，此為最近交易日）");
+  sb.setHol(null);
+  // 無行事曆：週六看週五 → lag 0，同樣不得說「即今日」（週末舊錯誤一併修正）
+  i = sb.myChgDateInfo({ date: "2026-09-25" }, "2026-09-26 10:00:00");
+  assert.equal(i.lag, 0);
+  assert.equal(i.txt, "資料日 2026-09-25（今日 2026-09-26 非交易日，此為最近交易日）");
+  // 資料日＝今日才說「即今日」
+  i = sb.myChgDateInfo({ date: "2026-09-29" }, "2026-09-29 23:00:00");
+  assert.equal(i.txt, "資料日 2026-09-29（即今日）");
+});
 console.log(`\n${n} passed`);
