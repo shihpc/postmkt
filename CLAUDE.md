@@ -181,7 +181,7 @@
     （`#tab=sentiment` 由 `HASH_TABS`＝`TABS` 自動白名單）；頂列 stats 列比照籌碼雷達清空（頁內自帶資料日）。
     **本站因此也是 taiwan-flows `data/sentiment.json` 的前端消費者**：`rows[].date`／`vix`／`pc_oi`／`pc_vol`／`put_oi`／`call_oi`／
     `put_vol`／`call_vol`／`inst_long`／`inst_short`／`retail_net`／`retail_ratio`／`mtx_oi`／`mtx_oi_monthly_only` 與頂層
-    `generated_at` 改名或改語意＝跨站變更（日期語意見 `docs/date-semantics.md`）。純函式集中在 `sent-pure:begin`～`end` 區段；
+    `generated_at` 改名或改語意＝跨站變更（日期語意見 `docs/date-semantics.md`）。**P/C 卡與小台卡的口徑說明另註「未平倉不含當日到期契約」**（2026-09-30，對應 taiwan-flows 規格 §0b；後端每列附加 `cv`（計算版本，2＝排除當日到期契約），前端不讀、形狀相容，演算法未改）。純函式集中在 `sent-pure:begin`～`end` 區段；
     測試 `tests/test_sentiment_frontend.mjs`（pytest 由 `tests/test_sentiment_frontend.py` 代跑；樣本
     `tests/fixtures/sentiment_sample.json`＝80 列，最末列 2026-09-24 的 VIX／P/C／法人口數取規格 §0 實測，其餘與 `mtx_oi` 為合成值），
     另含 M6 字樣／色票、M4/M5 lazy、M7 插值 `esc()` 的讀碼檢查與整段內嵌 script 可編譯檢查。本機驗證同籌碼雷達（http.server 起在上一層）。

@@ -109,6 +109,7 @@
 | `generated_at` | 本檔**產出時刻**（`run_daily` 內 `sentiment.update()` 寫檔當下）。**不代表資料新鮮度**：本班請求全部失敗時仍照樣寫檔並推進此欄（`rows` 可能一列未變）；資料新鮮度一律看 `rows[].date`。前端只在形狀合 `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}` 時顯示，否則顯示「—」 | 台北 +08:00（依規格 §2 schema；**本表寫於後端首跑前，尚未以線上產物核對**） | 時刻 |
 | `start` | 回補起點（`SENTIMENT_START`＝`2026-03-02`，臺指 VIX 資料集本身的最早日），非資料日 | — | 事件日 |
 | `rows[].date` | 該列所有指標共同的**交易日**（VIX 取當日最後一筆、P/C 與小台為當日盤後資料）；`rows` 依日期升序、同日覆寫不重複。**同列某欄為 `null` 的成因**：①該資料集當日 0 筆；②比值欄（`pc_oi`／`pc_vol`／`retail_ratio`）的分母為 0；③`retail_ratio` 在 `mtx_oi` 為 `null` 時亦為 `null`。不代表整列無效；請求失敗的日子**不寫入**（整列缺席，而非 null 列） | — | 交易日 |
+| `rows[].cv` | 該列的**計算版本**（整數，2026-09-30 附加；taiwan-flows `SENTIMENT_CALC_VER`）。`2`＝未平倉欄（`put_oi`／`call_oi`／`pc_oi`／`mtx_oi`／`mtx_oi_monthly_only`／`retail_ratio`）**排除到期日＝`rows[].date` 的契約**（規格 §0b）；缺鍵＝`1`＝舊規則（未排除），後端會逐班由舊到新重算成 2。**不是日期、與資料新鮮度無關**；前端不讀 | — | — |
 | `check.taifex_pc.date` | 期交所 OpenAPI 交叉核對所用的交易日（僅核對用）。`check.taifex_pc` 這個鍵**恆在**；連不到期交所（或無共同日期）時 `date`／`match` 等值為 `null`，並多一個 `note` 說明原因 | — | 交易日 |
 
 > 消費者：postmkt「市場情緒」tab（同源相對路徑 `../taiwan-flows/data/sentiment.json`）。各卡的「資料日」取**該欄最後一個非 `null` 的

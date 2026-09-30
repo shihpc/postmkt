@@ -2571,7 +2571,7 @@ function sentRender(){
   const pvS = sentSeries(rows, "pc_vol"), pvRow = pvS.length ? rows.find(r => r.date === pvS[pvS.length - 1].date) : null;
   if (pvRow) pc += `<div class="sent-row sent-sub">${esc(pvRow.date)}：put 成交 ${sentFmt(pvRow.put_vol, 0)} 口／call 成交 ${sentFmt(pvRow.call_vol, 0)} 口</div>`;
   h += sentCard("Put/Call 比（臺指選擇權 TXO）", pc,
-    "口徑：未平倉比＝Σ put 未平倉 ÷ Σ call 未平倉，只取一般交易時段（盤後時段未平倉為 0）；成交量比＝Σ put 成交量 ÷ Σ call 成交量，一般＋盤後兩時段合計。");
+    "口徑：未平倉比＝Σ put 未平倉 ÷ Σ call 未平倉，只取一般交易時段（盤後時段未平倉為 0），未平倉不含當日到期契約（到期結算後即不存在，同期交所官方口徑）；成交量比＝Σ put 成交量 ÷ Σ call 成交量，一般＋盤後兩時段合計。");
   // 小台：散戶多空比為主；另列最新一列的法人多／空、散戶淨部位、全市場未平倉兩種口徑
   let mx = sentMain(rows, "retail_ratio", { label: "散戶多空比", unit: "%", dunit: "百分點", dp: 2 });
   mx += `<div class="sent-sep"></div><div class="sent-row sent-sub">${esc(lastRow.date)}（最新一列）：</div>`
@@ -2582,7 +2582,7 @@ function sentRender(){
     + `<span>全市場未平倉（僅月契約）</span><b>${sentFmt(lastRow.mtx_oi_monthly_only, 0)} 口</b></div>`
     + `<div class="sent-row sent-sub"><span class="sent-badge">口徑比對中</span> 全市場未平倉是否含週契約尚未定案：散戶多空比目前以「全部契約」為分母，兩種數字並列供比對。</div>`;
   h += sentCard("小台散戶多空比（小型臺指 MTX）", mx,
-    "口徑：散戶淨部位＝三大法人小台空單合計－多單合計（未平倉口數）；散戶多空比＝散戶淨部位 ÷ 全市場未平倉量（一般交易時段未平倉加總）。");
+    "口徑：散戶淨部位＝三大法人小台空單合計－多單合計（未平倉口數）；散戶多空比＝散戶淨部位 ÷ 全市場未平倉量（一般交易時段未平倉加總，未平倉不含當日到期契約）。");
   h += `</div>` + disc + `</div>`;
   main.innerHTML = h;
 }
