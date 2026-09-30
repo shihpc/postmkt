@@ -18,7 +18,7 @@ const pure = html.slice(html.indexOf(B), html.indexOf(E));
 const sb = { console };
 vm.createContext(sb);
 new vm.Script(pure + `
-Object.assign(this, { SENT_DATE_RE, SENT_WIN, SENT_DISCLAIMER, sentNum, sentGenOk, sentRows, sentSeries, sentDiff, sentStats, sentMa, sentRange, sentPath, sentFmt, sentSigned });`).runInContext(sb);
+Object.assign(this, { SENT_DATE_RE, SENT_WIN, SENT_DISCLAIMER, sentDisclaimer, sentNum, sentGenOk, sentRows, sentSeries, sentDiff, sentStats, sentMa, sentRange, sentPath, sentFmt, sentSigned });`).runInContext(sb);
 const S = sb;
 const J = JSON.parse(fs.readFileSync(path.join(ROOT, "tests", "fixtures", "sentiment_sample.json"), "utf8"));
 
@@ -29,9 +29,21 @@ const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≉ $
 
 ok("常數：60 筆窗、日期白名單、免責句逐字照規格 §3", () => {
   assert.equal(S.SENT_WIN, 60);
-  assert.equal(S.SENT_DISCLAIMER, "情緒指標為現況描述，非買賣訊號；無回測依據。VIX 歷史自 2026-03-02 起。");
+  assert.equal(S.SENT_DISCLAIMER, "情緒指標為現況描述，非買賣訊號；無回測依據。");
   for (const d of ["2026-09-24"]) assert.ok(S.SENT_DATE_RE.test(d));
   for (const d of ["2026-9-24", "2026/09/24", "<img>", "2026-09-24x", " 2026-09-24"]) assert.ok(!S.SENT_DATE_RE.test(d), d);
+});
+
+ok("sentDisclaimer：前半逐字不變；後半取第一個有 vix 值的列日期（不寫死），無值時省略", () => {
+  const BASE = "情緒指標為現況描述，非買賣訊號；無回測依據。";
+  // 正例：跳過 vix 為 null／缺欄／字串的前幾列，取第一個有值者
+  assert.equal(S.sentDisclaimer([{ date: "2026-03-02", vix: null }, { date: "2026-03-05" }, { date: "2026-03-10", vix: "20.1" },
+    { date: "2026-03-11", vix: 21.5 }, { date: "2026-03-12", vix: 22 }]), BASE + "VIX 歷史自 2026-03-11 起。");
+  assert.equal(S.sentDisclaimer(S.sentRows(J)), BASE + `VIX 歷史自 ${S.sentRows(J).find(r => typeof r.vix === "number").date} 起。`);
+  // 反例：無資料／vix 全 null／日期不合白名單 → 只有前半
+  for (const rows of [null, undefined, [], [{ date: "2026-03-11", vix: null }], [{ date: "2026-03-11" }],
+                      [{ date: "<img src=x>", vix: 1 }], [{ date: "2026/03/11", vix: 1 }], "garbage"])
+    assert.equal(S.sentDisclaimer(rows), BASE, JSON.stringify(rows));
 });
 
 ok("sentNum：只收有限 number", () => {

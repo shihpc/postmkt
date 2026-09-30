@@ -2397,7 +2397,14 @@ const SENT = { j: null, err: null, loading: false };
 // ---- sent-pure:begin（純函式，tests/test_sentiment_frontend.mjs 以 node 抽出來測，勿依賴 DOM）----
 const SENT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const SENT_WIN = 60;
-const SENT_DISCLAIMER = "情緒指標為現況描述，非買賣訊號；無回測依據。VIX 歷史自 2026-03-02 起。";
+const SENT_DISCLAIMER = "情緒指標為現況描述，非買賣訊號；無回測依據。";
+// 免責句後半「VIX 歷史自 YYYY-MM-DD 起。」不寫死（2026-09-30）：取資料中第一個有 vix 值的列日期，
+// 先過 SENT_DATE_RE；無值（無 rows、vix 全 null、日期不合白名單）時整個後半句省略，前半逐字不變
+function sentDisclaimer(rows){
+  const s = Array.isArray(rows) ? sentSeries(rows, "vix") : [];
+  const d = s.length && typeof s[0].date === "string" && SENT_DATE_RE.test(s[0].date) ? s[0].date : "";
+  return SENT_DISCLAIMER + (d ? `VIX 歷史自 ${d} 起。` : "");
+}
 // 數值型別保證：只收有限的 number（字串數字、NaN、Infinity、null、缺欄一律視為 null）
 function sentNum(v){ return (typeof v === "number" && isFinite(v)) ? v : null; }
 // generated_at 形狀檢查：須為字串且以 ISO 8601「YYYY-MM-DDTHH:MM」開頭才顯示，否則畫面顯示「—」
@@ -2542,13 +2549,14 @@ function sentCard(title, body, note){
 function sentRender(){
   sentEnsure();
   const main = document.getElementById("main");
-  const disc = `<div class="sent-disc">${esc(SENT_DISCLAIMER)}</div>`;
   if (!SENT.j){
     main.innerHTML = `<div class="sent">` + (SENT.err
-      ? `<div class="sent-empty">資料尚未產生或讀取失敗</div>` : `<div class="sent-empty">載入中…</div>`) + disc + `</div>`;
+      ? `<div class="sent-empty">資料尚未產生或讀取失敗</div>` : `<div class="sent-empty">載入中…</div>`)
+      + `<div class="sent-disc">${esc(sentDisclaimer(null))}</div></div>`;
     return;
   }
   const rows = sentRows(SENT.j), lastRow = rows[rows.length - 1];
+  const disc = `<div class="sent-disc">${esc(sentDisclaimer(rows))}</div>`;
   const gen = sentGenOk(SENT.j.generated_at) ? fmtGenTaipei(SENT.j.generated_at) : "";
   let h = `<div class="sent"><div class="sent-badges"><span class="sent-badge">最新列資料日 ${esc(lastRow.date)}</span>`
     + `<span class="sent-badge">共 ${rows.length} 筆（${esc(rows[0].date)} 起）</span>`
