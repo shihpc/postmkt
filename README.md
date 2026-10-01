@@ -95,12 +95,14 @@
 - 預產資料的 tab 前端不直連 FinMind（token 走 Actions secret）。
 - **例外：分點 tab 的「單點/個股」是互動查詢**（無法預產 1010 分點×2215 檔組合），
   前端直呼 FinMind `/api/v4/taiwan_stock_trading_daily_report`（CORS 開放）。
-  token 由使用者在頁面輸入一次、只存瀏覽器 localStorage，不進 repo。
+  token 由使用者在頁面表單載入（2026-10-01 起存瀏覽器密碼管理器、帳號名 `finmind-token`，載入後只在本分頁
+  記憶體，不再存 localStorage），只隨查詢送給 FinMind，不進 repo。
 - **例外：摘要分析 tab 前端即時呼叫 Anthropic Claude API**（`insightHtml`/`runInsight`
   /`callClaude`）。`insightGatherContext()` 把主動ETF/融借券/當沖/鉅額/零股盤中彙整成
   ~2.4K token 精簡文字，`insightFetchBrokers()` 即時抓 4 個指定分點（9268/9800/9600/9A00），
   組成 prompt 送 Claude（`anthropic-dangerous-direct-browser-access:true` header 開瀏覽器
-  CORS，已實測）。Anthropic token 存 localStorage `anthropic_key`，只送 Anthropic，不進 repo。
+  CORS，已實測）。Anthropic key 由瀏覽器密碼管理器保管、載入後只在本分頁記憶體（2026-10-01 起，不再存
+  localStorage；細節見 CLAUDE.md 約定 6），只送 Anthropic，不進 repo。
   模型 `state.insightModel`（預設 `claude-opus-4-8`）。輸出走 `mdToHtml()` 極簡 markdown 渲染。
 - `src/build_mktbal.py`：大盤層級四項餘額（融資/融券/借券賣出/不限用途借貸）管線，輸出
   `data/market_balance_history.json`（daily 近30交易日＋monthly 近36月底，皆升序陣列）。
@@ -458,8 +460,8 @@
   雙層防誤連：各站 `stockCodeSet()` 收集已知代號＋型態兜底（代號緊跟中文、單位黑名單、
   「元大/元太」例外），tag 切分不破壞 HTML。分析結果自動存本 repo `data/analyses/`
   （`insight-{postmkt|live|news}-YYYYMMDD.json`／`summary-manual-YYYYMMDD.json`，當日陣列、
-  單日上限10筆，保留近3日由 build_summary.py 清理段順手刪）。寫入靠 localStorage `gh_token`
-  （三站同 origin 共用，未設靜默跳過）；讀取免 token——彙總 tab「雲端歷史（近3日）」列 4 種檔、
+  單日上限10筆，保留近3日由 build_summary.py 清理段順手刪）。寫入靠 GitHub PAT（2026-10-01 起由密碼管理器載入、
+  只在本分頁記憶體，帳號名 `github-pat-postmkt-analyses` 三站共用；未載入時不存雲端並在 meta 行註明）；讀取免 token——彙總 tab「雲端歷史（近3日）」列 4 種檔、
   v2/news 各列自站，raw CDN 約 5 分快取。**維護點**：`linkifyStocks`/`ghSaveAnalysis` 三站逐字一致，改動需三站同步。
 - 待辦（暫緩）：回測模組（nightly pipeline 累積歷史→前向報酬勝率餵 prompt），
   使用者 2026-07-11 決定暫緩，規格未定義。
@@ -482,7 +484,8 @@
    Branch 選 `main` / `(root)` → Save。
 3. （可選）Actions tab 手動跑一次 `build postmkt data` 產生第一份資料。
 4. （可選）GitHub Fine-grained PAT：Settings → Developer settings → Fine-grained tokens，
-   只勾本 repo、權限 Contents Read/Write，貼進頁面 `gh_token` 欄（三站設一次即可），
+   只勾本 repo、權限 Contents Read/Write，貼進頁面 GitHub PAT 表單按「載入」並讓瀏覽器存進密碼管理器
+   （帳號名 `github-pat-postmkt-analyses`，三站共用同一筆；每個分頁要再載入一次），
    供分析結果雲端儲存；不設不影響其他功能。
 
 ## 本機開發

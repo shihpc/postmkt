@@ -3,6 +3,15 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-10-01 前端金鑰改存瀏覽器密碼管理器（四站＋入口站同批）
+
+Anthropic key／GitHub PAT／FinMind token 不再明文存 localStorage：每種憑證一個 `<form data-cred>`
+（readonly username 固定帳號名＋`current-password` 密碼欄），按「載入」才讀值、先打免費唯讀驗證
+（FinMind 除外，理由見 CLAUDE.md 約定 6），值只在本分頁記憶體 `CRED`；可選「只在本分頁記住」（sessionStorage）。
+舊 key 只用於提示卡與刪除，2026-10-15（台北）後載入即刪。`ghSaveAnalysis`／`callClaude` 位元組不變
+（`check_sync.py` PASS）、CSP 未改。**密碼管理器實機行為（儲存提示、自動填入、多筆不互蓋）未驗證**，
+待使用者手機實測。規格與決策見 CLAUDE.md 約定 6。
+
 ## 2026-09-14 `build_daytrading()` 代號為 None 的當機路徑
 
 `c = r.get("stock_id", "")` 的預設值**只在 key 不存在時生效**，上游給顯式 `None` 時

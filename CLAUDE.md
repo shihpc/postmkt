@@ -260,8 +260,36 @@
 4. **XSS**：innerHTML 拼字串一律過 `esc()`；CSP meta 的 connect-src 白名單新增資料源時要同步。
 5. **日期閘門**：`slot_trading_day`/`news_fresh`/`is_twse_holiday` 的跨午夜與民國年邏輯都是
    修過的生產事故，改動前先看 tests/test_summary_gates.py。
-6. **金鑰**：FINMIND_TOKEN/ANTHROPIC_API_KEY 走 Actions secret；前端金鑰只存 localStorage，
-   永不進 repo。持股清單只存 localStorage、不進任何網路 payload。
+6. **金鑰**：FINMIND_TOKEN/ANTHROPIC_API_KEY 走 Actions secret。**前端金鑰 2026-10-01 起改存瀏覽器密碼管理器，
+   不再存 localStorage**（使用者裁定 D1–D8，方案文件見當日 session scratchpad `token-pwmgr-plan.md`）：
+   - 四站（postmkt／taiwan-flow-live-v2／taiwan-stock-news／taiwan-flows）同一套寫法，`index.html` grep
+     `// ---------- 前端憑證` 起至 `// ---------- 前端憑證結束` 止；**刻意不要求逐字**（`CRED`／`CRED_SPEC`／
+     `credRerender` 與 escape 函式名各站不同），但行為改一站要四站一起改。
+   - 每種憑證一個 `<form data-cred="<kind>">`：`type="text"` **readonly** 且預填固定帳號名的 username 欄
+     （`autocomplete="username"`；不用 `type=hidden`——Firefox 不認）＋`autocomplete="current-password"` 密碼欄
+     （**不可 readonly**——Chrome／Firefox 不填唯讀欄）＋submit。submit handler `preventDefault()` 後才讀 `.value`
+     （Chrome 自動填入值在使用者手勢前 JS 讀不到），先打一次**免費唯讀**驗證、通過才收進記憶體物件 `CRED` 並重繪
+     （表單消失＝密碼管理器判定已送出），失敗當場顯示錯誤、不採用。
+   - 驗證（D5）只打各站 CSP `connect-src` 既有 origin、token 一律放 header：Anthropic `GET /v1/models?limit=1`
+     （列模型、不產生 token 用量；CORS 預檢 2026-10-01 curl 實測允許 `x-api-key`／`anthropic-version`／
+     `anthropic-dangerous-direct-browser-access`）；GitHub `GET /repos/shihpc/postmkt`（flows 為 `/repos/shihpc/taiwan-flows`）。
+     **FinMind 不驗證**：本站只以 query 帶 token，header 版的 CORS 預檢本沙箱連不到 FinMind 無法實測，token 又不得進 URL
+     ——存入時不打請求，第一次查詢失敗才會知道 token 有誤。
+   - 家族統一 username（**改名＝使用者要在密碼管理器重存**）：`anthropic-api-key`（三站共用一筆）、
+     `github-pat-postmkt-analyses`（三站共用）、`finmind-token`（本站）、`github-pat-flows-dispatch`（taiwan-flows）、
+     入口站密碼門 `hub`。
+   - 「只在本分頁記住」（D2，預設不勾）：勾了才寫 sessionStorage `cred_tab_<kind>`（重新整理仍在、關分頁即清）。
+     **任何路徑都不得再把金鑰 `setItem` 進 localStorage**；值不進 DOM 屬性、URL、hash。
+   - `anthKey()`／`ghToken()`／`fmToken()` 保留原名、改讀 `CRED`，所以逐字同步碼 `ghSaveAnalysis`／`callClaude`
+     **位元組不變**（`check_sync.py` PASS）。`saveAnalysisCloud`（不在 check_sync 範圍，三站同步改）在 PAT 未載入時
+     記 `cloud="nokey"`，畫面顯示「GitHub PAT 本分頁未載入，未存雲端」。
+   - 搬移（D7）：舊 localStorage key `anthropic_key`／`gh_token`／`fm_token`／`tf_gh_token`（四站每站都處理全部四把）
+     **新版不讀作金鑰**，只用來顯示提示卡（`#credMigrate`，按「刪除本機舊副本」才刪）；`CRED_MIGRATE_UNTIL`
+     ＝`"2026-10-15"`（台北日期）之後載入頁面即無條件刪除。期滿後的下一批可拿掉提示卡、只留刪除。
+     `tflive2_usw_sync`（美股自選同步碼）**不搬**（D6）。
+   - **未經實機驗證**：密碼管理器的儲存提示、自動填入、同 origin 多筆不互蓋、Android 底部選單是否依 username 過濾、
+     長 token 是否被截斷——Playwright 無法模擬瀏覽器內建密碼管理器，需使用者手機實測後回寫本節（區分已驗證與推論）。
+   持股清單只存 localStorage、不進任何網路 payload。
 7. **外部消費者**：taiwan-flow-live-v2 的 Cloudflare Worker 會輪詢本 repo raw main 的
    postmkt.json/diag.json 來鏈式觸發下游；資料檔位置/欄位大改前先確認跨 repo 影響。
 
