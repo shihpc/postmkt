@@ -305,8 +305,10 @@
      **新版不讀作金鑰**，只用來顯示提示卡（`#credMigrate`，按「刪除本機舊副本」才刪）；`CRED_MIGRATE_UNTIL`
      ＝`"2026-10-15"`（台北日期）之後載入頁面即無條件刪除。期滿後的下一批可拿掉提示卡、只留刪除。
      `tflive2_usw_sync`（美股自選同步碼）**不搬**（D6）。
-   - **未經實機驗證**：密碼管理器的儲存提示、自動填入、同 origin 多筆不互蓋、Android 底部選單是否依 username 過濾、
-     長 token 是否被截斷——Playwright 無法模擬瀏覽器內建密碼管理器，需使用者手機實測後回寫本節（區分已驗證與推論）。
+   - **實機驗證（2026-10-01 使用者回報）**：上線後使用者線上確認四站＋入口站表單正常，並以手機實測回報「沒問題」
+     （範圍＝密碼管理器的儲存提示、自動填入、同 origin 多筆不互蓋、長 token 不被截斷）。**這是使用者整體回報，未逐項記錄
+     瀏覽器／版本**；Android 底部選單是否依 username 過濾、iOS／Firefox 行為未個別確認。Playwright 無法模擬瀏覽器內建
+     密碼管理器，日後換瀏覽器或改表單結構需重新實機確認。
    持股清單只存 localStorage、不進任何網路 payload。
 7. **外部消費者**：taiwan-flow-live-v2 的 Cloudflare Worker 會輪詢本 repo raw main 的
    postmkt.json/diag.json 來鏈式觸發下游；資料檔位置/欄位大改前先確認跨 repo 影響。
