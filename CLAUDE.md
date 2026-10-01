@@ -261,7 +261,18 @@
 5. **日期閘門**：`slot_trading_day`/`news_fresh`/`is_twse_holiday` 的跨午夜與民國年邏輯都是
    修過的生產事故，改動前先看 tests/test_summary_gates.py。
 6. **金鑰**：FINMIND_TOKEN/ANTHROPIC_API_KEY 走 Actions secret。**前端金鑰 2026-10-01 起改存瀏覽器密碼管理器，
-   不再存 localStorage**（使用者裁定 D1–D8，方案文件見當日 session scratchpad `token-pwmgr-plan.md`）：
+   不再存 localStorage**。使用者 2026-10-01 裁定（方案草案只存在當日 session scratchpad、不在任何 repo，
+   **以本節為準**）：
+   - D1 方案 B：純表單＋按鈕讀值（不用 Credential Management API——Safari／Firefox 不支援 `PasswordCredential`，
+     且 `get()` 無法依帳號名過濾）；保留 `anthKey`／`ghToken`／`fmToken` 函式名改讀記憶體。
+   - D2 提供「只在本分頁記住」（sessionStorage），預設不勾。
+   - D3 密碼欄 `autocomplete="current-password"`（`new-password` 可能跳強密碼建議干擾貼上，此為推論、未實測）。
+   - D4 入口站密碼門補 username 欄 `hub`（舊的空帳號名項目要重存一次）。
+   - D5 存入前打一次免費唯讀驗證，失敗當場拒收；只用既有 `connect-src` origin、token 放 header；做不到就不驗並說明。
+   - D6 `tflive2_usw_sync`（美股自選同步碼）不搬。
+   - D7 搬移期 2 週：舊 key 只提示＋按鈕刪除，`CRED_MIGRATE_UNTIL` 後載入即刪；新版不讀舊 key 當金鑰。
+   - D8 四站＋入口站同批上線（只要舊版頁面還在線上，按舊版「儲存」就會把金鑰寫回 localStorage）。
+   實作細節：
    - 四站（postmkt／taiwan-flow-live-v2／taiwan-stock-news／taiwan-flows）同一套寫法，`index.html` grep
      `// ---------- 前端憑證` 起至 `// ---------- 前端憑證結束` 止；**刻意不要求逐字**（`CRED`／`CRED_SPEC`／
      `credRerender` 與 escape 函式名各站不同），但行為改一站要四站一起改。
@@ -270,9 +281,16 @@
      （**不可 readonly**——Chrome／Firefox 不填唯讀欄）＋submit。submit handler `preventDefault()` 後才讀 `.value`
      （Chrome 自動填入值在使用者手勢前 JS 讀不到），先打一次**免費唯讀**驗證、通過才收進記憶體物件 `CRED` 並重繪
      （表單消失＝密碼管理器判定已送出），失敗當場顯示錯誤、不採用。
-   - 驗證（D5）只打各站 CSP `connect-src` 既有 origin、token 一律放 header：Anthropic `GET /v1/models?limit=1`
-     （列模型、不產生 token 用量；CORS 預檢 2026-10-01 curl 實測允許 `x-api-key`／`anthropic-version`／
-     `anthropic-dangerous-direct-browser-access`）；GitHub `GET /repos/shihpc/postmkt`（flows 為 `/repos/shihpc/taiwan-flows`）。
+   - 驗證（D5）只打各站 CSP `connect-src` 既有 origin、token 一律放 header：Anthropic `GET /v1/models?limit=1`；
+     GitHub `GET /repos/shihpc/postmkt`（flows 為 `/repos/shihpc/taiwan-flows`）。
+     - 「`/v1/models` 不計費」是**推論**（依據：Anthropic 依 token 計費、列模型不產生 token 用量），**沒查到官方明文**。
+     - CORS：2026-10-01 雲端 session 以 curl 對 `https://api.anthropic.com/v1/models` 送 OPTIONS 預檢
+       （`Origin: https://shihpc.github.io`，請求標頭 `x-api-key,anthropic-version,anthropic-dangerous-direct-browser-access`），
+       回 200、`access-control-allow-origin: *`、`access-control-allow-headers` 列出這三個（回應 `date: Thu, 01 Oct 2026 00:20:19 GMT`）。
+       **只量了預檢**，帶真 key 的實際 GET 未在瀏覽器實測（測試全用 `page.route` 模擬）。
+     - **GitHub 驗證的鑑別力有限**：兩個 repo 都是 public，`GET /repos/...` 回 200 只證明 PAT **有效**，
+       **不證明**它有 Contents 寫入（postmkt）或 Actions 寫入（taiwan-flows）權限——權限不足要到實際存雲端／觸發時
+       才會看到 403。UI 說明文字已明講這點。
      **FinMind 不驗證**：本站只以 query 帶 token，header 版的 CORS 預檢本沙箱連不到 FinMind 無法實測，token 又不得進 URL
      ——存入時不打請求，第一次查詢失敗才會知道 token 有誤。
    - 家族統一 username（**改名＝使用者要在密碼管理器重存**）：`anthropic-api-key`（三站共用一筆）、

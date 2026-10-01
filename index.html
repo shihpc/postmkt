@@ -471,8 +471,8 @@ const TABS = [
   ["chipradar","籌碼雷達"],["social","社群聲量"],["sentiment","市場情緒"],["dates","日期"],
 ];
 const SUBS = {
-  insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、只存本機瀏覽器。非投資建議、非預測，僅描述歷史統計傾向。",
-  summary:"AI 彙總分析：一鍵 3+1 次 Claude 呼叫——3 個頁面（盤後分析／即時類股動態／新聞晨報）× Sonnet 5 各 1 次分析共 3 份摘要，再由 Opus 4.8 融會貫通彙總出跨份共振的精華 alpha。費用約每次 NT$10-12（摘要用 Sonnet 5、彙總用 Opus），token 由你自備、只存本機瀏覽器。另可閱讀 GitHub Actions 早晚場自動產出。非投資建議。",
+  insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、存在瀏覽器密碼管理器，載入後只在本分頁記憶體。非投資建議、非預測，僅描述歷史統計傾向。",
+  summary:"AI 彙總分析：一鍵 3+1 次 Claude 呼叫——3 個頁面（盤後分析／即時類股動態／新聞晨報）× Sonnet 5 各 1 次分析共 3 份摘要，再由 Opus 4.8 融會貫通彙總出跨份共振的精華 alpha。費用約每次 NT$10-12（摘要用 Sonnet 5、彙總用 Opus），token 由你自備、存在瀏覽器密碼管理器，載入後只在本分頁記憶體。另可閱讀 GitHub Actions 早晚場自動產出。非投資建議。",
   aetf:"主動式ETF每日投組快照＋主動加減碼（資料源：taiwan-flow-live-v2 via FinMind，每日揭露）。加減碼兩欄並列：主動純額（排除申贖）｜含申贖（原始總變動）。",
   lending:"借券系統(SLB)＋證商營業處所(NLB)兩平台餘額、Short Interest、融資融券、當沖、三大法人買賣超整合排行，依兩平台借券餘額排序。點個股展開完整明細。單位：張／千元／億元。",
   daytrade:"當沖成交金額排行。分點推估為估算法，非逐筆交易證據。",
@@ -3717,7 +3717,7 @@ function insightHtml(){
     h += `<div class="insight-note">⚠ 本分頁尚未載入 FinMind token（分點 tab 可載入），「指定分點」段落將略過。其餘各 tab 分析不受影響。</div>`;
   }
   if (!ghToken()){
-    h += `<div class="mcard" style="font-size:.84rem">` + credFormHtml("gh", `選填：GitHub Fine-grained PAT（只勾 postmkt repo、Contents Read/write）→ 分析結果自動存雲端跨裝置讀取；不載入則只存本機。讀取歷史不需要 token。載入時會先唯讀查一次 postmkt repo 驗證。`) + `</div>`;
+    h += `<div class="mcard" style="font-size:.84rem">` + credFormHtml("gh", `選填：GitHub Fine-grained PAT（只勾 postmkt repo、Contents Read/write）→ 分析結果自動存雲端跨裝置讀取；不載入則只存本機。讀取歷史不需要 token。載入時會先唯讀查一次 postmkt repo 驗證——這只證明 PAT 有效，postmkt 是 public repo，不證明它有 Contents 寫入權限；權限不足要到實際存雲端時才會顯示錯誤。`) + `</div>`;
   } else {
     h += `<div class="mcard" style="font-size:.84rem">GitHub PAT 本分頁已載入。<span class="mut" style="cursor:pointer;margin-left:6px" data-gh-clear>點此清除</span></div>`;
   }
@@ -4135,7 +4135,7 @@ function summaryHtml(){
     h += `<div class="insight-note">⚠ 本分頁尚未載入 FinMind token（分點 tab 可載入），盤後分析頁的「指定分點」段落將略過，其餘不受影響。</div>`;
   }
   if (!ghToken()){
-    h += `<div class="mcard" style="font-size:.84rem">` + credFormHtml("gh", `選填：GitHub Fine-grained PAT（只勾 postmkt repo、Contents Read/write）→ 分析結果自動存雲端跨裝置讀取；不載入則只存本機。讀取歷史不需要 token。`) + `</div>`;
+    h += `<div class="mcard" style="font-size:.84rem">` + credFormHtml("gh", `選填：GitHub Fine-grained PAT（只勾 postmkt repo、Contents Read/write）→ 分析結果自動存雲端跨裝置讀取；不載入則只存本機。讀取歷史不需要 token。載入時會先唯讀查一次 postmkt repo 驗證——這只證明 PAT 有效，postmkt 是 public repo，不證明它有 Contents 寫入權限；權限不足要到實際存雲端時才會顯示錯誤。`) + `</div>`;
   }
   h += `<div class="mcard" style="padding:12px 14px"><div class="qrow">`
     + `<span class="qbtn" data-summary-run>⚡ 產生彙總分析（3+1 次呼叫）</span>`
@@ -4493,7 +4493,7 @@ function diagNewsFor(c){
 
 // AI 綜合解讀（子期2）：重用既有 callClaude（三站同步函式零改動），使用者按了才呼叫。
 // 隱私：送出內容＝該股五面向事實＋市場區塊＋組合層「彙總指標」（集中度/占比/流動性警示數/beta），
-// 不含持股清單、股數與成本；token 走既有 anthropic_key（只存本機）。
+// 不含持股清單、股數與成本；key 走既有 anthKey()（2026-10-01 起由密碼管理器載入、只在本分頁記憶體 CRED.anth）。
 function diagPortfolioBrief(){
   const dg = state.diag;
   if (!dg || !dg.stocks) return "";
@@ -4856,7 +4856,7 @@ function diagCardHtml(hd){
           + title + `<span class="mut" style="font-size:.72rem;margin-left:6px">${esc(n.source||"")}</span></div>`;
       }).join("");
     }
-    // AI 綜合解讀（按了才呼叫；重用既有 callClaude／anthropic_key）
+    // AI 綜合解讀（按了才呼叫；重用既有 callClaude／anthKey()，key 只在本分頁記憶體）
     const ai = state.diagAI;
     const mine = ai && ai.c === c;
     h += `<div style="margin-top:10px"><button class="dbtn" data-diag-ai="${esc(c)}"${ai&&ai.loading?" disabled":""}>${mine&&ai.loading?"AI 解讀中…":"AI 解讀"}</button>`
