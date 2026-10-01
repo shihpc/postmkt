@@ -1566,7 +1566,7 @@ const credRerender = () => render();
 // 金鑰不再寫進 localStorage。每種憑證一個 <form>：readonly 的 username 欄（家族統一的固定帳號名，
 // 讓密碼管理器把同 origin 的各把金鑰分開存、不互蓋）＋ autocomplete="current-password" 的密碼欄
 // （**不可 readonly**，Chrome／Firefox 對唯讀欄位不自動填入）＋ submit。按下送出（使用者手勢）時才讀 .value
-// ——Chrome 頁面載入時自動填入的密碼在使用者手勢前 JS 讀不到——先打一次免費、唯讀的 API 驗證，
+// ——Chrome 頁面載入時自動填入的密碼在使用者手勢前 JS 讀不到——先打一次唯讀的 API 驗證（推論不計費），
 // 通過才收進記憶體物件 CRED，並重繪讓表單消失（密碼管理器據此判定「已送出」而提示儲存）。
 // 值只在 CRED（記憶體）；勾「只在本分頁記住」才另存 sessionStorage（關分頁即清）。不進 DOM 屬性、URL、hash。
 // 改 username＝使用者要在密碼管理器重存；四站共用同一份名單（見 postmkt/CLAUDE.md 約定 6）。
@@ -1583,7 +1583,7 @@ function credSet(k, v, tabOnly){
   try{ if (tabOnly) sessionStorage.setItem(credSsKey(k), v); else sessionStorage.removeItem(credSsKey(k)); }catch(e){}
 }
 function credClear(k){ CRED[k] = ""; try{ sessionStorage.removeItem(credSsKey(k)); }catch(e){} }
-// 免費唯讀驗證（D5）：只打本站 CSP connect-src 已有的 origin，token 一律放 header、不進 URL。
+// 唯讀驗證（D5；不計費為推論、無官方明文）：只打本站 CSP connect-src 已有的 origin，token 一律放 header、不進 URL。
 // Anthropic：GET /v1/models（列模型，不產生 token 用量）；GitHub：GET /repos/<repo>（讀 repo 中繼資料）。
 // 錯誤訊息只帶 HTTP 狀態碼，不帶 token。
 async function credVerify(kind, tok){
@@ -3709,7 +3709,7 @@ function insightHtml(){
     + ` · FinMind ${fmToken() ? "本分頁已載入" : "未載入"} · GitHub PAT ${ghToken() ? "本分頁已載入" : "未載入（選填）"}</summary>`;
   if (!hasKey){
     h += `<div class="mcard" style="font-size:.84rem">` + credFormHtml("anth", `此功能會用你自己的 Anthropic API key 即時呼叫 Claude 產生分析。`
-      + `key 由瀏覽器密碼管理器保管、載入後只在本分頁記憶體，不會寫入網站或傳給 Anthropic 以外的任何地方；載入時會先打一次免費的列模型 API 驗證。`) + `</div>`;
+      + `key 由瀏覽器密碼管理器保管、載入後只在本分頁記憶體，不會寫入網站或傳給 Anthropic 以外的任何地方；載入時會先打一次列模型 API 驗證（不產生 token 用量，推論不計費）。`) + `</div>`;
   } else {
     h += `<div class="mcard" style="font-size:.84rem">Anthropic key 本分頁已載入。<span class="mut" style="cursor:pointer;margin-left:6px" data-anth-clear>點此清除</span></div>`;
   }
