@@ -1,0 +1,47 @@
+name: entry-signal-bt
+
+# 進場狀態欄回測（一次性研究，規格 docs/entry-signal-backtest.md）。
+# 只在研究分支 push 觸發：不 commit、不碰 data/、不接 main 排程；結果在 job summary 與 artifact。
+on:
+  push:
+    branches: [ccr-9bf27e63-oorlss]
+    paths:
+      - "research/entry_signal_bt.py"
+      - ".github/workflows/entry-signal-bt.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: entry-signal-bt-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt pytest
+
+      - name: Unit tests
+        run: python -m pytest tests/test_entry_signal_bt.py -q
+
+      - name: Backtest
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: python research/entry_signal_bt.py --out out
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: entry-signal-bt
+          path: out/
+          if-no-files-found: ignore
