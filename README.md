@@ -397,6 +397,18 @@
   才載；預設 tab「摘要分析」與頂列「資料日｜本站更新｜狀態」只靠 `ensurePmHead()` 讀檔頭 4KB
   （`Range: bytes=0-4095`，GitHub Pages 回 206）。狀態四值判準見 `docs/date-semantics.md` §4
   與 `index.html` `pmStatus()`（2026-09-29 起休市日比照週末；行事曆讀不到時 fail-open，平日國定假日 22:30 後會誤判「延遲」一次）。
+- **postmkt.json 整檔失敗的重試（2026-10-11）**：原本 `ensurePm()` 失敗一次就把 `state.pmErr` 設成
+  sticky、整個分頁期間不再抓，而檔頭 4KB 是另一條請求，它成功時頂列照常顯示「正常／休市定格」，各盤後 tab
+  卻永久「尚無盤後資料」、只有重新整理救得回來（使用者 2026-10-11 實際遇到）。現在失敗後背景自動重試
+  `PM_RETRY_MS`（3／10／30 秒，共 3 次、連首次 4 次請求），期間 tab 顯示中性「載入中…（自動重試中）」、
+  頂列狀態後附灰字「（完整資料載入失敗，重試中）」；全部失敗才顯示失敗文案、頂列改附「（完整資料載入失敗，
+  可重新整理）」（**不新增紅黃綠判級、`pmStatus()` 未改**）。之後使用者切 tab／再點同一 tab／外部改網址
+  （`pmUserRender()`）時，需要 pm 的 tab 會重開一輪；`render()` 自己呼叫 `ensurePm()` 不會重開（否則 finally
+  的 `render()` 會無限重抓）。in-flight 去重不變。檔頭 Range 請求同批改 `cache:"no-store"`（206 不進 HTTP
+  快取，避免與同 URL 整檔條件請求共用快取項）；整檔維持 `loadJSON()` 的 `cache:"no-cache"`。
+  **兩路失敗的實際成因未查明**（使用者環境為桌機 Chrome，重新整理即恢復）；no-store 是預防性處置、
+  不是已證實的根因修正。測試 `tests/test_pm_retry.py`（node 沙箱狀態機在 CI 跑；Playwright 端到端
+  本機有 playwright 才跑、CI skip）。
 
 - 前端表格框架 `tbl(cols, rows, opts)`：表頭排序（`col.sortVal` 供複合欄位給原始值）、
   分組雙列表頭（`col.g`）、加總列（`opts.totals`，sticky 在表頭下）、凍結首二欄
