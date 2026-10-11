@@ -496,7 +496,7 @@ const TF_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flows/main/data
 const INSIGHT_BROKERS = ["9268","9800","9600","9A00"];
 const INSIGHT_MODELS = [["claude-opus-4-8","Opus 4.8（最佳判讀，約NT$3/次）"],["claude-sonnet-5","Sonnet 5（近Opus、約半價更快）"]];
 const state = { tab:"insight", openEtf:null, openSub:null, openLend:null, lendQuery:"",
-  oddSub:"intraday", bkSub:"branch", bkListQuery:"", aetf:null, pm:null, pmErr:null, tf:null, tfErr:null,
+  oddSub:"intraday", bkSub:"branch", bkListQuery:"", aetf:null, pm:null, pmErr:null, pmFail:0, tf:null, tfErr:null,
   insight:null, insightLoading:false, insightErr:null, insightAbort:null,
   insightModel: localStorage.getItem("insight_model") || "claude-opus-4-8",
   summary:null, summaryLoading:false, summaryErr:null, summaryProg:"", summaryAbort:null,
@@ -617,7 +617,7 @@ function syncHash(){
   if (h === location.hash) return;
   try{ history.replaceState(null, "", h || location.pathname + location.search); }catch(e){ /* 靜默：file:// 等環境不支援 */ }
 }
-window.addEventListener("hashchange", () => { applyHash(); render(); });
+window.addEventListener("hashchange", () => { applyHash(); pmUserRender(); });
 
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -1196,9 +1196,9 @@ function renderPM(){
     }
     return;
   }
-  if (state.pmErr){ main.innerHTML = `<div class="empty">尚無盤後資料（data/postmkt.json 未產生或載入失敗）。<br>每交易日 21:53 排程更新（含延遲約 22:10–23:50 完成）。</div>`; return; }
+  if (state.pmErr){ main.innerHTML = `<div class="empty">尚無盤後資料（data/postmkt.json 未產生或載入失敗）。<br>每交易日 21:53 排程更新（含延遲約 22:10–23:50 完成）。${pmGiveUpNote()}</div>`; return; }
   const d = state.pm;
-  if (!d){ main.innerHTML = `<div class="empty">載入中…</div>`; return; }
+  if (!d){ main.innerHTML = pmLoadingHtml(); return; }
   let html = "";
   if (state.tab === "lending"){
     const l = d.lending || {};
@@ -1536,8 +1536,8 @@ function myChgHtml(){
 function renderMyChg(){
   const main = document.getElementById("main");
   // 資料檔本身載入失敗＝整段「無法取得異動資料」（不得靜默當成無異動）
-  if (state.pmErr){ main.innerHTML = `<div class="empty">無法取得異動資料<br><span class="mut" style="font-size:.8rem">data/postmkt.json 未產生或載入失敗；每交易日 21:53 排程更新（含延遲約 22:10–23:50 完成）。</span></div>`; return; }
-  if (!state.pm){ main.innerHTML = `<div class="empty">載入中…</div>`; return; }
+  if (state.pmErr){ main.innerHTML = `<div class="empty">無法取得異動資料<br><span class="mut" style="font-size:.8rem">data/postmkt.json 未產生或載入失敗；每交易日 21:53 排程更新（含延遲約 22:10–23:50 完成）。</span>${pmGiveUpNote()}</div>`; return; }
+  if (!state.pm){ main.innerHTML = pmLoadingHtml(); return; }
   main.innerHTML = myChgHtml();
 }
 // 點個股 → 同站切到「持股診斷」並聚焦該檔（走內部 hash 路由，不開新分頁）
@@ -1948,7 +1948,7 @@ function render(){
 function renderTabs(){
   document.getElementById("tabs").innerHTML = TABS.map(([k,label])=>
     `<div class="tab ${state.tab===k?"active":""}" data-tab="${k}">${label}</div>`).join("");
-  document.querySelectorAll(".tab").forEach(t=>t.onclick = ()=>{ state.tab = t.dataset.tab; render(); });
+  document.querySelectorAll(".tab").forEach(t=>t.onclick = ()=>{ state.tab = t.dataset.tab; pmUserRender(); });
 }
 
 // ================= 籌碼雷達 tab（2026-09-28 由 taiwan-flows `radar` tab 搬來；規格正本 taiwan-flows/docs/radar-tab.md）=================
@@ -5228,18 +5228,50 @@ async function loadJSON(url, opts){
 }
 // 首屏懶載（2026-09-06 批次二）：預設 tab insight 只用 state.pm.date，所以 postmkt.json（>1.6MB）、
 // 主動ETF 兩檔（aetf latest/diff）與三大法人 latest.json（taiwan-flows）不再由 load() 首屏全抓，
-// 改為需要的 tab／功能才載（比照下方 ensureDiag 等）。三支 ensure*() 都回 Promise：已載或已失敗
+// 改為需要的 tab／功能才載（比照下方 ensureDiag 等）。三支 ensure*() 都回 Promise：已載或已失敗（ensurePm 另有重試，見其上方說明）
 // ＝立即 resolve、載入中共享同一份 in-flight 不重抓；render() 分派時觸發（不 await），
 // runInsight()/runSummary() 在 gather 前 await（sumCtx* 函式本體三站同步、不動，只在呼叫前確保資料在）。
 let PM_P = null, AETF_P = null, TF_P = null;
+// postmkt.json 整檔載入失敗的重試（2026-10-11）：原本失敗一次就把 state.pmErr 設成 sticky、整個分頁期間不再抓，
+// 而檔頭 4KB（ensurePmHead）另一條請求成功時頂列照常顯示資料日／狀態，各盤後 tab 卻永久「尚無盤後資料」，
+// 只有重新整理才救得回來（使用者 2026-10-11 實際遇到）。現在：
+//   ①失敗後背景退避自動重試 PM_RETRY_MS.length 次（間隔依序 3／10／30 秒；連第一次共 4 次請求、
+//     最壞約 43 秒加各次請求耗時），等待與重試期間 state.pmErr 維持 null、state.pmFail＝已失敗次數，
+//     tab 顯示中性「載入中…（自動重試中）」；全部失敗才設 state.pmErr 並顯示失敗文案。
+//   ②使用者切 tab／再點同一 tab／外部改網址（pmUserRender）時，需要 pm 的 tab 會立即再試：
+//     重試已用盡＝重開一輪（pmFail 歸零）；退避等待中＝取消計時、提前打下一次（不重開計數）。
+//     只由使用者動作觸發——render() 自己呼叫 ensurePm() 不會重開，否則 finally 的 render() 會變成無限重抓。
+//   in-flight 去重不變：PM_P 存在時一律回同一個 promise，不會同時發兩個整檔請求。
+const PM_RETRY_MS = [3000, 10000, 30000];
+let PM_RT = null, PM_USER = false;
 function ensurePm(){
-  if (state.pm || state.pmErr) return Promise.resolve();
-  if (!PM_P) PM_P = loadJSON("data/postmkt.json")
-    .then(j=>{ state.pm = j; augmentLending(state.pm); buildBkNm(); })
-    .catch(e=>{ state.pmErr = e; })
+  if (state.pm) return Promise.resolve();
+  if (PM_P) return PM_P;
+  if (PM_USER){
+    if (state.pmErr){ state.pmErr = null; state.pmFail = 0; }
+    if (PM_RT){ clearTimeout(PM_RT); PM_RT = null; }
+  }
+  if (state.pmErr || PM_RT) return Promise.resolve();
+  PM_P = loadJSON("data/postmkt.json")
+    .then(j=>{ state.pm = j; state.pmFail = 0; augmentLending(state.pm); buildBkNm(); })
+    .catch(e=>{
+      state.pmFail = (state.pmFail || 0) + 1;
+      if (state.pmFail <= PM_RETRY_MS.length)
+        PM_RT = setTimeout(()=>{ PM_RT = null; ensurePm(); }, PM_RETRY_MS[state.pmFail - 1]);
+      else state.pmErr = e;
+    })
     .finally(()=>{ PM_P = null; renderTopbar(); render(); });
   return PM_P;
 }
+// 使用者動作（切 tab／hashchange）走這支：本次 render 內若有 ensurePm() 呼叫，允許它重開／提前重試
+function pmUserRender(){ PM_USER = true; try{ render(); } finally { PM_USER = false; } }
+// 整檔尚未到手時的 tab 文案：首次載入「載入中…」；已失敗、自動重試中則附註（中性，不是錯誤）
+function pmLoadingHtml(){
+  if (!state.pmFail) return `<div class="empty">載入中…</div>`;
+  return `<div class="empty">載入中…<br><span class="mut" style="font-size:.8rem">完整資料載入失敗，自動重試中`
+    + `（已失敗 ${state.pmFail} 次，最多重試 ${PM_RETRY_MS.length} 次）</span></div>`;
+}
+const pmGiveUpNote = () => `<br><span class="mut" style="font-size:.8rem">已自動重試 ${PM_RETRY_MS.length} 次仍失敗；可切換分頁再試，或重新整理頁面。</span>`;
 function ensureAetf(){
   if (state.aetf) return Promise.resolve();
   if (!AETF_P) AETF_P = (async ()=>{
@@ -5266,7 +5298,9 @@ let PMH_P = null;
 function ensurePmHead(){
   if (state.pm || state.pmHead || state.pmHeadErr) return Promise.resolve();
   if (!PMH_P) PMH_P = (async ()=>{
-    const r = await fetch("data/postmkt.json", { headers:{ Range:"bytes=0-4095" }, cache:"no-cache" });
+    // cache:"no-store"（2026-10-11，原 "no-cache"）：206 部分回應不進 HTTP 快取，避免與同 URL 的整檔條件請求
+    // （loadJSON 的 cache:"no-cache"）共用快取項而互相干擾；檔頭只有 4KB，每次走網路的成本可忽略
+    const r = await fetch("data/postmkt.json", { headers:{ Range:"bytes=0-4095" }, cache:"no-store" });
     if (!r.ok) throw new Error("HTTP "+r.status);
     const reader = r.body.getReader(), dec = new TextDecoder();
     let buf = "";
@@ -5318,8 +5352,12 @@ function renderTopbar(){
   const st = pmStatus(m, !!(state.pmErr || state.pmHeadErr));
   const date = m && m.date ? esc(m.date) : "—";
   const gen = m && m.generated_at ? esc(fmtGenTaipei(m.generated_at)) : "—";
+  // 整檔失敗、只有檔頭時附註（2026-10-11）：狀態欄的判級（pmStatus）只看資料日，檔頭成功時會照常顯示
+  // 「正常／休市定格」，但各盤後 tab 其實沒數值——附一句中性灰提示，不新增紅黃綠判級、不改 pmStatus
+  const note = (!state.pm && m && (state.pmErr || state.pmFail))
+    ? `<span class="tb-mut" id="tbPmNote">${state.pmErr ? "（完整資料載入失敗，可重新整理）" : "（完整資料載入失敗，重試中）"}</span>` : "";
   el.innerHTML = `資料日 <b>${date}</b><span class="tb-sep">｜</span>本站更新 <b>${gen}</b>`
-    + `<span class="tb-sep">｜</span>狀態 <b class="${st.cls}" title="${esc(st.title || "")}">${esc(st.txt)}</b>`;
+    + `<span class="tb-sep">｜</span>狀態 <b class="${st.cls}" title="${esc(st.title || "")}">${esc(st.txt)}</b>${note}`;
 }
 // 頂列「資料日｜本站更新｜狀態」不分 tab 都要填：首屏一律先讀檔頭 4KB（與各 tab 的 ensurePm 並行、全檔到後以 state.pm 為準）
 function load(){ applyHash(); renderTabs(); render(); ensurePmHead(); holLoad(); }

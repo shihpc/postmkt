@@ -3,6 +3,17 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-10-11 postmkt.json 整檔載入失敗不再「永久沒數值」
+
+使用者回報（桌機 Chrome）：各盤後 tab 顯示「尚無盤後資料（data/postmkt.json 未產生或載入失敗）」，
+主動ETF／選股／大盤餘額有數值，重新整理即恢復。成因（重放驗證）：檔頭 4KB（`ensurePmHead`）成功、
+整檔（`ensurePm`）失敗時，頂列照常顯示資料日與狀態，而 `state.pmErr` 一失敗就 sticky、整個分頁期間不再重試。
+修法：①整檔失敗後背景退避自動重試 3 次（3／10／30 秒），期間顯示中性「載入中…（自動重試中）」；
+②重試用盡後使用者切 tab／再點同 tab／外部改網址會重開一輪；③頂列狀態後附灰字「（完整資料載入失敗，重試中）」
+／「（完整資料載入失敗，可重新整理）」，`pmStatus()` 判級未改；④檔頭 Range 請求改 `cache:"no-store"`。
+**整檔請求為何失敗未查明**（④是預防，不是已證實的根因）。細節見 README「postmkt.json 整檔失敗的重試」，
+測試 `tests/test_pm_retry.py`。
+
 ## 2026-10-01 前端金鑰改存瀏覽器密碼管理器（四站＋入口站同批）
 
 Anthropic key／GitHub PAT／FinMind token 不再明文存 localStorage：每種憑證一個 `<form data-cred>`
