@@ -4728,7 +4728,7 @@ function renderPick2(){
     {g:G2, h:`投信連買<span class="mut" title="正＝連買天數、負＝連賣天數">ⓘ</span>`, f:r => pk2S(r.td, 0), sortVal:r => r.td},
     {g:G2, h:"土洋同買", f:r => pk2Flag(r.bb), sortVal:r => r.bb === 1 ? 1 : r.bb === 0 ? 0 : null},
     {g:G2, h:"融資5日%", f:r => pk2S(r.mg5, 2), sortVal:r => r.mg5},
-    {g:G2, h:"借券賣出5日(張)", f:r => pk2S(r.lb5, 0), sortVal:r => r.lb5},
+    {g:G2, h:"借券餘額5日增減(張)", f:r => pk2S(r.lb5, 0), sortVal:r => r.lb5},
     {g:G2, h:"券資比%", f:r => pk2F(r.cr, 2), sortVal:r => r.cr},
     {g:G2, h:"大戶持股%", f:r => r.hd0 == null ? pk2Dash : `<span title="千張大戶持股比，週資料日 ${esc(r.hdd || "不明")}">${pk2F(r.hd0, 2)}</span>`, sortVal:r => r.hd0},
     {g:G2, h:"大戶週變化(pp)", f:r => pk2S(r.hdw, 2), sortVal:r => r.hdw},
@@ -4750,7 +4750,7 @@ function renderPick2(){
     + `美股只有收盤、5日／20日漲幅、MA60（above60）、ext、slope60（aisc 每日表），其餘「—」。`
     + `均線欄「上／下」＝收盤在該均線之上／之下（滑鼠停留看距離%）；20日均成交值單位為億元；外資／投信 5 日為買賣超張數合計；大戶持股為千張大戶持股比（週資料）。`
     + `明年預估EPS＝選股初篩 ${y1 != null ? esc(String(y1 + 1)) + " 年" : "明年度"}預估平均（mean）、目標價空間＝目標價中位÷現價−1，只有選股初篩涵蓋的台股才有。`
-    + `ext／slope60 為 aisc 每日表原值（口徑見 taiwan-backtest aisc/README.md）。預設依名單順序（台股在前、美股在後、各依代號），點表頭可排序；本表不做任何排名或判級。</div>`
+    + `ext／slope60 為 aisc 每日表原值（口徑見 taiwan-backtest aisc/README.md），資料日是頁頂「aisc 每日表」那一天，可能比台股其他欄（持股診斷）早一個交易日，同一列不同欄可能不同天。借券餘額5日增減＝借券賣出餘額與 5 個交易日前的差（張），不是 5 日賣出量合計。預設依名單順序（台股在前、美股在後、各依代號），點表頭可排序；本表不做任何排名或判級。</div>`
     + `</div>`;
   main.innerHTML = h;
 }
