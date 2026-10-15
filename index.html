@@ -406,6 +406,25 @@
   .sent-sw-ma{border-top:2px dashed var(--muted);margin-left:8px}
   .sent-empty{color:var(--muted);font-size:.84rem;margin:12px 2px}
   .sent-disc{margin-top:14px;color:var(--muted);font-size:.72rem;border-top:1px solid var(--line);padding-top:8px}
+  /* 選股二 tab（2026-10-14）：純描述，除漲跌三欄沿用 .up/.down 外一律中性色；全部 .pk2-* 前綴 */
+  .pk2-srcs{display:flex;flex-wrap:wrap;gap:4px 12px;margin:8px 2px;font-size:.74rem;color:var(--muted)}
+  .pk2-k{color:var(--txt)}
+  .pk2-bad{color:var(--muted);text-decoration:underline dotted}
+  .pk2-disc{color:var(--muted);font-size:.74rem;border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin:6px 0}
+  .pk2-note{color:var(--muted);font-size:.78rem;margin:6px 2px}
+  .pk2-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0 2px}
+  .pk2-in{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:4px 8px;
+    font-family:inherit;font-size:.8rem;color-scheme:dark}
+  .pk2-code{width:11em;min-width:0}
+  .pk2-btn{background:var(--chip);color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:4px 10px;
+    font-family:inherit;font-size:.78rem;cursor:pointer}
+  .pk2-btn:hover{border-color:#33507e}
+  .pk2-msg{min-height:1.2em;color:var(--muted);font-size:.76rem;margin:2px}
+  .pk2-cnt{color:var(--muted);font-size:.74rem;margin:2px 2px 6px}
+  .pk2-lb{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+  .pk2-ck{margin:0;accent-color:var(--accent)}
+  .pk2 .mtable .pk2-nc{color:var(--muted);font-size:.68rem}
+  .pk2-foot{color:var(--muted);font-size:.72rem;margin:4px 4px 8px;line-height:1.6}
   /* 手機（2026-09-06 批次二 #12）：全檔原本 0 條 @media。原則＝表格內允許橫捲（.tblbox overflow:auto），
      整頁不得出現水平捲軸；tabs 改單列橫向可捲不換行；外距與字級略縮。
      ⚠ 不動 .tblbox 的 padding（凍結欄 left:-12px／50px 是拿它補償的，改了 sticky 會穿幫）。 */
@@ -467,7 +486,7 @@ const TABS = [
   ["summary","彙總分析"],
   ["aetf","主動ETF"],["lending","融借券"],["daytrade","當沖"],
   ["block","鉅額"],["oddlot","零股"],["broker","分點"],["mktbal","大盤餘額"],
-  ["rrgd","輪動雷達"],["screen","選股"],["mychg","持股異動"],["diag","持股診斷"],
+  ["rrgd","輪動雷達"],["screen","選股"],["pick2","選股二"],["mychg","持股異動"],["diag","持股診斷"],
   ["chipradar","籌碼雷達"],["social","社群聲量"],["sentiment","市場情緒"],["dates","日期"],
 ];
 const SUBS = {
@@ -483,6 +502,7 @@ const SUBS = {
   rrgd:"盤後日頻產業輪動雷達（RRG-Daily）：47 條產業鏈的相對輪動圖。X 軸 RS-Ratio＝鏈等權報酬指數相對大盤等權基準的相對強度（12 日窗 z-score 標準化，100 為中性）；Y 軸 RS-Momentum＝RS-Ratio 的 10 日變化率再做同法標準化。資料源 taiwan-flow-live-v2 data/chain_daily（每交易日夜間增量更新）。僅描述各鏈相對大盤的歷史位置與變化；回測顯示象限轉換對未來報酬無顯著預測力，非投資建議。",
   dates:"各資料源目前的資料日與產出時間；判斷哪些已是最新交易日、哪些尚未更新。資料為排程產出，當日盤後資料通常於當晚 21:00 後才更新，故白天多半看到前一交易日。",
   screen:"選股：以分析師預估（FactSet 經鉅亨網／TradingView）篩選明年預估 EPS 達門檻之個股，並列今明年預估 EPS／本益比、目標價中位數與潛在漲幅、營收動能與評等分布。預估值為券商共識、隨時修訂，屬 AI 彙整之市場預期而非買賣建議與保證。",
+  pick2:"選股二：AI 供應鏈候選池（taiwan-backtest aisc 名單，台股每月換池、美股凍結）逐檔列出價格趨勢／量能籌碼／基本面／aisc 描述欄位；名單可自行勾選刪除與新增（只存本機瀏覽器）。描述性資料，非買賣訊號；R1 名單待回測、不據此下單。",
   mychg:"持股異動：拿本機持股清單比對全市場逐檔資料（外資／投信買賣超張數、漲跌%），只列達門檻者，一眼看完再決定要不要進「持股診斷」細看。講的是 market_daily 資料日那一天的狀態、不是「今天」（資料日寫在段落標題與免責卡）。門檻為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒。持股清單只存本機瀏覽器，比對全在瀏覽器端完成，持股代號不進任何網路請求（本 tab 不新增網路請求）。",
   chipradar:"籌碼雷達：上半為類股資金四象限（固定比較近 5 日與近 20 日三大法人／外資／投信／自營日均淨額，資料源 taiwan-flows 類股資金流）；下半為千張大戶持股週變化（本站持股診斷素材庫，約 1,200 檔、非全市場）。類股象限與大戶變化為現況描述，非買賣訊號；無回測依據。",
   social:"社群聲量：PTT Stock 板每日提及各股的篇數、推噓數與作者態度（AI 判讀），並依情緒＋千張大戶雙確認給規則式建議。AI 研判，未經回測，非保證。",
@@ -1901,7 +1921,7 @@ function renderStats(){
     const dg = state.diag;
     el.innerHTML = dg ? `<div class="stat">素材庫資料日 <b>${esc(dg.date||"—")}</b></div>`
       + `<div class="stat"><b>${dg.n||0}</b> 檔</div>` : "";
-  } else if (state.tab === "dates" || state.tab === "chipradar" || state.tab === "social" || state.tab === "sentiment"){
+  } else if (state.tab === "dates" || state.tab === "chipradar" || state.tab === "social" || state.tab === "sentiment" || state.tab === "pick2"){
     // dates：本身就是各源日期總覽；籌碼雷達／社群聲量：頁內每段自帶自己的資料日徽章，不借用 postmkt 的資料日
     el.innerHTML = "";  // 本 tab 本身就是各源日期總覽，不重複顯示單一資料日
   } else {
@@ -1927,6 +1947,8 @@ function render(){
   else if (state.tab === "mktbal"){ ensureMktbal(); renderMktbal(); }
   else if (state.tab === "rrgd"){ ensureChainDaily(); renderRrgd(); }
   else if (state.tab === "screen"){ ensureScreen(); renderScreen(); }
+  // 選股二（2026-10-14）：universe.json／aisc latest.csv 只在切到本 tab 時才抓（renderPick2 內 pk2Ensure），首屏零新增請求
+  else if (state.tab === "pick2") renderPick2();
   // 持股異動：吃 state.pm.market_daily（走既有 ensurePm()，本 tab 零新增請求）。**必須有自己的分支**
   //（下方 else 是 fallback 到 renderPM()，沒加分支會掉進去而顯示「無資料」）
   else if (state.tab === "mychg"){ ensurePm(); renderMyChg(); }
@@ -4383,6 +4405,402 @@ function renderScreen(){
     + `營收YoY／連N月／PER-TTM 取自持股診斷素材庫口徑。點欄位表頭可排序。</div>`;
 }
 
+// ================= 選股二 tab（pick2，2026-10-14 新增；第 18 個 tab，排在「選股」之後）=================
+// 名單＝taiwan-backtest aisc 候選池（aisc/universe.json：台股每月換池、美股凍結）＋使用者個人增刪。
+// 資料（全部同源相對路徑，CSP connect-src 'self' 已涵蓋、**未改 CSP**；**只在切到本 tab 時才抓**，首屏請求清單不變）：
+//   ①PK2_UNI_URL＝../taiwan-backtest/aisc/universe.json（預設名單）
+//   ②PK2_CSV_URL＝../taiwan-backtest/output/aisc/daily/latest.csv（aisc 每日描述表：收盤／r5／r20／above60／ext／slope60）
+//   ③本站 data/diag/diag.json（沿用 ensureDiag()／state.diag，台股價量籌碼基本面欄）
+//   ④本站 data/screen/screen.json（沿用 ensureScreen()／state.screen，明年預估 EPS／目標價／評等）
+// in-flight 以 PK2.*Loading 去重、失敗記 PK2.*Err 不重試（比照 sentEnsure／crEnsureSr）。
+// 個人增刪只存 localStorage 的 pm_pick2 key（相對預設名單的差異 {v:1, added, removed}），**不進任何網路請求、URL、hash**
+//（約定 6 精神）。**純描述性顯示**：不新增任何判級、燈號、紅綠訊號或排序建議；預設依名單順序（台股在前、美股在後、各依代號）。
+// 漲跌著色只用在「今日漲跌%／5日／20日漲幅」（沿用站上 sgn() 慣例），其他欄中性色。
+// 外來字串（代號、名稱、日期）插 innerHTML 一律 esc()；數值一律 typeof number＋isFinite 後 toFixed。CSS 一律 .pk2-* 前綴。
+const PK2_UNI_URL = "../taiwan-backtest/aisc/universe.json";
+const PK2_CSV_URL = "../taiwan-backtest/output/aisc/daily/latest.csv";
+const PK2_KEY = "pm_pick2";
+const PK2 = { uni: null, uniErr: null, uniLoading: false, csv: null, csvErr: null, csvLoading: false,
+  sel: new Set(), msg: "", addM: "TW" };
+// ---- pick2-pure:begin（純函式，tests/test_pick2.mjs 以 node 抽出來測，勿依賴 DOM／localStorage）----
+const PK2_TW_RE = /^\d{4}[0-9A-Z]{0,2}$/;
+const PK2_US_RE = /^[A-Z]{1,5}$/;
+const PK2_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PK2_DISCLAIMER = "描述性資料，非買賣訊號；AI 供應鏈名單（R1）待回測、不據此下單。所有判讀屬 AI 研判，非投資保證。";
+const PK2_CSV_COLS = ["market","code","name","date","close","ext","r5","r20","above60","slope60","liq20","r3_pass","note","r1_rank"];
+const PK2_CSV_NUM = ["close","ext","r5","r20","slope60","liq20","r1_rank"];
+// 代號正規化＋白名單：先 trim、轉大寫；不合回 null
+function pk2NormCode(m, raw){
+  if (typeof raw !== "string") return null;
+  const c = raw.trim().toUpperCase();
+  if (m === "TW") return PK2_TW_RE.test(c) ? c : null;
+  if (m === "US") return PK2_US_RE.test(c) ? c : null;
+  return null;
+}
+const pk2Key = (m, c) => m + ":" + c;
+// 數值：非空字串且 Number() 有限才收，否則 null（空欄、"nan"、"inf" 一律 null）
+function pk2Num(s){
+  if (typeof s === "number") return isFinite(s) ? s : null;
+  if (typeof s !== "string" || s.trim() === "") return null;
+  const v = Number(s.trim());
+  return isFinite(v) ? v : null;
+}
+function pk2Bool(s){
+  const t = typeof s === "string" ? s.trim().toLowerCase() : "";
+  return t === "true" ? true : t === "false" ? false : null;
+}
+// aisc 每日表 CSV：無引號跳脫需求（逗號切欄），容忍 CRLF、空欄、尾端空行、欄數不足；表頭須含 PK2_CSV_COLS 的必要欄。
+// 代號依市場白名單過濾（不合整列丟棄）、日期過白名單（不合記空字串）。回 {rows:[...]} 或 null（表頭不合）
+function pk2ParseCsv(text){
+  if (typeof text !== "string") return null;
+  const lines = text.replace(/^﻿/, "").split(/\r?\n/);
+  const head = (lines[0] || "").split(",").map(s => s.trim());
+  for (const k of ["market","code","date","close","r5","r20","above60","ext","slope60"]) if (!head.includes(k)) return null;
+  const ix = {};
+  head.forEach((k, i) => { if (!(k in ix)) ix[k] = i; });
+  const rows = [];
+  for (let li = 1; li < lines.length; li++){
+    const ln = lines[li];
+    if (!ln || !ln.trim()) continue;
+    const f = ln.split(",");
+    const get = k => (ix[k] != null && ix[k] < f.length) ? f[ix[k]] : "";
+    const m = get("market").trim();
+    if (m !== "TW" && m !== "US") continue;
+    const code = pk2NormCode(m, get("code"));
+    if (!code) continue;
+    const d = get("date").trim();
+    const r = { market: m, code, name: get("name").trim(), date: PK2_DATE_RE.test(d) ? d : "",
+      above60: pk2Bool(get("above60")), note: get("note").trim(), r3_pass: pk2Bool(get("r3_pass")) };
+    for (const k of PK2_CSV_NUM) r[k] = pk2Num(get(k));
+    rows.push(r);
+  }
+  return { rows };
+}
+// CSV 各市場的資料日（date 欄最大值）
+function pk2CsvDates(csv){
+  const out = { TW: "", US: "" };
+  for (const r of (csv && csv.rows) || []) if (r.date && r.date > (out[r.market] || "")) out[r.market] = r.date;
+  return out;
+}
+// universe.json → 預設名單 [{m, code, name}]；代號過白名單、重複去除。形狀不對回 null
+function pk2Universe(j){
+  if (!j || typeof j !== "object" || Array.isArray(j)) return null;
+  if (!Array.isArray(j.TW) && !Array.isArray(j.US)) return null;
+  const out = [], seen = new Set();
+  for (const m of ["TW", "US"]){
+    for (const x of Array.isArray(j[m]) ? j[m] : []){
+      if (!x || typeof x !== "object") continue;
+      const code = pk2NormCode(m, typeof x.code === "string" ? x.code : "");
+      if (!code || seen.has(pk2Key(m, code))) continue;
+      seen.add(pk2Key(m, code));
+      out.push({ m, code, name: typeof x.name === "string" ? x.name : "" });
+    }
+  }
+  return out;
+}
+// 使用者設定：壞資料一律當空（{v:1, added:[], removed:[]}）；逐筆過白名單、去重
+function pk2EmptyPrefs(){ return { v: 1, added: [], removed: [] }; }
+function pk2CleanList(a){
+  const out = [], seen = new Set();
+  for (const x of Array.isArray(a) ? a : []){
+    if (!x || typeof x !== "object") continue;
+    const code = pk2NormCode(x.m, typeof x.code === "string" ? x.code : "");
+    if (!code || seen.has(pk2Key(x.m, code))) continue;
+    seen.add(pk2Key(x.m, code));
+    out.push({ m: x.m, code });
+  }
+  return out;
+}
+function pk2ParsePrefs(str){
+  let j;
+  try{ j = JSON.parse(str); }catch(e){ return pk2EmptyPrefs(); }
+  if (!j || typeof j !== "object" || Array.isArray(j) || j.v !== 1) return pk2EmptyPrefs();
+  return { v: 1, added: pk2CleanList(j.added), removed: pk2CleanList(j.removed) };
+}
+// 名單合併：預設（扣掉 removed）＋ added（已在預設中的不重複）；台股在前、美股在後、各依代號。
+// 每筆 {m, code, name, added:bool}（added＝不在預設名單、由使用者新增）
+function pk2Apply(def, prefs){
+  const p = prefs || pk2EmptyPrefs();
+  const rm = new Set((p.removed || []).map(x => pk2Key(x.m, x.code)));
+  const out = [], seen = new Set();
+  for (const x of def || []){
+    const k = pk2Key(x.m, x.code);
+    if (rm.has(k) || seen.has(k)) continue;
+    seen.add(k); out.push({ m: x.m, code: x.code, name: x.name || "", added: false });
+  }
+  for (const x of p.added || []){
+    const k = pk2Key(x.m, x.code);
+    if (seen.has(k)) continue;
+    seen.add(k); out.push({ m: x.m, code: x.code, name: "", added: true });
+  }
+  const mo = m => m === "TW" ? 0 : 1;
+  out.sort((a, b) => mo(a.m) - mo(b.m) || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
+  return out;
+}
+// 新增：回 {ok, prefs, err}。預設中被刪過的→從 removed 拿掉；已在名單→重複；否則加入 added
+function pk2Add(def, prefs, m, raw){
+  if (m !== "TW" && m !== "US") return { ok: false, prefs, err: "市場不合法" };
+  const code = pk2NormCode(m, raw);
+  if (!code) return { ok: false, prefs, err: m === "TW" ? "台股代號須為 4 位數字（可接 0–2 位英數，如 2330、00981A）" : "美股代號須為 1–5 個英文字母" };
+  const k = pk2Key(m, code);
+  if (pk2Apply(def, prefs).some(x => pk2Key(x.m, x.code) === k)) return { ok: false, prefs, err: `${code} 已在名單中` };
+  const inDef = (def || []).some(x => pk2Key(x.m, x.code) === k);
+  const next = { v: 1, added: [...prefs.added], removed: prefs.removed.filter(x => pk2Key(x.m, x.code) !== k) };
+  if (!inDef) next.added.push({ m, code });
+  return { ok: true, prefs: next, code };
+}
+// 刪除：keys＝["TW:2330", ...]；使用者新增的→從 added 拿掉，預設名單內的→記入 removed
+function pk2Remove(def, prefs, keys){
+  const ks = new Set(keys || []);
+  const defK = new Set((def || []).map(x => pk2Key(x.m, x.code)));
+  const added = prefs.added.filter(x => !ks.has(pk2Key(x.m, x.code)));
+  const removed = [...prefs.removed];
+  const rmK = new Set(removed.map(x => pk2Key(x.m, x.code)));
+  for (const k of ks){
+    if (!defK.has(k) || rmK.has(k)) continue;
+    const i = k.indexOf(":");
+    removed.push({ m: k.slice(0, i), code: k.slice(i + 1) });
+    rmK.add(k);
+  }
+  return { v: 1, added, removed };
+}
+// 分析師評等分布（screen.json rating 五鍵）：任一鍵為有限數才顯示，缺鍵記 0；全缺回 null
+function pk2Rating(rt){
+  if (!rt || typeof rt !== "object") return null;
+  const ks = ["buy", "overweight", "hold", "underweight", "sell"];
+  if (!ks.some(k => typeof rt[k] === "number" && isFinite(rt[k]))) return null;
+  const g = k => (typeof rt[k] === "number" && isFinite(rt[k])) ? rt[k] : 0;
+  return `買${g("buy")}／加${g("overweight")}／持${g("hold")}／減${g("underweight")}／賣${g("sell")}`;
+}
+// ---- pick2-pure:end ----
+
+function pk2Prefs(){
+  try{ return pk2ParsePrefs(localStorage.getItem(PK2_KEY) || ""); }catch(e){ return pk2EmptyPrefs(); }
+}
+function pk2SavePrefs(p){
+  try{ localStorage.setItem(PK2_KEY, JSON.stringify(p)); return true; }catch(e){ return false; }
+}
+async function pk2LoadText(url){
+  const r = await fetch(url, { cache: "no-cache" });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.text();
+}
+function pk2Ensure(){
+  if (!PK2.uni && !PK2.uniErr && !PK2.uniLoading){
+    PK2.uniLoading = true;
+    loadJSON(PK2_UNI_URL)
+      .then(j => { const d = pk2Universe(j); if (d) PK2.uni = { j, def: d }; else PK2.uniErr = "shape"; })
+      .catch(e => { PK2.uniErr = e; })
+      .finally(() => { PK2.uniLoading = false; if (state.tab === "pick2") render(); });
+  }
+  if (!PK2.csv && !PK2.csvErr && !PK2.csvLoading){
+    PK2.csvLoading = true;
+    pk2LoadText(PK2_CSV_URL)
+      .then(t => { const c = pk2ParseCsv(t); if (c) PK2.csv = c; else PK2.csvErr = "shape"; })
+      .catch(e => { PK2.csvErr = e; })
+      .finally(() => { PK2.csvLoading = false; if (state.tab === "pick2") render(); });
+  }
+  ensureDiag();
+  ensureScreen();
+}
+const pk2Def = () => (PK2.uni && PK2.uni.def) || [];
+// 數值格式：非有限數一律灰「—」
+const pk2Dash = '<span class="mut">—</span>';
+const pk2N = v => (typeof v === "number" && isFinite(v)) ? v : null;
+const pk2F = (v, dp, suf) => pk2N(v) == null ? pk2Dash : esc(v.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp }) + (suf || ""));
+const pk2S = (v, dp, suf) => { const x = pk2N(v); if (x == null) return pk2Dash; const r = Number(x.toFixed(dp)) || 0;
+  return esc((r > 0 ? "+" : "") + r.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp }) + (suf || "")); };
+// 漲跌著色（沿用站上 sgn：捨入後為 0 顯灰）
+const pk2Chg = (v, dp) => { const x = pk2N(v); if (x == null) return pk2Dash; const r = Number(x.toFixed(dp)) || 0;
+  return sgn(r, esc((r > 0 ? "+" : "") + r.toFixed(dp) + "%")); };
+// 均線位置：ma*＝現價距 MA%（diag 口徑），>0 上、<0 下、=0 平；title 附距離
+const pk2Ma = v => { const x = pk2N(v); if (x == null) return pk2Dash;
+  return `<span title="收盤距均線 ${esc((x > 0 ? "+" : "") + x.toFixed(2))}%">${x > 0 ? "上" : x < 0 ? "下" : "平"}</span>`; };
+const pk2Flag = v => v === 1 ? "是" : v === 0 ? "否" : pk2Dash;
+// 每列合併各資料源（列物件只放已過型別檢查的值）
+function pk2Rows(list){
+  const dg = state.diag && state.diag.stocks ? state.diag.stocks : null;
+  const scY = scrYear(state.screen), y1 = scY != null ? scY + 1 : null;
+  const scMap = {};
+  for (const r of (state.screen && Array.isArray(state.screen.rows)) ? state.screen.rows : []) if (r && typeof r.code === "string") scMap[r.code] = r;
+  const csvMap = {};
+  for (const r of (PK2.csv && PK2.csv.rows) || []) csvMap[pk2Key(r.market, r.code)] = r;
+  const uniName = {};
+  for (const x of pk2Def()) uniName[pk2Key(x.m, x.code)] = x.name;
+  return list.map(x => {
+    const k = pk2Key(x.m, x.code), cv = csvMap[k] || null;
+    const d = (x.m === "TW" && dg && dg[x.code] && typeof dg[x.code] === "object") ? dg[x.code] : null;
+    const sc = x.m === "TW" ? (scMap[x.code] || null) : null;
+    let name = uniName[k] || "";
+    if (!name && d && typeof d.n === "string") name = d.n;
+    if (!name && x.m === "TW") name = stkName(x.code) || "";
+    if (!name && cv && cv.name) name = cv.name;
+    const px = sc ? pk2N(sc.px) : null, tp = sc && sc.tp ? pk2N(sc.tp.median) : null;
+    const hd = d && Array.isArray(d.hd) ? d.hd : null;
+    const hd0 = hd ? pk2N(hd[0]) : null;
+    const hdw = d ? (pk2N(d.hdw) != null ? d.hdw : (hd && pk2N(hd[0]) != null && pk2N(hd[1]) != null ? hd[0] - hd[1] : null)) : null;
+    return { m: x.m, code: x.code, name, added: x.added, k,
+      noDiag: x.m === "TW" && !!state.diag && !d, noCsv: !!PK2.csv && !cv,
+      c: d ? pk2N(d.c) : (cv ? cv.close : null), d1: d ? pk2N(d.d1) : null,
+      r5: d ? pk2N(d.r5) : (cv ? cv.r5 : null), r20: d ? pk2N(d.r20) : (cv ? cv.r20 : null),
+      ma5: d ? pk2N(d.ma5) : null, ma20: d ? pk2N(d.ma20) : null,
+      ma60: d ? pk2N(d.ma60) : null, a60: d ? null : (cv ? cv.above60 : null),
+      dd60: d ? pk2N(d.dd60) : null, rs: d ? pk2N(d.rs) : null,
+      av20: d ? pk2N(d.av20) : null, vs: d ? d.vs : null, vb: d ? d.vb : null,
+      f5: d ? pk2N(d.f5) : null, t5: d ? pk2N(d.t5) : null, fd: d ? pk2N(d.fd) : null, td: d ? pk2N(d.td) : null,
+      bb: d ? d.bb : null, mg5: d ? pk2N(d.mg5) : null, lb5: d ? pk2N(d.lb5) : null, cr: d ? pk2N(d.cr) : null,
+      hd0, hdw: pk2N(hdw), hdd: d && typeof d.hdd === "string" && PK2_DATE_RE.test(d.hdd) ? d.hdd : "",
+      dt: d ? pk2N(d.dt) : null, yoy: d ? pk2N(d.yoy) : null, mom: d ? pk2N(d.mom) : null,
+      rym: d && typeof d.rym === "string" && /^\d{4}-\d{2}$/.test(d.rym) ? d.rym : "",
+      pe: d ? pk2N(d.pe) : null, pb: d ? pk2N(d.pb) : null, dy: d ? pk2N(d.dy) : null,
+      eps1: sc ? scrEstMean(sc, y1) : null, up: (px != null && px > 0 && tp != null) ? (tp / px - 1) * 100 : null,
+      rt: sc ? pk2Rating(sc.rating) : null,
+      ext: cv ? cv.ext : null, sl60: cv ? cv.slope60 : null };
+  });
+}
+// 頁頂各資料源狀態：載入中／讀取失敗／資料日（照實寫日期，不寫「今日」）
+function pk2SrcLine(){
+  const st = (ok, err, loading, txt) => err ? `<b class="pk2-bad">讀取失敗</b>` : (ok ? txt : (loading ? "載入中…" : "—"));
+  const u = PK2.uni && PK2.uni.j;
+  const uv = u ? `版本 ${esc(typeof u.version === "string" ? u.version : "—")}`
+    + (typeof u.tw_refreshed_at === "string" && u.tw_refreshed_at ? `／台股換池 ${esc(u.tw_refreshed_at)}` : "")
+    + (typeof u.frozen_at === "string" && u.frozen_at ? `／凍結日 ${esc(u.frozen_at)}` : "") : "";
+  const cd = PK2.csv ? pk2CsvDates(PK2.csv) : null;
+  const dd = state.diag && typeof state.diag.date === "string" ? state.diag.date : "";
+  const sd = state.screen && typeof state.screen.date === "string" ? state.screen.date : "";
+  const it = (lbl, v) => `<span class="pk2-src"><span class="pk2-k">${lbl}</span> ${v}</span>`;
+  return `<div class="pk2-srcs">`
+    + it("名單（aisc universe）", st(PK2.uni, PK2.uniErr, PK2.uniLoading, uv))
+    + it("aisc 每日表", st(PK2.csv, PK2.csvErr, PK2.csvLoading,
+        cd ? `台股資料日 ${esc(cd.TW || "—")}／美股資料日 ${esc(cd.US || "—")}` : ""))
+    + it("持股診斷素材庫", st(state.diag, state.diagErr, state.diagLoading, `資料日 ${esc(dd || "—")}`))
+    + it("選股初篩", st(state.screen, state.screenErr, state.screenLoading, `資料日 ${esc(sd || "—")}`))
+    + `</div>`;
+}
+function renderPick2(){
+  pk2Ensure();
+  const main = document.getElementById("main");
+  const prefs = pk2Prefs();
+  const list = pk2Apply(pk2Def(), prefs);
+  // 已不在名單的勾選一律清掉（換池／刪除後不殘留）
+  const live = new Set(list.map(x => pk2Key(x.m, x.code)));
+  for (const k of [...PK2.sel]) if (!live.has(k)) PK2.sel.delete(k);
+  let h = `<div class="pk2">` + pk2SrcLine()
+    + `<div class="pk2-disc">${esc(PK2_DISCLAIMER)}</div>`;
+  if (PK2.uniErr) h += `<div class="pk2-note">預設名單（aisc universe.json）讀取失敗：下表只列你自己新增的股票。</div>`;
+  else if (!PK2.uni) h += `<div class="pk2-note">預設名單載入中…</div>`;
+  h += `<div class="pk2-bar">`
+    + `<select id="pk2M" class="pk2-in" aria-label="市場"><option value="TW"${PK2.addM === "TW" ? " selected" : ""}>台股</option><option value="US"${PK2.addM === "US" ? " selected" : ""}>美股</option></select>`
+    + `<input id="pk2Code" class="pk2-in pk2-code" type="text" maxlength="8" autocomplete="off" placeholder="代號（如 2330／NVDA）" aria-label="新增代號">`
+    + `<button type="button" class="pk2-btn" data-pk2="add">新增</button>`
+    + `<button type="button" class="pk2-btn" data-pk2="all">全選</button>`
+    + `<button type="button" class="pk2-btn" data-pk2="none">全不選</button>`
+    + `<button type="button" class="pk2-btn" data-pk2="del">刪除勾選（${PK2.sel.size}）</button>`
+    + `<button type="button" class="pk2-btn" data-pk2="reset">還原預設名單</button>`
+    + `</div>`
+    + `<div class="pk2-msg" id="pk2Msg">${esc(PK2.msg)}</div>`
+    + `<div class="pk2-cnt">名單 ${list.length} 檔（台股 ${list.filter(x => x.m === "TW").length}／美股 ${list.filter(x => x.m === "US").length}`
+    + `；你新增 ${prefs.added.length}、自預設刪除 ${prefs.removed.length}）。增刪只存在本機瀏覽器，不上傳任何伺服器。</div>`;
+  const rows = pk2Rows(list);
+  const G1 = "價格趨勢", G2 = "量能籌碼", G3 = "基本面", G4 = "aisc";
+  const cols = [
+    {h:"代號／名稱", cls:"l pk2-id", sortVal:r => pk2Key(r.m, r.code), f:r =>
+      `<label class="pk2-lb"><input type="checkbox" class="pk2-ck" data-pk2ck="${esc(r.k)}"${PK2.sel.has(r.k) ? " checked" : ""} aria-label="勾選 ${esc(r.code)}">`
+      + `<span class="code">${esc(r.code)}</span></label>${r.m === "TW" ? stkBtn(r.code) : ""}`
+      + `<span class="nm">${esc(r.name || r.code)}${r.m === "US" ? "・美股" : ""}${r.added ? "・自加" : ""}</span>`
+      + (r.noDiag ? `<span class="nm pk2-nc">本表不涵蓋</span>` : (r.m === "US" && r.noCsv ? `<span class="nm pk2-nc">aisc 表不涵蓋</span>` : ""))},
+    {g:G1, h:"收盤", f:r => pk2F(r.c, 2), sortVal:r => r.c},
+    {g:G1, h:"今日漲跌%", f:r => pk2Chg(r.d1, 2), sortVal:r => r.d1},
+    {g:G1, h:"5日漲幅%", f:r => pk2Chg(r.r5, 2), sortVal:r => r.r5},
+    {g:G1, h:"20日漲幅%", f:r => pk2Chg(r.r20, 2), sortVal:r => r.r20},
+    {g:G1, h:"MA5", f:r => pk2Ma(r.ma5), sortVal:r => r.ma5},
+    {g:G1, h:"MA20", f:r => pk2Ma(r.ma20), sortVal:r => r.ma20},
+    {g:G1, h:"MA60", f:r => r.ma60 != null ? pk2Ma(r.ma60) : (r.a60 === true ? "上" : r.a60 === false ? "下" : pk2Dash),
+      sortVal:r => r.ma60 != null ? r.ma60 : (r.a60 === true ? 1e-9 : r.a60 === false ? -1e-9 : null)},
+    {g:G1, h:"距60日高%", f:r => pk2F(r.dd60, 2), sortVal:r => r.dd60},
+    {g:G1, h:"RS", f:r => pk2S(r.rs, 2), sortVal:r => r.rs},
+    {g:G2, h:"20日均成交值(億)", f:r => pk2F(r.av20 == null ? null : r.av20 / 1e5, 1), sortVal:r => r.av20},
+    {g:G2, h:"爆量／長黑", f:r => r.vb === 1 ? "爆量長黑" : r.vs === 1 ? "爆量" : r.vs === 0 ? "否" : pk2Dash,
+      sortVal:r => r.vb === 1 ? 2 : r.vs === 1 ? 1 : r.vs === 0 ? 0 : null},
+    {g:G2, h:"外資5日(張)", f:r => pk2S(r.f5, 0), sortVal:r => r.f5},
+    {g:G2, h:"投信5日(張)", f:r => pk2S(r.t5, 0), sortVal:r => r.t5},
+    {g:G2, h:`外資連買<span class="mut" title="正＝連買天數、負＝連賣天數">ⓘ</span>`, f:r => pk2S(r.fd, 0), sortVal:r => r.fd},
+    {g:G2, h:`投信連買<span class="mut" title="正＝連買天數、負＝連賣天數">ⓘ</span>`, f:r => pk2S(r.td, 0), sortVal:r => r.td},
+    {g:G2, h:"土洋同買", f:r => pk2Flag(r.bb), sortVal:r => r.bb === 1 ? 1 : r.bb === 0 ? 0 : null},
+    {g:G2, h:"融資5日%", f:r => pk2S(r.mg5, 2), sortVal:r => r.mg5},
+    {g:G2, h:"借券餘額5日增減(張)", f:r => pk2S(r.lb5, 0), sortVal:r => r.lb5},
+    {g:G2, h:"券資比%", f:r => pk2F(r.cr, 2), sortVal:r => r.cr},
+    {g:G2, h:"大戶持股%", f:r => r.hd0 == null ? pk2Dash : `<span title="千張大戶持股比，週資料日 ${esc(r.hdd || "不明")}">${pk2F(r.hd0, 2)}</span>`, sortVal:r => r.hd0},
+    {g:G2, h:"大戶週變化(pp)", f:r => pk2S(r.hdw, 2), sortVal:r => r.hdw},
+    {g:G2, h:"當沖比%", f:r => pk2F(r.dt, 2), sortVal:r => r.dt},
+    {g:G3, h:"營收年增%", f:r => r.yoy == null ? pk2Dash : `<span title="營收月 ${esc(r.rym || "不明")}">${pk2S(r.yoy, 2)}</span>`, sortVal:r => r.yoy},
+    {g:G3, h:"營收月增%", f:r => pk2S(r.mom, 2), sortVal:r => r.mom},
+    {g:G3, h:"本益比", f:r => pk2F(r.pe, 2), sortVal:r => r.pe},
+    {g:G3, h:"淨值比", f:r => pk2F(r.pb, 2), sortVal:r => r.pb},
+    {g:G3, h:"殖利率%", f:r => pk2F(r.dy, 2), sortVal:r => r.dy},
+    {g:G3, h:"明年預估EPS", f:r => pk2F(r.eps1, 2), sortVal:r => r.eps1},
+    {g:G3, h:"目標價空間%", f:r => pk2S(r.up, 1), sortVal:r => r.up},
+    {g:G3, h:"分析師評等", f:r => r.rt ? esc(r.rt) : pk2Dash, sortVal:r => null},
+    {g:G4, h:"ext", f:r => pk2S(r.ext, 2), sortVal:r => r.ext},
+    {g:G4, h:"slope60", f:r => pk2S(r.sl60, 2), sortVal:r => r.sl60},
+  ];
+  const y1 = scrYear(state.screen);
+  h += list.length ? `<div class="pk2-tbl">${tbl(cols, rows)}</div>` : `<div class="empty">名單是空的（可在上方新增，或按「還原預設名單」）。</div>`;
+  h += `<div class="pk2-foot">欄位口徑：台股收盤／漲跌／均線／籌碼／營收／估值取持股診斷素材庫（diag.json，約 1,200 檔，素材庫沒有的台股收盤／5日／20日／MA60 退用 aisc 每日表）；`
+    + `美股只有收盤、5日／20日漲幅、MA60（above60）、ext、slope60（aisc 每日表），其餘「—」。`
+    + `均線欄「上／下」＝收盤在該均線之上／之下（滑鼠停留看距離%）；20日均成交值單位為億元；外資／投信 5 日為買賣超張數合計；大戶持股為千張大戶持股比（週資料）。`
+    + `明年預估EPS＝選股初篩 ${y1 != null ? esc(String(y1 + 1)) + " 年" : "明年度"}預估平均（mean）、目標價空間＝目標價中位÷現價−1，只有選股初篩涵蓋的台股才有。`
+    + `ext／slope60 為 aisc 每日表原值（口徑見 taiwan-backtest aisc/README.md），資料日是頁頂「aisc 每日表」那一天，可能比台股其他欄（持股診斷）早一個交易日，同一列不同欄可能不同天。借券餘額5日增減＝借券賣出餘額與 5 個交易日前的差（張），不是 5 日賣出量合計。預設依名單順序（台股在前、美股在後、各依代號），點表頭可排序；本表不做任何排名或判級。</div>`
+    + `</div>`;
+  main.innerHTML = h;
+}
+function pk2SetMsg(t){ PK2.msg = t; const el = document.getElementById("pk2Msg"); if (el) el.textContent = t; }
+document.addEventListener("change", e => {
+  const ck = e.target.closest && e.target.closest(".pk2-ck");
+  if (ck){
+    const k = ck.dataset.pk2ck;
+    if (ck.checked) PK2.sel.add(k); else PK2.sel.delete(k);
+    const b = document.querySelector('[data-pk2="del"]');
+    if (b) b.textContent = `刪除勾選（${PK2.sel.size}）`;
+    return;
+  }
+  if (e.target.id === "pk2M") PK2.addM = e.target.value === "US" ? "US" : "TW";
+});
+function pk2DoAdd(){
+  const inp = document.getElementById("pk2Code"), ms = document.getElementById("pk2M");
+  if (!inp) return;
+  const m = ms && ms.value === "US" ? "US" : "TW";
+  PK2.addM = m;
+  const res = pk2Add(pk2Def(), pk2Prefs(), m, inp.value || "");
+  if (!res.ok){ pk2SetMsg(res.err); return; }
+  if (!pk2SavePrefs(res.prefs)){ pk2SetMsg("瀏覽器不允許寫入本機儲存，無法保存名單變更"); return; }
+  PK2.msg = `已新增 ${res.code}`;
+  render();
+}
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target && e.target.id === "pk2Code"){ e.preventDefault(); pk2DoAdd(); }
+});
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-pk2]");
+  if (!b) return;
+  const act = b.dataset.pk2;
+  if (act === "add"){ pk2DoAdd(); return; }
+  const list = pk2Apply(pk2Def(), pk2Prefs());
+  if (act === "all"){ PK2.sel = new Set(list.map(x => pk2Key(x.m, x.code))); PK2.msg = ""; render(); return; }
+  if (act === "none"){ PK2.sel.clear(); PK2.msg = ""; render(); return; }
+  if (act === "del"){
+    if (!PK2.sel.size){ pk2SetMsg("尚未勾選任何股票"); return; }
+    const n = PK2.sel.size;
+    if (!pk2SavePrefs(pk2Remove(pk2Def(), pk2Prefs(), [...PK2.sel]))){ pk2SetMsg("瀏覽器不允許寫入本機儲存，無法保存名單變更"); return; }
+    PK2.sel.clear(); PK2.msg = `已刪除 ${n} 檔`; render(); return;
+  }
+  if (act === "reset"){
+    if (!confirm("還原預設名單？你新增與刪除的紀錄都會清除。")) return;
+    try{ localStorage.removeItem(PK2_KEY); }catch(e){}
+    PK2.sel.clear(); PK2.msg = "已還原預設名單"; render(); return;
+  }
+});
+
 // ---------- 持股診斷 tab（子期1）：素材庫 data/diag/diag.json ＋ 燈號規則引擎 ----------
 // 隱私鐵則：持股清單（代號/股數/成本）只存 localStorage("pm_holdings")，
 // 絕不放進任何網路請求 payload、絕不走 gh_token 雲端儲存（repo 是 public）。
@@ -5368,14 +5786,14 @@ function ensureDiag(){
   state.diagLoading = true;
   loadJSON("data/diag/diag.json")
     .then(j=>{ state.diag = j; }).catch(e=>{ state.diagErr = e; })
-    .finally(()=>{ state.diagLoading = false; if (["diag","chipradar","social"].includes(state.tab)) render(); });
+    .finally(()=>{ state.diagLoading = false; if (["diag","chipradar","social","pick2"].includes(state.tab)) render(); });
 }
 function ensureScreen(){
   if (state.screen || state.screenErr || state.screenLoading) return;
   state.screenLoading = true;
   loadJSON("data/screen/screen.json")
     .then(j=>{ state.screen = j; }).catch(e=>{ state.screenErr = e; })
-    .finally(()=>{ state.screenLoading = false; if (state.tab === "screen") render(); });
+    .finally(()=>{ state.screenLoading = false; if (state.tab === "screen" || state.tab === "pick2") render(); });
 }
 function ensureMktbal(){
   if (state.mktbal || state.mktbalErr || state.mktbalLoading) return;

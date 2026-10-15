@@ -3,6 +3,16 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-10-14 新增第 18 個 tab「選股二」（`pick2`）
+
+排在「選股」之後。名單＝taiwan-backtest aisc 候選池（`../taiwan-backtest/aisc/universe.json`，現行 117 檔＝台股 93＋美股 24），
+欄位取 aisc 每日表 `../taiwan-backtest/output/aisc/daily/latest.csv` 與本站既有 diag.json／screen.json（同源相對路徑、CSP 未改、
+只在切到本 tab 才抓，首屏請求清單 Playwright 對跑改動前後相同）。可勾選刪除、新增（代號白名單）、還原預設；增刪只存
+localStorage `pm_pick2`（相對預設名單的差異），不進任何網路請求／URL／hash。純描述、無判級無排序建議；頁頂列各來源資料日。
+測試 `tests/test_pick2.mjs`（17 項）＋`tests/test_pick2.py`；`tests/test_frontend_moved.py` 的 tab 數 17→18。
+**本站成為 taiwan-backtest 兩檔的前端消費者**（改路徑或欄名＝跨站變更）；線上需 taiwan-backtest 那邊的 `latest.csv` 已 push 到 main 才有資料，
+否則該來源顯示「讀取失敗」、相關欄「—」。
+
 ## 2026-10-11 postmkt.json 整檔載入失敗不再「永久沒數值」
 
 使用者回報（桌機 Chrome）：各盤後 tab 顯示「尚無盤後資料（data/postmkt.json 未產生或載入失敗）」，
