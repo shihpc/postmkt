@@ -49,7 +49,7 @@
 
 ## 佈局
 
-- `index.html`：17 個 tab 全部前端（CSS/JS 內嵌；2026-09-28 由 14 加到 16，見下方「籌碼雷達／社群聲量」；2026-09-29 加第 17 個「市場情緒」，見下方同名節）。`render()` 分派各 tab；共用表格框架 `tbl()`
+- `index.html`：18 個 tab 全部前端（CSS/JS 內嵌；2026-09-28 由 14 加到 16，見下方「籌碼雷達／社群聲量」；2026-09-29 加第 17 個「市場情緒」、2026-10-14 加第 18 個「選股二」，見下方同名節）。`render()` 分派各 tab；共用表格框架 `tbl()`
   （排序/分組表頭/凍結欄/虛擬捲動，sticky 的坑記在 `<style>` 註解）。
   - **hash 路由（2026-09-07）**：`#tab=&code=&sub=`（2026-09-28 另加 `rcls`／`rinv`／`sd`，僅限各自 tab，見下方籌碼雷達／社群聲量），只放非預設值。`parseHash()`／`applyHash()`
     （grep `function parseHash`／`function applyHash`）於 `load()` 套用，`syncHash()`
@@ -126,8 +126,8 @@
     `d_oddi`／`d_odda`；原寫「各段 date 取 max」是過寬的，2026-09-13 更正）。
     **頂列與本區塊是兩個不同的軸，刻意不統一**（2026-09-13 使用者裁決：`pmStatus` 維持用
     `pm.date`、不改程式）：頂列答的是「**這份檔整體走到哪一天**」，本區塊答的是「**這張表是哪一天**」。
-    要頂列跟隨單一區塊就得挑一個區塊當代表，而本檔有 17 個 tab、各自吃不同的 dataset，
-    綁 `market_daily.date` 會讓其餘 16 個 tab 的頂列變得不準（例：借券 tab 走 `lend_date`，
+    要頂列跟隨單一區塊就得挑一個區塊當代表，而本檔有 18 個 tab、各自吃不同的 dataset，
+    綁 `market_daily.date` 會讓其餘 17 個 tab 的頂列變得不準（例：借券 tab 走 `lend_date`，
     法人日領先短賣日那天頂列就會比借券 tab 自己的資料日新）。所以正解是**每段自帶自己的資料日**
     （同個股摘要側欄的立場），並在兩者不同時明講，而不是把頂列改成某一段的日期。**2026-09-09 起本區塊基準日改綁法人日 `d_inst`、與借券 tab 的 `lend_date`
     脫鉤**（`build_postmkt.py` grep `md_date = d_inst or lend_date`）：原本共用 `lend_date`
@@ -185,6 +185,28 @@
     測試 `tests/test_sentiment_frontend.mjs`（pytest 由 `tests/test_sentiment_frontend.py` 代跑；樣本
     `tests/fixtures/sentiment_sample.json`＝80 列，最末列 2026-09-24 的 VIX／P/C／法人口數取規格 §0 實測，其餘與 `mtx_oi` 為合成值），
     另含 M6 字樣／色票、M4/M5 lazy、M7 插值 `esc()` 的讀碼檢查與整段內嵌 script 可編譯檢查。本機驗證同籌碼雷達（http.server 起在上一層）。
+  - **選股二 `pick2`（2026-10-14 新增，第 18 個 tab，排在 `screen` 之後、`mychg` 之前）**：`index.html` grep
+    `// ================= 選股二 tab`（接在 `renderScreen()` 之後、「持股診斷 tab（子期1）」之前）；渲染 `function renderPick2`、
+    載入 `function pk2Ensure`、純函式 `pick2-pure:begin`～`end`（`pk2ParseCsv`／`pk2Universe`／`pk2ParsePrefs`／`pk2Apply`／
+    `pk2Add`／`pk2Remove`／`pk2NormCode`／`pk2Rating`）。名單＝taiwan-backtest aisc 候選池＋使用者個人增刪。
+    **資料（全部同源相對路徑、CSP 未改；只在切到本 tab 時才抓，首屏請求清單不變）**：`PK2_UNI_URL`＝`../taiwan-backtest/aisc/universe.json`
+    （`TW`／`US` 的 `{code,name}`＋`version`／`tw_refreshed_at`／`frozen_at`，預設名單）、`PK2_CSV_URL`＝`../taiwan-backtest/output/aisc/daily/latest.csv`
+    （aisc 每日表，取 `close`／`r5`／`r20`／`above60`／`ext`／`slope60`／`date`；手寫逗號切欄解析、容忍 CRLF 與空欄，數值 `Number`＋`isFinite`
+    否則 null）；兩者 in-flight 以 `PK2.*Loading` 去重、失敗記 `PK2.*Err` 不重試。台股欄位沿用 `ensureDiag()`／`state.diag`（diag.json）
+    與 `ensureScreen()`／`state.screen`（明年預估 EPS＝`scrEstMean(r, scrYear+1)`、目標價空間＝`tp.median/px−1`、評等五鍵分布）——
+    兩者載完後的重繪清單都已加 `pick2`。台股價格欄優先 diag，diag 沒有該檔才退 aisc 表；美股只有收盤／5日／20日／MA60（above60）／
+    ext／slope60，其餘「—」。**本站因此是 taiwan-backtest `aisc/universe.json` 與 `output/aisc/daily/latest.csv` 的前端消費者**：
+    兩檔的路徑、`TW`／`US` 結構或 CSV 欄名（`market,code,name,date,close,ext,r5,r20,above60,slope60,…`）改名或改語意＝跨站變更。
+    **個人增刪**：localStorage key `pm_pick2`＝`{v:1, added:[{m,code}], removed:[{m,code}]}`（相對預設名單的**差異**，月度換池照常反映：
+    被刪的預設股若不在新池自然消失、自加的永遠保留直到使用者刪除）；讀寫全部 try/catch、壞資料當空；**不進任何網路請求、URL、hash**
+    （約定 6 精神；`tests/test_pick2.mjs` 讀碼守門）。代號白名單：台股 `^\d{4}[0-9A-Z]{0,2}$`、美股 `^[A-Z]{1,5}$`（先 trim 轉大寫）。
+    **硬約束**：純描述性顯示——不新增任何判級／燈號／紅綠訊號／排序建議；預設依名單順序（台股在前、美股在後、各依代號）；
+    漲跌著色只用在今日漲跌％／5日／20日漲幅（沿用 `sgn()`），其餘欄中性色；免責句逐字固定（`PK2_DISCLAIMER`）；頁頂列各資料源**各自**的
+    資料日（diag.date／screen.date／aisc 表 date 欄分市場最大值），讀取失敗該來源寫「讀取失敗」、欄位「—」、不拋錯；universe 讀不到時名單只剩自加股並明講。
+    頂列 stats 比照籌碼雷達清空；CSS 一律 `.pk2-*`；**不加新 hash key**（`#tab=pick2` 由 `HASH_TABS` 自動白名單）。
+    手機：表格 33 欄在 `.tblbox` 內橫捲（同整合排行），未藏欄；375／390／1280 實測整頁無水平捲軸、逐格零裁切零換行。
+    測試 `tests/test_pick2.mjs`（pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest checkout 另驗真實 universe 117 檔與 latest.csv）。
+    本機驗證同籌碼雷達（http.server 起在上一層，`../taiwan-backtest/` 才可達）。
   - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
     `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／
     `prevTradingDay`／`holLoad`）。`load()` 末尾 `holLoad()` 以**同源相對路徑** `../taiwan-flow-live-v2/data/twse_holidays.json`
@@ -318,11 +340,11 @@
 ```bash
 python -m pytest tests/ -q        # 離線單元測試（免 token/網路）
 python src/build_diag.py --sample # diag 管線本地驗證（免 token）
-python -m http.server 8000        # 前端本機驗證；慣例＝17 個 tab 逐一點擊 console 零 error
+python -m http.server 8000        # 前端本機驗證；慣例＝18 個 tab 逐一點擊 console 零 error
 ruff check .                      # lint（設定在 pyproject.toml）
 ```
 
-改前端後務必實測 17 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
+改前端後務必實測 18 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
 
 **手機驗收條件（2026-09-09 更正，舊寫法已被實測推翻）**：375／390／1280 三寬度下
 ①**整頁 `document.documentElement.scrollWidth == window.innerWidth`**（無**頁面級**水平捲軸）、
