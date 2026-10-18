@@ -16,7 +16,8 @@
 - 易經：`PK2_ICH_URL＝../taiwan-stock-iching/data/web/latest.json`（同源、CSP 未改、約 1.4MB，**只在切到本 tab 才抓**，
   去重／失敗記錄比照 universe），取 `stocks[code].short|swing|mid.bs`，頁頂加「股市易經 資料日」；附固定說明句（驗證段結論）。
   **本站因此是 taiwan-stock-iching `data/web/latest.json` 的前端消費者**（`stocks[].short|swing|mid.bs`／`date` 改名或改語意＝跨站變更）。
-- **美股只算趨勢類**，且 aisc 表無 MA20／RS，實際只有 MA60（above60）與 20日漲幅兩項，分數只能是 0／50／100，與台股不可直接比較（說明列已註明）。
+- **美股不計總分**（同日追加裁定）：美股只有 MA60（above60）與 20日漲幅兩項有值，照算會以 0／50／100 排到台股前面，
+  改為 `pk2Score` 對 `m==="US"` 一律回 `score:null`，顯示「—」、tooltip「美股不計總分（資料項不足）」、排在最後（台股在前、美股在後依代號）。
 - 事後驗證計畫見 `docs/pick2-score.md` §5（本批不實作）。測試 `tests/test_pick2.mjs` 17→31 項。
 
 ## 2026-10-18 移除舊金鑰搬移提示卡（四站同批）

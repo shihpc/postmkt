@@ -205,7 +205,7 @@
     **多空總分（2026-10-18 使用者裁定：無回測依據、可先上線；畫面標「AI 研判，未經回測，非保證」、列入事後驗證；規格正本
     `docs/pick2-score.md`）**：純函式 `pk2Score`（grep `function pk2Score(`）依 `PK2_SCORE_SPEC`（12 項、權重 1／2，與文件規格表逐列一致，
     測試比對）算 `50＋50×Σ(w·s)÷Σw`，缺值不計入分母、全缺 null；表格「排序分數」欄群組＝多空總分＋易經短線／波段／中期，
-    **預設依多空總分高→低、同分依代號、null 最後**（`pk2ScoreCmp`＋`tbl` opts `sortI:1, sortD:-1`）。美股只算趨勢類（實際只有 MA60／20日漲幅）。
+    **預設依多空總分高→低、同分依代號、null 最後**（`pk2ScoreCmp`＋`tbl` opts `sortI:1, sortD:-1`）。**美股不計總分**（2026-10-18 使用者裁定，資料項不足；`pk2Score` 對 `m==="US"` 回 null，顯示「—」、排在最後）。
     易經三欄＝`PK2_ICH_URL`＝`../taiwan-stock-iching/data/web/latest.json`（同源、CSP 未改、約 1.4MB、只在切到本 tab 才抓）的
     `stocks[code].short|swing|mid.bs`，僅供參考、**不進總分**，附固定說明句 `PK2_ICH_NOTE`；**本站因此也是 taiwan-stock-iching
     `data/web/latest.json` 的前端消費者**（`stocks[].short|swing|mid.bs`／`date` 改名或改語意＝跨站變更）。改門檻或權重＝改文件＋常數＋CHANGELOG 記版本，

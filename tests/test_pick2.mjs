@@ -1,7 +1,7 @@
 // tests/test_pick2.mjs —— 選股二 tab（pick2，2026-10-14）前端純函式＋靜態守門
 // 從 index.html 抽出 `pick2-pure:begin`～`pick2-pure:end` 區段在 node vm 沙箱跑：CSV 解析、universe 名單、
 // 使用者增刪設定（pm_pick2）讀檔容錯、名單合併 pk2Apply、新增／刪除、代號白名單、評等分布字串；
-// 2026-10-18 起另測多空總分 pk2Score（12 項逐條邊界、公式、缺值、美股、排序）與股市易經 latest.json 解析。
+// 2026-10-18 起另測多空總分 pk2Score（12 項逐條邊界、公式、缺值、美股不計、排序）與股市易經 latest.json 解析。
 // 另以原始碼靜態檢查：CSP 未改、資料源為同源相對路徑且只在 pk2Ensure 內載入、pm_pick2 不進任何 fetch／URL／hash、
 // 區段內 innerHTML 插值的外來字串都過 esc()、整段內嵌 script 可編譯。
 // 用法：node tests/test_pick2.mjs（pytest 由 tests/test_pick2.py 代跑）
@@ -213,18 +213,24 @@ ok("公式：50＋50×Σ(w·s)÷Σw，一位小數；手算三例；全缺 null"
   assert.equal(S.pk2ScoreTip(a).split("｜")[0], "MA20 +1×1");
   assert.ok(S.pk2ScoreTip(a).includes("目標價空間 +0.5×2"));
 });
-ok("美股列（pk2Rows 形狀：無 diag／screen，只有 aisc r20／above60）只算趨勢類", () => {
-  const us = { m: "US", code: "NVDA", ma20: null, ma60: null, a60: false, r20: -3, rs: null, f5: null, t5: null, bb: null,
-    mg5: null, hdw: null, yoy: null, up: null, buyr: null };
+ok("美股（m===US）不計總分：一律 null、items 空、tooltip 固定句", () => {
+  const us = { m: "US", code: "NVDA", ma20: 3, ma60: 2, a60: true, r20: 5, rs: 1, f5: 1 };
   const r = S.pk2Score(us);
-  assert.deepEqual(R(r.items.map(x => x.k)), ["ma60", "r20"]);
-  assert.equal(r.score, 0);
-  for (const x of r.items) assert.equal(S.PK2_SCORE_SPEC.find(s => s.k === x.k).cat, "趨勢");
+  assert.equal(r.score, null); assert.equal(r.n, 0); assert.deepEqual(R(r.items), []);
+  assert.equal(S.pk2ScoreTip(r), "美股不計總分（資料項不足）");
+  // 同樣欄位、台股照算
+  assert.equal(S.pk2Score({ ...us, m: "TW" }).n, 5);
 });
 ok("預設排序 pk2ScoreCmp：高→低、null 最後、同分依代號", () => {
   const rows = [{ m: "TW", code: "3008", score: 40 }, { m: "US", code: "MU", score: null }, { m: "TW", code: "2330", score: 70 },
     { m: "TW", code: "1476", score: 40 }, { m: "TW", code: "0050", score: null }, { m: "US", code: "AMD", score: 70 }];
   assert.deepEqual(R([...rows].sort(S.pk2ScoreCmp).map(x => x.code)), ["2330", "AMD", "1476", "3008", "0050", "MU"]);
+  // 實際形狀：美股 score 一律 null → 台股（有分數高→低、無分數依代號）在前、美股在後依代號
+  const mk = (m, code, f5) => { const o = { m, code, f5 }; o.score = S.pk2Score(o).score; return o; };
+  const real = [mk("US", "NVDA", 1), mk("TW", "2330", -1), mk("US", "AMD", 1), mk("TW", "9999", null), mk("TW", "1476", 1), mk("US", "ADI", null)];
+  assert.deepEqual(R([...real].sort(S.pk2ScoreCmp).map(x => x.code)), ["1476", "2330", "9999", "ADI", "AMD", "NVDA"]);
+  // null 之間市場優先於代號（防代號字典序以外的情形）
+  assert.ok(S.pk2ScoreCmp({ m: "US", code: "0", score: null }, { m: "TW", code: "Z", score: null }) > 0);
 });
 ok("pk2IchParse：stocks[code].short|swing|mid.bs 有限數才收、代號白名單、日期白名單", () => {
   const j = { date: "2026-10-16", stocks: { "2330": { short: { bs: 44.12 }, swing: { bs: 45.59 }, mid: { bs: "51.9" } },

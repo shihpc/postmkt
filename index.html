@@ -4605,7 +4605,9 @@ function pk2ScoreItem(k, r){
   return null;
 }
 // 多空總分：回 {score, n, items:[{k,label,s,w}]}（items 只列有值項，n＝items.length；全缺 score＝null）
+// 美股（m==="US"）一律不計總分（2026-10-18 使用者裁定：資料項不足，只有 MA60／20日漲幅兩項）→ {score:null, n:0, items:[], us:true}
 function pk2Score(r){
+  if (r && r.m === "US") return { score: null, n: 0, items: [], us: true };
   const items = [];
   let sw = 0, sws = 0;
   for (const sp of PK2_SCORE_SPEC){
@@ -4619,16 +4621,18 @@ function pk2Score(r){
 }
 // tooltip 文字（純文字，呼叫端再 esc() 進 title 屬性）
 function pk2ScoreTip(sc){
+  if (sc && sc.us) return "美股不計總分（資料項不足）";
   if (!sc || sc.score == null) return `${PK2_SCORE_SPEC.length} 項皆無資料`;
   const f = s => (s > 0 ? "+" : s < 0 ? "−" : "") + String(Math.abs(s));
   return sc.items.map(x => `${x.label} ${f(x.s)}×${x.w}`).join("｜") + `（${PK2_SCORE_SPEC.length} 項中 ${sc.n} 項有值）`;
 }
-// 預設排序：總分高→低、null 排最後、同分依代號（再依市場）
+// 預設排序：總分高→低、null 排最後（null 之間台股在前、美股在後）、同分依代號（再依市場）
 function pk2ScoreCmp(a, b){
   const x = a.score, y = b.score;
   if (x == null && y != null) return 1;
   if (y == null && x != null) return -1;
   if (x != null && y != null && x !== y) return y - x;
+  if (x == null && y == null && a.m !== b.m) return a.m === "TW" ? -1 : b.m === "TW" ? 1 : 0;
   return (a.code < b.code ? -1 : a.code > b.code ? 1 : 0) || (a.m < b.m ? -1 : a.m > b.m ? 1 : 0);
 }
 // 股市易經 latest.json → {date, bs:{code:{short,swing,mid}}}；代號過台股白名單、bs 須有限數（否則 null）。形狀不對回 null
@@ -4842,7 +4846,7 @@ function renderPick2(){
     + `均線欄「上／下」＝收盤在該均線之上／之下（滑鼠停留看距離%）；20日均成交值單位為億元；外資／投信 5 日為買賣超張數合計；大戶持股為千張大戶持股比（週資料）。`
     + `明年預估EPS＝選股初篩 ${y1 != null ? esc(String(y1 + 1)) + " 年" : "明年度"}預估平均（mean）、目標價空間＝目標價中位÷現價−1，只有選股初篩涵蓋的台股才有。`
     + `ext／slope60 為 aisc 每日表原值（口徑見 taiwan-backtest aisc/README.md），資料日是頁頂「aisc 每日表」那一天，可能比台股其他欄（持股診斷）早一個交易日，同一列不同欄可能不同天。借券餘額5日增減＝借券賣出餘額與 5 個交易日前的差（張），不是 5 日賣出量合計。`
-    + `多空總分＝12 項條件加權（滑鼠停留看各項得分），缺值項不計分也不計入分母；美股只有趨勢類可算（aisc 表無 MA20／RS，實際只有 MA60 與 20日漲幅）。`
+    + `多空總分＝12 項條件加權（滑鼠停留看各項得分），缺值項不計分也不計入分母；美股不計總分（資料項不足，顯示「—」、排在最後）。`
     + `易經三欄＝股市易經站 短線／波段／中期 總分（bs），只有易經站涵蓋的台股才有、不進多空總分，資料日見頁頂「股市易經」。`
     + `預設依多空總分由高到低（同分依代號、無分數者排最後），點表頭可改依其他欄排序。</div>`
     + `</div>`;
