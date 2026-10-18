@@ -4576,7 +4576,7 @@ const PK2_SCORE_SPEC = [
   { k: "buyr", cat: "基本面", label: "買進＋加碼佔比", w: 1, rule: "分析師（買進＋加碼）÷五類總家數 ≥0.7 +1、否則 0；總家數 0 視為缺值" },
 ];
 const PK2_SCORE_NOTE = "多空總分：AI 研判，未經回測，非保證。12 項條件加權（籌碼、大戶、目標價空間權重 2），50＝中性；規格見 postmkt docs/pick2-score.md。";
-const PK2_ICH_NOTE = "股市易經總分僅供參考：易經站公布之驗證結果——短線驗證段 IC 為負、未通過門檻；波段驗證段證據不足、訓練段 IC 為負；中期證據不足。總分高不代表後續報酬較高。";
+const PK2_ICH_NOTE = "股市易經總分僅供參考：易經站公布之驗證結果——短線驗證段 IC 為負、未通過門檻；波段驗證段證據不足、訓練段 IC 為負；中期證據不足。總分高不代表後續報酬較高；上市與上櫃混排的可比性未經驗證。";
 const pk2Fin = v => typeof v === "number" && isFinite(v);
 const pk2Sign = v => v > 0 ? 1 : v < 0 ? -1 : 0;
 // 分析師（買進＋加碼）÷五類總家數：五鍵皆非有限數或總家數 0 → null；缺鍵記 0（同 pk2Rating）
@@ -4599,7 +4599,8 @@ function pk2ScoreItem(k, r){
       return r && r.a60 === true ? 1 : r && r.a60 === false ? -1 : null;
     case "bb": return v === 1 ? 1 : v === 0 ? 0 : null;
     case "mg5": return pk2Fin(v) ? (v > 5 ? -1 : 0) : null;
-    case "up": return pk2Fin(v) ? (v >= 20 ? 1 : v >= 10 ? 0.5 : v >= 0 ? 0 : -1) : null;
+    // 先捨到 1e-6 再比門檻：(120/100−1)×100 在浮點下是 19.999999999999996，不捨會把 20% 誤判成 +0.5
+    case "up": { if (!pk2Fin(v)) return null; const u = Math.round(v * 1e6) / 1e6; return u >= 20 ? 1 : u >= 10 ? 0.5 : u >= 0 ? 0 : -1; }
     case "buyr": return pk2Fin(v) ? (v >= 0.7 ? 1 : 0) : null;
   }
   return null;

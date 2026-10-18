@@ -185,6 +185,8 @@ ok("目標價空間 up 四級：≥20 +1、10≤x<20 +0.5、0≤x<10 0、<0 −1
   for (const [v, s] of [[20, 1], [35, 1], [19.999, 0.5], [10, 0.5], [9.999, 0], [0, 0], [-0.001, -1], [-50, -1]])
     assert.equal(one("up", { up: v }), s, String(v));
   assert.equal(one("up", { up: null }), null);
+  // 浮點邊界：目標價 120／現價 100 → (1.2−1)×100＝19.999999999999996，仍須判成 ≥20
+  for (const [tp, px] of [[120, 100], [12, 10], [36, 30]]) assert.equal(one("up", { up: (tp / px - 1) * 100 }), 1, `${tp}/${px}`);
 });
 ok("分析師買進＋加碼佔比：≥0.7 +1、否則 0；總家數 0 或五鍵全缺＝缺值", () => {
   assert.equal(S.pk2BuyRatio({ buy: 5, overweight: 2, hold: 3, underweight: 0, sell: 0 }), 0.7);
@@ -250,7 +252,7 @@ ok("pk2IchParse：真實 taiwan-stock-iching latest.json（若存在）", () => 
 });
 ok("說明句逐字（多空總分＋易經）", () => {
   assert.equal(S.PK2_SCORE_NOTE, "多空總分：AI 研判，未經回測，非保證。12 項條件加權（籌碼、大戶、目標價空間權重 2），50＝中性；規格見 postmkt docs/pick2-score.md。");
-  assert.equal(S.PK2_ICH_NOTE, "股市易經總分僅供參考：易經站公布之驗證結果——短線驗證段 IC 為負、未通過門檻；波段驗證段證據不足、訓練段 IC 為負；中期證據不足。總分高不代表後續報酬較高。");
+  assert.equal(S.PK2_ICH_NOTE, "股市易經總分僅供參考：易經站公布之驗證結果——短線驗證段 IC 為負、未通過門檻；波段驗證段證據不足、訓練段 IC 為負；中期證據不足。總分高不代表後續報酬較高；上市與上櫃混排的可比性未經驗證。");
   assert.ok(sect.includes("${esc(PK2_SCORE_NOTE)}<br>${esc(PK2_ICH_NOTE)}"));
 });
 ok("總分欄：tooltip 經 esc()、預設排序欄＝多空總分降冪、tie 依代號", () => {
