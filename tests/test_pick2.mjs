@@ -1,6 +1,7 @@
 // tests/test_pick2.mjs —— 選股二 tab（pick2，2026-10-14）前端純函式＋靜態守門
 // 從 index.html 抽出 `pick2-pure:begin`～`pick2-pure:end` 區段在 node vm 沙箱跑：CSV 解析、universe 名單、
-// 使用者增刪設定（pm_pick2）讀檔容錯、名單合併 pk2Apply、新增／刪除、代號白名單、評等分布字串。
+// 使用者增刪設定（pm_pick2）讀檔容錯、名單合併 pk2Apply、新增／刪除、代號白名單、評等分布字串；
+// 2026-10-18 起另測多空總分 pk2Score（12 項逐條邊界、公式、缺值、美股不計、排序）與股市易經 latest.json 解析。
 // 另以原始碼靜態檢查：CSP 未改、資料源為同源相對路徑且只在 pk2Ensure 內載入、pm_pick2 不進任何 fetch／URL／hash、
 // 區段內 innerHTML 插值的外來字串都過 esc()、整段內嵌 script 可編譯。
 // 用法：node tests/test_pick2.mjs（pytest 由 tests/test_pick2.py 代跑）
@@ -25,7 +26,8 @@ const sb = { console };
 vm.createContext(sb);
 new vm.Script(pure + `
 Object.assign(this, { PK2_TW_RE, PK2_US_RE, PK2_DISCLAIMER, pk2NormCode, pk2Key, pk2Num, pk2Bool, pk2ParseCsv, pk2CsvDates,
-  pk2Universe, pk2EmptyPrefs, pk2ParsePrefs, pk2Apply, pk2Add, pk2Remove, pk2Rating });`).runInContext(sb);
+  pk2Universe, pk2EmptyPrefs, pk2ParsePrefs, pk2Apply, pk2Add, pk2Remove, pk2Rating,
+  PK2_SCORE_SPEC, PK2_SCORE_NOTE, PK2_ICH_NOTE, pk2BuyRatio, pk2Score, pk2ScoreTip, pk2ScoreCmp, pk2IchParse });`).runInContext(sb);
 const S = sb;
 const R = x => JSON.parse(JSON.stringify(x));   // vm 另一個 realm 的物件：deepEqual 前先轉回本 realm
 
@@ -140,15 +142,137 @@ ok("pk2Rating：五鍵分布字串；全缺回 null", () => {
   for (const v of [null, {}, { buy: "3" }, { buy: NaN }, "x"]) assert.equal(S.pk2Rating(v), null);
 });
 
+// ---------------- 多空總分（2026-10-18 使用者裁定：無回測、可先上線；規格 docs/pick2-score.md）----------------
+const one = (k, row) => { const r = S.pk2Score(row); const it = r.items.find(x => x.k === k); return it ? it.s : null; };
+ok("PK2_SCORE_SPEC：12 項、鍵／權重逐項固定（籌碼、大戶、目標價空間權重 2）", () => {
+  assert.deepEqual(R(S.PK2_SCORE_SPEC.map(x => [x.k, x.w])), [["ma20", 1], ["ma60", 1], ["r20", 1], ["rs", 1],
+    ["f5", 2], ["t5", 2], ["bb", 2], ["mg5", 2], ["hdw", 2], ["yoy", 1], ["up", 2], ["buyr", 1]]);
+  for (const x of S.PK2_SCORE_SPEC) assert.ok(x.label && x.rule && x.cat, x.k);
+  // 文件規格表與常數一致：每一項的 label、權重、規則字串都出現在 docs/pick2-score.md 同一列
+  const doc = fs.readFileSync(path.join(ROOT, "docs", "pick2-score.md"), "utf8");
+  for (const x of S.PK2_SCORE_SPEC){
+    const ln = doc.split("\n").find(l => l.includes("`" + x.k + "`"));
+    assert.ok(ln, "文件缺 " + x.k);
+    assert.ok(ln.includes(x.label) && ln.includes(x.rule) && ln.includes("| " + x.w + " |"), ln);
+  }
+});
+ok("符號類（ma20／r20／rs／f5／t5／hdw／yoy）：>0 +1、<0 −1、=0 給 0 且計入分母、缺值不計", () => {
+  for (const k of ["ma20", "r20", "rs", "f5", "t5", "hdw", "yoy"]){
+    assert.equal(one(k, { [k]: 0.01 }), 1, k); assert.equal(one(k, { [k]: -0.01 }), -1, k);
+    assert.equal(one(k, { [k]: 0 }), 0, k);
+    assert.equal(S.pk2Score({ [k]: 0 }).n, 1, k + " =0 計入分母");
+    assert.equal(S.pk2Score({ [k]: 0 }).score, 50);
+    for (const v of [null, undefined, NaN, Infinity, "1"]) assert.equal(S.pk2Score({ [k]: v }).n, 0, k + " " + String(v));
+  }
+});
+ok("MA60：diag 距離優先，缺才用 aisc above60（True +1／False −1）", () => {
+  assert.equal(one("ma60", { ma60: 3 }), 1); assert.equal(one("ma60", { ma60: -3 }), -1); assert.equal(one("ma60", { ma60: 0 }), 0);
+  assert.equal(one("ma60", { ma60: -3, a60: true }), -1, "diag 優先");
+  assert.equal(one("ma60", { a60: true }), 1); assert.equal(one("ma60", { a60: false }), -1);
+  assert.equal(one("ma60", { a60: null }), null);
+});
+ok("土洋同買 bb：==1 +1、==0 0（計入分母）、其他缺值", () => {
+  assert.equal(one("bb", { bb: 1 }), 1); assert.equal(one("bb", { bb: 0 }), 0);
+  assert.equal(S.pk2Score({ bb: 0 }).n, 1);
+  for (const v of [null, 2, "1", true]) assert.equal(one("bb", { bb: v }), null, String(v));
+});
+ok("融資5日% mg5：>5 −1、否則 0（5 本身 0；5.01 −1；負值 0）", () => {
+  assert.equal(one("mg5", { mg5: 5 }), 0); assert.equal(one("mg5", { mg5: 5.01 }), -1);
+  assert.equal(one("mg5", { mg5: -10 }), 0); assert.equal(one("mg5", { mg5: 0 }), 0);
+  assert.equal(one("mg5", { mg5: null }), null);
+});
+ok("目標價空間 up 四級：≥20 +1、10≤x<20 +0.5、0≤x<10 0、<0 −1（分界 0／10／20）", () => {
+  for (const [v, s] of [[20, 1], [35, 1], [19.999, 0.5], [10, 0.5], [9.999, 0], [0, 0], [-0.001, -1], [-50, -1]])
+    assert.equal(one("up", { up: v }), s, String(v));
+  assert.equal(one("up", { up: null }), null);
+  // 浮點邊界：目標價 120／現價 100 → (1.2−1)×100＝19.999999999999996，仍須判成 ≥20
+  for (const [tp, px] of [[120, 100], [12, 10], [36, 30]]) assert.equal(one("up", { up: (tp / px - 1) * 100 }), 1, `${tp}/${px}`);
+});
+ok("分析師買進＋加碼佔比：≥0.7 +1、否則 0；總家數 0 或五鍵全缺＝缺值", () => {
+  assert.equal(S.pk2BuyRatio({ buy: 5, overweight: 2, hold: 3, underweight: 0, sell: 0 }), 0.7);
+  assert.equal(S.pk2BuyRatio({ buy: 0, overweight: 0, hold: 0, underweight: 0, sell: 0 }), null);
+  assert.equal(S.pk2BuyRatio({ buy: 3 }), 1, "缺鍵記 0");
+  for (const v of [null, {}, { buy: "3" }, "x"]) assert.equal(S.pk2BuyRatio(v), null);
+  assert.equal(one("buyr", { buyr: 0.7 }), 1); assert.equal(one("buyr", { buyr: 0.6999 }), 0);
+  assert.equal(one("buyr", { buyr: 0 }), 0); assert.equal(one("buyr", { buyr: null }), null);
+});
+ok("公式：50＋50×Σ(w·s)÷Σw，一位小數；手算三例；全缺 null", () => {
+  // 例1（12 項全有值）：趨勢 +1−1+1+0＝1；籌碼 2−2+2−2+2＝2；基本面 1+1(0.5×2)+1＝3；Σws＝6、Σw＝18 → 50+50×6/18＝66.67 → 66.7
+  const a = S.pk2Score({ ma20: 2, ma60: -1, r20: 5, rs: 0, f5: 100, t5: -50, bb: 1, mg5: 6, hdw: 0.3, yoy: 10, up: 15, buyr: 0.8 });
+  assert.equal(a.n, 12); assert.equal(a.score, 66.7);
+  // 例2（部分缺值）：ma20=0(0×1)、mg5=5(0×2)、up=−1(−1×2)；Σws＝−2、Σw＝5 → 50−20＝30
+  const b = S.pk2Score({ ma20: 0, mg5: 5, up: -1, buyr: null, f5: null });
+  assert.equal(b.n, 3); assert.equal(b.score, 30);
+  assert.deepEqual(R(b.items), [{ k: "ma20", label: "MA20", s: 0, w: 1 }, { k: "mg5", label: "融資5日%", s: 0, w: 2 }, { k: "up", label: "目標價空間", s: -1, w: 2 }]);
+  // 全多 100、全空 0
+  assert.equal(S.pk2Score({ ma20: 1, f5: 1, up: 30 }).score, 100);
+  assert.equal(S.pk2Score({ ma20: -1, f5: -1, up: -30 }).score, 0);
+  // 全缺
+  const z = S.pk2Score({}); assert.equal(z.score, null); assert.equal(z.n, 0); assert.deepEqual(R(z.items), []);
+  assert.equal(S.pk2Score(null).score, null);
+  assert.equal(S.pk2ScoreTip(z), "12 項皆無資料");
+  assert.equal(S.pk2ScoreTip(b), "MA20 0×1｜融資5日% 0×2｜目標價空間 −1×2（12 項中 3 項有值）");
+  assert.equal(S.pk2ScoreTip(a).split("｜")[0], "MA20 +1×1");
+  assert.ok(S.pk2ScoreTip(a).includes("目標價空間 +0.5×2"));
+});
+ok("美股（m===US）不計總分：一律 null、items 空、tooltip 固定句", () => {
+  const us = { m: "US", code: "NVDA", ma20: 3, ma60: 2, a60: true, r20: 5, rs: 1, f5: 1 };
+  const r = S.pk2Score(us);
+  assert.equal(r.score, null); assert.equal(r.n, 0); assert.deepEqual(R(r.items), []);
+  assert.equal(S.pk2ScoreTip(r), "美股不計總分（資料項不足）");
+  // 同樣欄位、台股照算
+  assert.equal(S.pk2Score({ ...us, m: "TW" }).n, 5);
+});
+ok("預設排序 pk2ScoreCmp：高→低、null 最後、同分依代號", () => {
+  const rows = [{ m: "TW", code: "3008", score: 40 }, { m: "US", code: "MU", score: null }, { m: "TW", code: "2330", score: 70 },
+    { m: "TW", code: "1476", score: 40 }, { m: "TW", code: "0050", score: null }, { m: "US", code: "AMD", score: 70 }];
+  assert.deepEqual(R([...rows].sort(S.pk2ScoreCmp).map(x => x.code)), ["2330", "AMD", "1476", "3008", "0050", "MU"]);
+  // 實際形狀：美股 score 一律 null → 台股（有分數高→低、無分數依代號）在前、美股在後依代號
+  const mk = (m, code, f5) => { const o = { m, code, f5 }; o.score = S.pk2Score(o).score; return o; };
+  const real = [mk("US", "NVDA", 1), mk("TW", "2330", -1), mk("US", "AMD", 1), mk("TW", "9999", null), mk("TW", "1476", 1), mk("US", "ADI", null)];
+  assert.deepEqual(R([...real].sort(S.pk2ScoreCmp).map(x => x.code)), ["1476", "2330", "9999", "ADI", "AMD", "NVDA"]);
+  // null 之間市場優先於代號（防代號字典序以外的情形）
+  assert.ok(S.pk2ScoreCmp({ m: "US", code: "0", score: null }, { m: "TW", code: "Z", score: null }) > 0);
+});
+ok("pk2IchParse：stocks[code].short|swing|mid.bs 有限數才收、代號白名單、日期白名單", () => {
+  const j = { date: "2026-10-16", stocks: { "2330": { short: { bs: 44.12 }, swing: { bs: 45.59 }, mid: { bs: "51.9" } },
+    "<img>": { short: { bs: 1 } }, "00981A": { short: { bs: 60 } }, "6488": null } };
+  const d = S.pk2IchParse(j);
+  assert.equal(d.date, "2026-10-16");
+  assert.deepEqual(R(d.bs), { "2330": { short: 44.12, swing: 45.59, mid: null }, "00981A": { short: 60, swing: null, mid: null } });
+  assert.equal(S.pk2IchParse({ date: "x", stocks: {} }).date, "");
+  for (const v of [null, [], {}, { stocks: [] }, "x"]) assert.equal(S.pk2IchParse(v), null);
+});
+ok("pk2IchParse：真實 taiwan-stock-iching latest.json（若存在）", () => {
+  const p = path.join(ROOT, "..", "taiwan-stock-iching", "data", "web", "latest.json");
+  if (!fs.existsSync(p)){ console.log("     （略過：找不到 ../taiwan-stock-iching/data/web/latest.json）"); return; }
+  const d = S.pk2IchParse(JSON.parse(fs.readFileSync(p, "utf8")));
+  assert.ok(d && /^\d{4}-\d{2}-\d{2}$/.test(d.date) && Object.keys(d.bs).length > 1000);
+  assert.ok(Number.isFinite(d.bs["2330"].short));
+});
+ok("說明句逐字（多空總分＋易經）", () => {
+  assert.equal(S.PK2_SCORE_NOTE, "多空總分：AI 研判，未經回測，非保證。12 項條件加權（籌碼、大戶、目標價空間權重 2），50＝中性；規格見 postmkt docs/pick2-score.md。");
+  assert.equal(S.PK2_ICH_NOTE, "股市易經總分僅供參考：易經站公布之驗證結果——短線驗證段 IC 為負、未通過門檻；波段驗證段證據不足、訓練段 IC 為負；中期證據不足。總分高不代表後續報酬較高；上市與上櫃混排的可比性未經驗證。");
+  assert.ok(sect.includes("${esc(PK2_SCORE_NOTE)}<br>${esc(PK2_ICH_NOTE)}"));
+});
+ok("總分欄：tooltip 經 esc()、預設排序欄＝多空總分降冪、tie 依代號", () => {
+  assert.ok(sect.includes('<span title="${esc(r.scoreTip)}">'));
+  assert.ok(sect.includes("pk2Rows(list).sort(pk2ScoreCmp)"));
+  assert.ok(sect.includes("tbl(cols, rows, { sortI: 1, sortD: -1, tie: pk2Tie })"));
+  // sortI:1 必須正好是「多空總分」那欄（代號名稱是第 0 欄）
+  const ci = sect.indexOf("const cols = [");
+  const heads = [...sect.slice(ci, sect.indexOf("];", ci)).matchAll(/\bh:\s*[`"]([^`"<]*)/g)].map(m => m[1]);
+  assert.deepEqual(heads.slice(0, 5), ["代號／名稱", "多空總分", "易經短線", "易經波段", "易經中期"]);
+});
 ok("免責句逐字", () => {
   assert.equal(S.PK2_DISCLAIMER, "描述性資料，非買賣訊號；AI 供應鏈名單（R1）待回測、不據此下單。所有判讀屬 AI 研判，非投資保證。");
 });
 
-ok("CSP 未改：connect-src 仍是既有白名單、不含 taiwan-backtest", () => {
+ok("CSP 未改：connect-src 仍是既有白名單、不含 taiwan-backtest／iching", () => {
   const m = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/);
   assert.ok(m);
   assert.ok(m[1].includes("connect-src 'self' https://api.anthropic.com https://api.finmindtrade.com https://raw.githubusercontent.com https://api.github.com https://taiwan-flow-v2.shihpc.workers.dev"));
-  assert.ok(!m[1].includes("backtest"));
+  assert.ok(!m[1].includes("backtest") && !m[1].includes("iching"));
   assert.equal(html.split("Content-Security-Policy").length - 1, (html.match(/Content-Security-Policy/g) || []).length);
 });
 
@@ -157,9 +281,13 @@ ok("資料源：同源相對路徑、只在 pk2Ensure 內載入、load() 不碰"
   assert.ok(html.includes('const PK2_CSV_URL = "../taiwan-backtest/output/aisc/daily/latest.csv";'));
   assert.equal(html.split("loadJSON(PK2_UNI_URL)").length, 2);
   assert.equal(html.split("pk2LoadText(PK2_CSV_URL)").length, 2);
+  assert.ok(html.includes('const PK2_ICH_URL = "../taiwan-stock-iching/data/web/latest.json";'));
+  assert.equal(html.split("loadJSON(PK2_ICH_URL)").length, 2, "易經 latest.json 只有一處載入");
+  const ichCode = html.split("\n").filter(l => l.includes("PK2_ICH_URL") && !/^\s*\/\//.test(l));
+  assert.equal(ichCode.length, 2, "非註解行只有宣告＋pk2Ensure 內一次");
   const i = html.indexOf("function pk2Ensure(){");
   const ens = html.slice(i, html.indexOf("\n}\n", i));
-  assert.ok(ens.includes("loadJSON(PK2_UNI_URL)") && ens.includes("pk2LoadText(PK2_CSV_URL)"));
+  assert.ok(ens.includes("loadJSON(PK2_UNI_URL)") && ens.includes("pk2LoadText(PK2_CSV_URL)") && ens.includes("loadJSON(PK2_ICH_URL)"));
   const ld = html.match(/function load\(\)\{[^\n]*\}/)[0];
   assert.ok(!/pk2|pick2/i.test(ld), ld);
   // 呼叫 pk2Ensure 的只有 renderPick2，renderPick2 只由 render() 的 pick2 分支呼叫
@@ -197,7 +325,7 @@ ok("區段內 innerHTML 插值的外來字串（代號／名稱／日期／版�
   assert.ok(/el\.textContent = t;/.test(sect));
 });
 
-ok("純描述：區段內不出現判級／訊號字樣與紅綠色票", () => {
+ok("無判級色：區段內不出現判級／訊號字樣與紅綠色票（多空總分為唯一排序分數、中性色）", () => {
   // 註解行（說明「不新增燈號」等規範本身）不算畫面字樣
   const body = sect.replace(PK2_DISC_RE(), "").split("\n").filter(l => !/^\s*\/\//.test(l)).join("\n");
   for (const w of ["偏多", "偏空", "建議買", "建議賣", "買進訊號", "賣出訊號", "燈號", "#ef5b5b", "#2fbf71", "class=\"up\"", "class=\"down\""])
