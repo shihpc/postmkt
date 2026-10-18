@@ -3,6 +3,14 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-10-18 移除舊金鑰搬移提示卡（四站同批）
+
+搬移期 `CRED_MIGRATE_UNTIL="2026-10-15"`（台北）已過：四站（postmkt／taiwan-flow-live-v2／taiwan-stock-news／
+taiwan-flows）拿掉頁頂提示卡 `#credMigrate`、「刪除本機舊副本」按鈕與 handler，連同 `CRED_MIGRATE_UNTIL` 常數與
+日期比較一併移除。`credInit()` 現在載入頁面即**無條件**刪除四把舊 localStorage key `anthropic_key`／`gh_token`／
+`fm_token`／`tf_gh_token`（各包 try/catch），其他 key 不動；憑證表單、`CRED`、sessionStorage `cred_tab_*` 行為不變，
+`check_sync.py` PASS。見 CLAUDE.md 約定 6 D7。
+
 ## 2026-10-14 新增第 18 個 tab「選股二」（`pick2`）
 
 排在「選股」之後。名單＝taiwan-backtest aisc 候選池（`../taiwan-backtest/aisc/universe.json`，現行 117 檔＝台股 93＋美股 24），

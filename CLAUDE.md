@@ -294,7 +294,8 @@
    - D4 入口站密碼門補 username 欄 `hub`（舊的空帳號名項目要重存一次）。
    - D5 存入前打一次免費唯讀驗證，失敗當場拒收；只用既有 `connect-src` origin、token 放 header；做不到就不驗並說明。
    - D6 `tflive2_usw_sync`（美股自選同步碼）不搬。
-   - D7 搬移期 2 週：舊 key 只提示＋按鈕刪除，`CRED_MIGRATE_UNTIL` 後載入即刪；新版不讀舊 key 當金鑰。
+   - D7 搬移期 2 週（至 2026-10-15）：舊 key 只提示＋按鈕刪除，期滿後載入即刪；新版不讀舊 key 當金鑰。
+     **期滿後現況（2026-10-18）**：提示卡已移除，載入即無條件刪除四把舊 key（見下方「搬移（D7）」實作段）。
    - D8 四站＋入口站同批上線（只要舊版頁面還在線上，按舊版「儲存」就會把金鑰寫回 localStorage）。
    實作細節：
    - 四站（postmkt／taiwan-flow-live-v2／taiwan-stock-news／taiwan-flows）同一套寫法，`index.html` grep
@@ -326,8 +327,10 @@
      **位元組不變**（`check_sync.py` PASS）。`saveAnalysisCloud`（不在 check_sync 範圍，三站同步改）在 PAT 未載入時
      記 `cloud="nokey"`，畫面顯示「GitHub PAT 本分頁未載入，未存雲端」。
    - 搬移（D7）：舊 localStorage key `anthropic_key`／`gh_token`／`fm_token`／`tf_gh_token`（四站每站都處理全部四把）
-     **新版不讀作金鑰**，只用來顯示提示卡（`#credMigrate`，按「刪除本機舊副本」才刪）；`CRED_MIGRATE_UNTIL`
-     ＝`"2026-10-15"`（台北日期）之後載入頁面即無條件刪除。期滿後的下一批可拿掉提示卡、只留刪除。
+     **新版不讀作金鑰**。搬移期（至 2026-10-15 台北）原有頁頂提示卡 `#credMigrate`＋「刪除本機舊副本」按鈕；
+     **2026-10-18 四站同批移除提示卡、按鈕與 handler，連同 `CRED_MIGRATE_UNTIL` 與日期比較一併拿掉**，
+     現在 `credInit()` 載入頁面即**無條件**（不看日期）`removeItem` 四把舊 key（`credLegacyPurge()`，各包 try/catch）；
+     只刪不寫，其他 localStorage key（`pm_holdings`／`insight_model`／`tflive2_usw_sync` 等）不動。
      `tflive2_usw_sync`（美股自選同步碼）**不搬**（D6）。
    - **實機驗證（2026-10-01 使用者回報）**：上線後使用者線上確認四站＋入口站表單正常，並以手機實測回報「沒問題」
      （範圍＝密碼管理器的儲存提示、自動填入、同 origin 多筆不互蓋、長 token 不被截斷）。**這是使用者整體回報，未逐項記錄
