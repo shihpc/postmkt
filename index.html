@@ -2699,7 +2699,7 @@ function sentRender(){
     + `<span>散戶淨部位</span><b>${sentSigned(lastRow.retail_net, 0)} 口</b>`
     + `<span>全市場未平倉（全部契約）</span><b>${sentFmt(lastRow.mtx_oi, 0)} 口</b>`
     + `<span>全市場未平倉（僅月契約）</span><b>${sentFmt(lastRow.mtx_oi_monthly_only, 0)} 口</b></div>`
-    + `<div class="sent-row sent-sub"><span class="sent-badge">口徑比對中</span> 全市場未平倉是否含週契約尚未定案：散戶多空比目前以「全部契約」為分母，兩種數字並列供比對。</div>`;
+    + `<div class="sent-row sent-sub">全市場未平倉採「全部契約」（含週契約）為散戶多空比分母；「僅月契約」數字並列僅供參考。</div>`;
   h += sentCard("小台散戶多空比（小型臺指 MTX）", mx,
     "口徑：散戶淨部位＝三大法人小台空單合計－多單合計（未平倉口數）；散戶多空比＝散戶淨部位 ÷ 全市場未平倉量（一般交易時段未平倉加總，未平倉不含當日到期契約）。");
   h += `</div>` + disc + `</div>`;
