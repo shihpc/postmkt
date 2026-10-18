@@ -4563,7 +4563,7 @@ function pk2Rating(rt){
 // score＝50＋50×Σ(w·s)÷Σw（只對有值項），四捨五入到 1 位小數；全部缺值 → null。
 const PK2_SCORE_SPEC = [
   { k: "ma20", cat: "趨勢", label: "MA20", w: 1, rule: "收盤在 MA20 之上 +1、之下 −1、相等 0（diag 收盤距 MA20%：>0／<0／=0）" },
-  { k: "ma60", cat: "趨勢", label: "MA60", w: 1, rule: "收盤在 MA60 之上 +1、之下 −1、相等 0（diag 收盤距 MA60%；美股與 diag 不涵蓋者用 aisc above60：True +1／False −1）" },
+  { k: "ma60", cat: "趨勢", label: "MA60", w: 1, rule: "收盤在 MA60 之上 +1、之下 −1、相等 0（diag 收盤距 MA60%；diag 不涵蓋的台股用 aisc above60：True +1／False −1）" },
   { k: "r20", cat: "趨勢", label: "20日漲幅", w: 1, rule: "20日漲幅 >0 +1、<0 −1、=0 0" },
   { k: "rs", cat: "趨勢", label: "RS", w: 1, rule: "RS >0 +1、<0 −1、=0 0" },
   { k: "f5", cat: "籌碼", label: "外資5日", w: 2, rule: "外資 5 日買賣超 >0 +1、<0 −1、=0 0" },
