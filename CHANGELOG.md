@@ -3,6 +3,22 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-10-18 選股二「多空總分」排序＋股市易經總分（使用者裁定：無回測、可先上線）
+
+使用者 2026-10-18 裁定：「選股二」要有排序；此分數**無回測依據**，依家族鐵律 8 經明確裁定先上線，條件＝畫面標
+「AI 研判，未經回測，非保證」、裁定登錄文件、列入事後驗證。規格正本 `docs/pick2-score.md`（與 `index.html` `PK2_SCORE_SPEC`
+逐列一致，測試比對）。
+- 12 項（趨勢 4 項 w1；外資5日／投信5日／土洋同買／融資5日%／大戶週變化 w2；營收年增 w1、目標價空間 w2（四級含 +0.5）、
+  買進＋加碼佔比 w1）；缺值不計分也不計入分母，值存在得 0 分仍計入；`score＝50＋50×Σ(w·s)÷Σw`、一位小數、全缺 null。
+  純函式 `pk2Score`／`pk2ScoreItem`／`pk2BuyRatio`／`pk2ScoreTip`／`pk2ScoreCmp` 在 `pick2-pure` 區段。
+- 表格新增欄群組「排序分數」：多空總分（tooltip 列各項得分）＋易經短線／波段／中期。**預設依多空總分高→低、同分依代號、
+  null 最後**（`tbl` opts `sortI:1, sortD:-1, tie`），點表頭仍可改排。總分欄中性色、不新增紅綠判級色。
+- 易經：`PK2_ICH_URL＝../taiwan-stock-iching/data/web/latest.json`（同源、CSP 未改、約 1.4MB，**只在切到本 tab 才抓**，
+  去重／失敗記錄比照 universe），取 `stocks[code].short|swing|mid.bs`，頁頂加「股市易經 資料日」；附固定說明句（驗證段結論）。
+  **本站因此是 taiwan-stock-iching `data/web/latest.json` 的前端消費者**（`stocks[].short|swing|mid.bs`／`date` 改名或改語意＝跨站變更）。
+- **美股只算趨勢類**，且 aisc 表無 MA20／RS，實際只有 MA60（above60）與 20日漲幅兩項，分數只能是 0／50／100，與台股不可直接比較（說明列已註明）。
+- 事後驗證計畫見 `docs/pick2-score.md` §5（本批不實作）。測試 `tests/test_pick2.mjs` 17→31 項。
+
 ## 2026-10-18 移除舊金鑰搬移提示卡（四站同批）
 
 搬移期 `CRED_MIGRATE_UNTIL="2026-10-15"`（台北）已過：四站（postmkt／taiwan-flow-live-v2／taiwan-stock-news／

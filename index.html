@@ -425,6 +425,7 @@
   .pk2-ck{margin:0;accent-color:var(--accent)}
   .pk2 .mtable .pk2-nc{color:var(--muted);font-size:.68rem}
   .pk2-foot{color:var(--muted);font-size:.72rem;margin:4px 4px 8px;line-height:1.6}
+  .pk2 .mtable td.pk2-sc{font-weight:600}
   /* 手機（2026-09-06 批次二 #12）：全檔原本 0 條 @media。原則＝表格內允許橫捲（.tblbox overflow:auto），
      整頁不得出現水平捲軸；tabs 改單列橫向可捲不換行；外距與字級略縮。
      ⚠ 不動 .tblbox 的 padding（凍結欄 left:-12px／50px 是拿它補償的，改了 sticky 會穿幫）。 */
@@ -502,7 +503,7 @@ const SUBS = {
   rrgd:"盤後日頻產業輪動雷達（RRG-Daily）：47 條產業鏈的相對輪動圖。X 軸 RS-Ratio＝鏈等權報酬指數相對大盤等權基準的相對強度（12 日窗 z-score 標準化，100 為中性）；Y 軸 RS-Momentum＝RS-Ratio 的 10 日變化率再做同法標準化。資料源 taiwan-flow-live-v2 data/chain_daily（每交易日夜間增量更新）。僅描述各鏈相對大盤的歷史位置與變化；回測顯示象限轉換對未來報酬無顯著預測力，非投資建議。",
   dates:"各資料源目前的資料日與產出時間；判斷哪些已是最新交易日、哪些尚未更新。資料為排程產出，當日盤後資料通常於當晚 21:00 後才更新，故白天多半看到前一交易日。",
   screen:"選股：以分析師預估（FactSet 經鉅亨網／TradingView）篩選明年預估 EPS 達門檻之個股，並列今明年預估 EPS／本益比、目標價中位數與潛在漲幅、營收動能與評等分布。預估值為券商共識、隨時修訂，屬 AI 彙整之市場預期而非買賣建議與保證。",
-  pick2:"選股二：AI 供應鏈候選池（taiwan-backtest aisc 名單，台股每月換池、美股凍結）逐檔列出價格趨勢／量能籌碼／基本面／aisc 描述欄位；名單可自行勾選刪除與新增（只存本機瀏覽器）。描述性資料，非買賣訊號；R1 名單待回測、不據此下單。",
+  pick2:"選股二：AI 供應鏈候選池（taiwan-backtest aisc 名單，台股每月換池、美股凍結）逐檔列出價格趨勢／量能籌碼／基本面／aisc 描述欄位；名單可自行勾選刪除與新增（只存本機瀏覽器）。預設依「多空總分」排序（AI 研判，未經回測，非保證）並列股市易經總分供參考。各欄為描述性資料，非買賣訊號；R1 名單待回測、不據此下單。",
   mychg:"持股異動：拿本機持股清單比對全市場逐檔資料（外資／投信買賣超張數、漲跌%），只列達門檻者，一眼看完再決定要不要進「持股診斷」細看。講的是 market_daily 資料日那一天的狀態、不是「今天」（資料日寫在段落標題與免責卡）。門檻為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒。持股清單只存本機瀏覽器，比對全在瀏覽器端完成，持股代號不進任何網路請求（本 tab 不新增網路請求）。",
   chipradar:"籌碼雷達：上半為類股資金四象限（固定比較近 5 日與近 20 日三大法人／外資／投信／自營日均淨額，資料源 taiwan-flows 類股資金流）；下半為千張大戶持股週變化（本站持股診斷素材庫，約 1,200 檔、非全市場）。類股象限與大戶變化為現況描述，非買賣訊號；無回測依據。",
   social:"社群聲量：PTT Stock 板每日提及各股的篇數、推噓數與作者態度（AI 判讀），並依情緒＋千張大戶雙確認給規則式建議。AI 研判，未經回測，非保證。",
@@ -4391,15 +4392,20 @@ function renderScreen(){
 //   ②PK2_CSV_URL＝../taiwan-backtest/output/aisc/daily/latest.csv（aisc 每日描述表：收盤／r5／r20／above60／ext／slope60）
 //   ③本站 data/diag/diag.json（沿用 ensureDiag()／state.diag，台股價量籌碼基本面欄）
 //   ④本站 data/screen/screen.json（沿用 ensureScreen()／state.screen，明年預估 EPS／目標價／評等）
+//   ⑤PK2_ICH_URL＝../taiwan-stock-iching/data/web/latest.json（股市易經 stocks[code].short|swing|mid.bs，約 1.4MB；僅供參考欄）
 // in-flight 以 PK2.*Loading 去重、失敗記 PK2.*Err 不重試（比照 sentEnsure／crEnsureSr）。
 // 個人增刪只存 localStorage 的 pm_pick2 key（相對預設名單的差異 {v:1, added, removed}），**不進任何網路請求、URL、hash**
-//（約定 6 精神）。**純描述性顯示**：不新增任何判級、燈號、紅綠訊號或排序建議；預設依名單順序（台股在前、美股在後、各依代號）。
+//（約定 6 精神）。各欄為描述性資料；**唯一的排序分數＝「多空總分」**（2026-10-18 使用者裁定：無回測依據、可先上線，
+// 畫面標「AI 研判，未經回測，非保證」、列入事後驗證；規格 PK2_SCORE_SPEC／docs/pick2-score.md）。預設依多空總分由高到低、
+// 同分依代號、無分數者最後；易經三欄僅供參考、不進總分。不新增燈號或紅綠判級色（總分欄中性色）。
 // 漲跌著色只用在「今日漲跌%／5日／20日漲幅」（沿用站上 sgn() 慣例），其他欄中性色。
 // 外來字串（代號、名稱、日期）插 innerHTML 一律 esc()；數值一律 typeof number＋isFinite 後 toFixed。CSS 一律 .pk2-* 前綴。
 const PK2_UNI_URL = "../taiwan-backtest/aisc/universe.json";
 const PK2_CSV_URL = "../taiwan-backtest/output/aisc/daily/latest.csv";
+const PK2_ICH_URL = "../taiwan-stock-iching/data/web/latest.json";
 const PK2_KEY = "pm_pick2";
 const PK2 = { uni: null, uniErr: null, uniLoading: false, csv: null, csvErr: null, csvLoading: false,
+  ich: null, ichErr: null, ichLoading: false,
   sel: new Set(), msg: "", addM: "TW" };
 // ---- pick2-pure:begin（純函式，tests/test_pick2.mjs 以 node 抽出來測，勿依賴 DOM／localStorage）----
 const PK2_TW_RE = /^\d{4}[0-9A-Z]{0,2}$/;
@@ -4551,6 +4557,92 @@ function pk2Rating(rt){
   const g = k => (typeof rt[k] === "number" && isFinite(rt[k])) ? rt[k] : 0;
   return `買${g("buy")}／加${g("overweight")}／持${g("hold")}／減${g("underweight")}／賣${g("sell")}`;
 }
+// ---- 多空總分（2026-10-18 使用者裁定：無回測依據，可先上線；畫面標「AI 研判，未經回測，非保證」；規格正本 docs/pick2-score.md）----
+// 規格表單一來源：畫面說明、tooltip、文件、測試共用。k＝列物件欄位；w＝權重；rule＝規則說明字串（文件逐字對照）。
+// 每項 s∈{+1, +0.5（僅目標價空間）, 0, −1}；缺值（null／非有限數）＝該項不計分且不計入分母；值存在但得 0 分＝計入分母。
+// score＝50＋50×Σ(w·s)÷Σw（只對有值項），四捨五入到 1 位小數；全部缺值 → null。
+const PK2_SCORE_SPEC = [
+  { k: "ma20", cat: "趨勢", label: "MA20", w: 1, rule: "收盤在 MA20 之上 +1、之下 −1、相等 0（diag 收盤距 MA20%：>0／<0／=0）" },
+  { k: "ma60", cat: "趨勢", label: "MA60", w: 1, rule: "收盤在 MA60 之上 +1、之下 −1、相等 0（diag 收盤距 MA60%；美股與 diag 不涵蓋者用 aisc above60：True +1／False −1）" },
+  { k: "r20", cat: "趨勢", label: "20日漲幅", w: 1, rule: "20日漲幅 >0 +1、<0 −1、=0 0" },
+  { k: "rs", cat: "趨勢", label: "RS", w: 1, rule: "RS >0 +1、<0 −1、=0 0" },
+  { k: "f5", cat: "籌碼", label: "外資5日", w: 2, rule: "外資 5 日買賣超 >0 +1、<0 −1、=0 0" },
+  { k: "t5", cat: "籌碼", label: "投信5日", w: 2, rule: "投信 5 日買賣超 >0 +1、<0 −1、=0 0" },
+  { k: "bb", cat: "籌碼", label: "土洋同買", w: 2, rule: "土洋同買＝1 +1、＝0 0" },
+  { k: "mg5", cat: "籌碼", label: "融資5日%", w: 2, rule: "融資 5 日增減 >5% −1、否則 0" },
+  { k: "hdw", cat: "籌碼", label: "大戶週變化", w: 2, rule: "千張大戶持股週變化 >0 +1、<0 −1、=0 0（同表格「大戶週變化(pp)」欄）" },
+  { k: "yoy", cat: "基本面", label: "營收年增", w: 1, rule: "月營收年增 >0 +1、<0 −1、=0 0" },
+  { k: "up", cat: "基本面", label: "目標價空間", w: 2, rule: "目標價中位÷現價−1：≥20% +1、10%≤x<20% +0.5、0≤x<10% 0、<0 −1" },
+  { k: "buyr", cat: "基本面", label: "買進＋加碼佔比", w: 1, rule: "分析師（買進＋加碼）÷五類總家數 ≥0.7 +1、否則 0；總家數 0 視為缺值" },
+];
+const PK2_SCORE_NOTE = "多空總分：AI 研判，未經回測，非保證。12 項條件加權（籌碼、大戶、目標價空間權重 2），50＝中性；規格見 postmkt docs/pick2-score.md。";
+const PK2_ICH_NOTE = "股市易經總分僅供參考：易經站公布之驗證結果——短線驗證段 IC 為負、未通過門檻；波段驗證段證據不足、訓練段 IC 為負；中期證據不足。總分高不代表後續報酬較高。";
+const pk2Fin = v => typeof v === "number" && isFinite(v);
+const pk2Sign = v => v > 0 ? 1 : v < 0 ? -1 : 0;
+// 分析師（買進＋加碼）÷五類總家數：五鍵皆非有限數或總家數 0 → null；缺鍵記 0（同 pk2Rating）
+function pk2BuyRatio(rt){
+  if (!rt || typeof rt !== "object") return null;
+  const ks = ["buy", "overweight", "hold", "underweight", "sell"];
+  if (!ks.some(k => pk2Fin(rt[k]))) return null;
+  const g = k => pk2Fin(rt[k]) ? rt[k] : 0;
+  const tot = ks.reduce((a, k) => a + g(k), 0);
+  return tot > 0 ? (g("buy") + g("overweight")) / tot : null;
+}
+// 單項得分：回 s 或 null（缺值）
+function pk2ScoreItem(k, r){
+  const v = r ? r[k] : null;
+  switch (k){
+    case "ma20": case "r20": case "rs": case "f5": case "t5": case "hdw": case "yoy":
+      return pk2Fin(v) ? pk2Sign(v) : null;
+    case "ma60":
+      if (pk2Fin(v)) return pk2Sign(v);
+      return r && r.a60 === true ? 1 : r && r.a60 === false ? -1 : null;
+    case "bb": return v === 1 ? 1 : v === 0 ? 0 : null;
+    case "mg5": return pk2Fin(v) ? (v > 5 ? -1 : 0) : null;
+    case "up": return pk2Fin(v) ? (v >= 20 ? 1 : v >= 10 ? 0.5 : v >= 0 ? 0 : -1) : null;
+    case "buyr": return pk2Fin(v) ? (v >= 0.7 ? 1 : 0) : null;
+  }
+  return null;
+}
+// 多空總分：回 {score, n, items:[{k,label,s,w}]}（items 只列有值項，n＝items.length；全缺 score＝null）
+function pk2Score(r){
+  const items = [];
+  let sw = 0, sws = 0;
+  for (const sp of PK2_SCORE_SPEC){
+    const s = pk2ScoreItem(sp.k, r);
+    if (s == null) continue;
+    items.push({ k: sp.k, label: sp.label, s, w: sp.w });
+    sw += sp.w; sws += sp.w * s;
+  }
+  const score = sw > 0 ? Math.round((50 + 50 * sws / sw) * 10) / 10 : null;
+  return { score, n: items.length, items };
+}
+// tooltip 文字（純文字，呼叫端再 esc() 進 title 屬性）
+function pk2ScoreTip(sc){
+  if (!sc || sc.score == null) return `${PK2_SCORE_SPEC.length} 項皆無資料`;
+  const f = s => (s > 0 ? "+" : s < 0 ? "−" : "") + String(Math.abs(s));
+  return sc.items.map(x => `${x.label} ${f(x.s)}×${x.w}`).join("｜") + `（${PK2_SCORE_SPEC.length} 項中 ${sc.n} 項有值）`;
+}
+// 預設排序：總分高→低、null 排最後、同分依代號（再依市場）
+function pk2ScoreCmp(a, b){
+  const x = a.score, y = b.score;
+  if (x == null && y != null) return 1;
+  if (y == null && x != null) return -1;
+  if (x != null && y != null && x !== y) return y - x;
+  return (a.code < b.code ? -1 : a.code > b.code ? 1 : 0) || (a.m < b.m ? -1 : a.m > b.m ? 1 : 0);
+}
+// 股市易經 latest.json → {date, bs:{code:{short,swing,mid}}}；代號過台股白名單、bs 須有限數（否則 null）。形狀不對回 null
+function pk2IchParse(j){
+  if (!j || typeof j !== "object" || Array.isArray(j) || !j.stocks || typeof j.stocks !== "object" || Array.isArray(j.stocks)) return null;
+  const bs = {};
+  for (const c of Object.keys(j.stocks)){
+    const code = pk2NormCode("TW", c), o = j.stocks[c];
+    if (!code || code !== c || !o || typeof o !== "object") continue;
+    const g = h => (o[h] && typeof o[h] === "object" && pk2Fin(o[h].bs)) ? o[h].bs : null;
+    bs[code] = { short: g("short"), swing: g("swing"), mid: g("mid") };
+  }
+  return { date: typeof j.date === "string" && PK2_DATE_RE.test(j.date) ? j.date : "", bs };
+}
 // ---- pick2-pure:end ----
 
 function pk2Prefs(){
@@ -4578,6 +4670,13 @@ function pk2Ensure(){
       .then(t => { const c = pk2ParseCsv(t); if (c) PK2.csv = c; else PK2.csvErr = "shape"; })
       .catch(e => { PK2.csvErr = e; })
       .finally(() => { PK2.csvLoading = false; if (state.tab === "pick2") render(); });
+  }
+  if (!PK2.ich && !PK2.ichErr && !PK2.ichLoading){
+    PK2.ichLoading = true;
+    loadJSON(PK2_ICH_URL)
+      .then(j => { const d = pk2IchParse(j); if (d) PK2.ich = d; else PK2.ichErr = "shape"; })
+      .catch(e => { PK2.ichErr = e; })
+      .finally(() => { PK2.ichLoading = false; if (state.tab === "pick2") render(); });
   }
   ensureDiag();
   ensureScreen();
@@ -4618,7 +4717,8 @@ function pk2Rows(list){
     const hd = d && Array.isArray(d.hd) ? d.hd : null;
     const hd0 = hd ? pk2N(hd[0]) : null;
     const hdw = d ? (pk2N(d.hdw) != null ? d.hdw : (hd && pk2N(hd[0]) != null && pk2N(hd[1]) != null ? hd[0] - hd[1] : null)) : null;
-    return { m: x.m, code: x.code, name, added: x.added, k,
+    const ib = x.m === "TW" && PK2.ich && PK2.ich.bs[x.code] ? PK2.ich.bs[x.code] : null;
+    const row = { m: x.m, code: x.code, name, added: x.added, k,
       noDiag: x.m === "TW" && !!state.diag && !d, noCsv: !!PK2.csv && !cv,
       c: d ? pk2N(d.c) : (cv ? cv.close : null), d1: d ? pk2N(d.d1) : null,
       r5: d ? pk2N(d.r5) : (cv ? cv.r5 : null), r20: d ? pk2N(d.r20) : (cv ? cv.r20 : null),
@@ -4633,8 +4733,12 @@ function pk2Rows(list){
       rym: d && typeof d.rym === "string" && /^\d{4}-\d{2}$/.test(d.rym) ? d.rym : "",
       pe: d ? pk2N(d.pe) : null, pb: d ? pk2N(d.pb) : null, dy: d ? pk2N(d.dy) : null,
       eps1: sc ? scrEstMean(sc, y1) : null, up: (px != null && px > 0 && tp != null) ? (tp / px - 1) * 100 : null,
-      rt: sc ? pk2Rating(sc.rating) : null,
-      ext: cv ? cv.ext : null, sl60: cv ? cv.slope60 : null };
+      rt: sc ? pk2Rating(sc.rating) : null, buyr: sc ? pk2BuyRatio(sc.rating) : null,
+      ext: cv ? cv.ext : null, sl60: cv ? cv.slope60 : null,
+      ichS: ib ? ib.short : null, ichW: ib ? ib.swing : null, ichM: ib ? ib.mid : null };
+    const sco = pk2Score(row);
+    row.score = sco.score; row.scoreTip = pk2ScoreTip(sco);
+    return row;
   });
 }
 // 頁頂各資料源狀態：載入中／讀取失敗／資料日（照實寫日期，不寫「今日」）
@@ -4654,6 +4758,7 @@ function pk2SrcLine(){
         cd ? `台股資料日 ${esc(cd.TW || "—")}／美股資料日 ${esc(cd.US || "—")}` : ""))
     + it("持股診斷素材庫", st(state.diag, state.diagErr, state.diagLoading, `資料日 ${esc(dd || "—")}`))
     + it("選股初篩", st(state.screen, state.screenErr, state.screenLoading, `資料日 ${esc(sd || "—")}`))
+    + it("股市易經", st(PK2.ich, PK2.ichErr, PK2.ichLoading, `資料日 ${esc((PK2.ich && PK2.ich.date) || "—")}`))
     + `</div>`;
 }
 function renderPick2(){
@@ -4665,7 +4770,8 @@ function renderPick2(){
   const live = new Set(list.map(x => pk2Key(x.m, x.code)));
   for (const k of [...PK2.sel]) if (!live.has(k)) PK2.sel.delete(k);
   let h = `<div class="pk2">` + pk2SrcLine()
-    + `<div class="pk2-disc">${esc(PK2_DISCLAIMER)}</div>`;
+    + `<div class="pk2-disc">${esc(PK2_DISCLAIMER)}</div>`
+    + `<div class="pk2-disc pk2-sc-note">${esc(PK2_SCORE_NOTE)}<br>${esc(PK2_ICH_NOTE)}</div>`;
   if (PK2.uniErr) h += `<div class="pk2-note">預設名單（aisc universe.json）讀取失敗：下表只列你自己新增的股票。</div>`;
   else if (!PK2.uni) h += `<div class="pk2-note">預設名單載入中…</div>`;
   h += `<div class="pk2-bar">`
@@ -4680,14 +4786,19 @@ function renderPick2(){
     + `<div class="pk2-msg" id="pk2Msg">${esc(PK2.msg)}</div>`
     + `<div class="pk2-cnt">名單 ${list.length} 檔（台股 ${list.filter(x => x.m === "TW").length}／美股 ${list.filter(x => x.m === "US").length}`
     + `；你新增 ${prefs.added.length}、自預設刪除 ${prefs.removed.length}）。增刪只存在本機瀏覽器，不上傳任何伺服器。</div>`;
-  const rows = pk2Rows(list);
-  const G1 = "價格趨勢", G2 = "量能籌碼", G3 = "基本面", G4 = "aisc";
+  const rows = pk2Rows(list).sort(pk2ScoreCmp);
+  const G0 = "排序分數", G1 = "價格趨勢", G2 = "量能籌碼", G3 = "基本面", G4 = "aisc";
   const cols = [
     {h:"代號／名稱", cls:"l pk2-id", sortVal:r => pk2Key(r.m, r.code), f:r =>
       `<label class="pk2-lb"><input type="checkbox" class="pk2-ck" data-pk2ck="${esc(r.k)}"${PK2.sel.has(r.k) ? " checked" : ""} aria-label="勾選 ${esc(r.code)}">`
       + `<span class="code">${esc(r.code)}</span></label>${r.m === "TW" ? stkBtn(r.code) : ""}`
       + `<span class="nm">${esc(r.name || r.code)}${r.m === "US" ? "・美股" : ""}${r.added ? "・自加" : ""}</span>`
       + (r.noDiag ? `<span class="nm pk2-nc">本表不涵蓋</span>` : (r.m === "US" && r.noCsv ? `<span class="nm pk2-nc">aisc 表不涵蓋</span>` : ""))},
+    {g:G0, h:`多空總分<span class="mut" title="${esc(PK2_SCORE_NOTE)}">ⓘ</span>`, cls:"pk2-sc",
+      f:r => `<span title="${esc(r.scoreTip)}">${r.score == null ? pk2Dash : esc(r.score.toFixed(1))}</span>`, sortVal:r => r.score},
+    {g:G0, h:"易經短線", f:r => pk2F(r.ichS, 2), sortVal:r => r.ichS},
+    {g:G0, h:"易經波段", f:r => pk2F(r.ichW, 2), sortVal:r => r.ichW},
+    {g:G0, h:`易經中期<span class="mut" title="${esc(PK2_ICH_NOTE)}">ⓘ</span>`, f:r => pk2F(r.ichM, 2), sortVal:r => r.ichM},
     {g:G1, h:"收盤", f:r => pk2F(r.c, 2), sortVal:r => r.c},
     {g:G1, h:"今日漲跌%", f:r => pk2Chg(r.d1, 2), sortVal:r => r.d1},
     {g:G1, h:"5日漲幅%", f:r => pk2Chg(r.r5, 2), sortVal:r => r.r5},
@@ -4724,12 +4835,16 @@ function renderPick2(){
     {g:G4, h:"slope60", f:r => pk2S(r.sl60, 2), sortVal:r => r.sl60},
   ];
   const y1 = scrYear(state.screen);
-  h += list.length ? `<div class="pk2-tbl">${tbl(cols, rows)}</div>` : `<div class="empty">名單是空的（可在上方新增，或按「還原預設名單」）。</div>`;
+  const pk2Tie = (a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0) || (a.m < b.m ? -1 : a.m > b.m ? 1 : 0);
+  h += list.length ? `<div class="pk2-tbl">${tbl(cols, rows, { sortI: 1, sortD: -1, tie: pk2Tie })}</div>` : `<div class="empty">名單是空的（可在上方新增，或按「還原預設名單」）。</div>`;
   h += `<div class="pk2-foot">欄位口徑：台股收盤／漲跌／均線／籌碼／營收／估值取持股診斷素材庫（diag.json，約 1,200 檔，素材庫沒有的台股收盤／5日／20日／MA60 退用 aisc 每日表）；`
     + `美股只有收盤、5日／20日漲幅、MA60（above60）、ext、slope60（aisc 每日表），其餘「—」。`
     + `均線欄「上／下」＝收盤在該均線之上／之下（滑鼠停留看距離%）；20日均成交值單位為億元；外資／投信 5 日為買賣超張數合計；大戶持股為千張大戶持股比（週資料）。`
     + `明年預估EPS＝選股初篩 ${y1 != null ? esc(String(y1 + 1)) + " 年" : "明年度"}預估平均（mean）、目標價空間＝目標價中位÷現價−1，只有選股初篩涵蓋的台股才有。`
-    + `ext／slope60 為 aisc 每日表原值（口徑見 taiwan-backtest aisc/README.md），資料日是頁頂「aisc 每日表」那一天，可能比台股其他欄（持股診斷）早一個交易日，同一列不同欄可能不同天。借券餘額5日增減＝借券賣出餘額與 5 個交易日前的差（張），不是 5 日賣出量合計。預設依名單順序（台股在前、美股在後、各依代號），點表頭可排序；本表不做任何排名或判級。</div>`
+    + `ext／slope60 為 aisc 每日表原值（口徑見 taiwan-backtest aisc/README.md），資料日是頁頂「aisc 每日表」那一天，可能比台股其他欄（持股診斷）早一個交易日，同一列不同欄可能不同天。借券餘額5日增減＝借券賣出餘額與 5 個交易日前的差（張），不是 5 日賣出量合計。`
+    + `多空總分＝12 項條件加權（滑鼠停留看各項得分），缺值項不計分也不計入分母；美股只有趨勢類可算（aisc 表無 MA20／RS，實際只有 MA60 與 20日漲幅）。`
+    + `易經三欄＝股市易經站 短線／波段／中期 總分（bs），只有易經站涵蓋的台股才有、不進多空總分，資料日見頁頂「股市易經」。`
+    + `預設依多空總分由高到低（同分依代號、無分數者排最後），點表頭可改依其他欄排序。</div>`
     + `</div>`;
   main.innerHTML = h;
 }

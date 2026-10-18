@@ -202,12 +202,20 @@
     **個人增刪**：localStorage key `pm_pick2`＝`{v:1, added:[{m,code}], removed:[{m,code}]}`（相對預設名單的**差異**，月度換池照常反映：
     被刪的預設股若不在新池自然消失、自加的永遠保留直到使用者刪除）；讀寫全部 try/catch、壞資料當空；**不進任何網路請求、URL、hash**
     （約定 6 精神；`tests/test_pick2.mjs` 讀碼守門）。代號白名單：台股 `^\d{4}[0-9A-Z]{0,2}$`、美股 `^[A-Z]{1,5}$`（先 trim 轉大寫）。
-    **硬約束**：純描述性顯示——不新增任何判級／燈號／紅綠訊號／排序建議；預設依名單順序（台股在前、美股在後、各依代號）；
+    **多空總分（2026-10-18 使用者裁定：無回測依據、可先上線；畫面標「AI 研判，未經回測，非保證」、列入事後驗證；規格正本
+    `docs/pick2-score.md`）**：純函式 `pk2Score`（grep `function pk2Score(`）依 `PK2_SCORE_SPEC`（12 項、權重 1／2，與文件規格表逐列一致，
+    測試比對）算 `50＋50×Σ(w·s)÷Σw`，缺值不計入分母、全缺 null；表格「排序分數」欄群組＝多空總分＋易經短線／波段／中期，
+    **預設依多空總分高→低、同分依代號、null 最後**（`pk2ScoreCmp`＋`tbl` opts `sortI:1, sortD:-1`）。美股只算趨勢類（實際只有 MA60／20日漲幅）。
+    易經三欄＝`PK2_ICH_URL`＝`../taiwan-stock-iching/data/web/latest.json`（同源、CSP 未改、約 1.4MB、只在切到本 tab 才抓）的
+    `stocks[code].short|swing|mid.bs`，僅供參考、**不進總分**，附固定說明句 `PK2_ICH_NOTE`；**本站因此也是 taiwan-stock-iching
+    `data/web/latest.json` 的前端消費者**（`stocks[].short|swing|mid.bs`／`date` 改名或改語意＝跨站變更）。改門檻或權重＝改文件＋常數＋CHANGELOG 記版本，
+    驗證結論出來前不得拿掉「未經回測」標示。
+    **硬約束**：各欄為描述性顯示——除多空總分外不新增任何判級／燈號／紅綠訊號；總分欄中性色；
     漲跌著色只用在今日漲跌％／5日／20日漲幅（沿用 `sgn()`），其餘欄中性色；免責句逐字固定（`PK2_DISCLAIMER`）；頁頂列各資料源**各自**的
     資料日（diag.date／screen.date／aisc 表 date 欄分市場最大值），讀取失敗該來源寫「讀取失敗」、欄位「—」、不拋錯；universe 讀不到時名單只剩自加股並明講。
     頂列 stats 比照籌碼雷達清空；CSS 一律 `.pk2-*`；**不加新 hash key**（`#tab=pick2` 由 `HASH_TABS` 自動白名單）。
-    手機：表格 33 欄在 `.tblbox` 內橫捲（同整合排行），未藏欄；375／390／1280 實測整頁無水平捲軸、逐格零裁切零換行。
-    測試 `tests/test_pick2.mjs`（pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest checkout 另驗真實 universe 117 檔與 latest.csv）。
+    手機：表格 37 欄（2026-10-18 加排序分數 4 欄，原 33）在 `.tblbox` 內橫捲（同整合排行），未藏欄；375／390／1280 實測整頁無水平捲軸、逐格零裁切（2026-10-18 Playwright 重量）。
+    測試 `tests/test_pick2.mjs`（31 項；pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest／taiwan-stock-iching checkout 另驗真實 universe 117 檔、latest.csv 與易經 latest.json）。
     本機驗證同籌碼雷達（http.server 起在上一層，`../taiwan-backtest/` 才可達）。
   - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
     `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／
