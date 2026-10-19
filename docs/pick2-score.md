@@ -95,6 +95,8 @@
   分數＝`pk2Score` 的 Python 移植（`SCORE_SPEC` 與 `PK2_SCORE_SPEC` 逐項同序同權重；四捨五入 `js_round`＝JS `Math.round`
   half-up，**不可用 Python `round()`**；目標價空間先捨 1e-6；缺值不計分母；美股 null）。`tests/test_pick2_build.py` 以 node
   抽 `index.html` 的 `pick2-pure`＋`pk2Rows()` 對跑 fixture（20 檔真實資料＋人造邊界例）與現行 `data/diag`／`data/screen` 全部代號，逐位相同。
+- **失敗會亮紅燈**：`diag.yml` 的 `Build pick2 track`（`id: pick2`）設 `continue-on-error`，diag／screen 照常 commit；
+  commit 之後的 `Fail if pick2 failed`（`if: steps.pick2.outcome == 'failure'`）再 `exit 1`，job 轉紅並觸發既有 notify-failure（延後紅燈）。
 - **失敗不寫檔、exit 非 0**：universe 讀不到／無台股名單、diag／screen 讀不到、`user.json` 壞檔（不可當空，否則已刪除的股會被自動選回）、
   `track.json` 壞檔或日期晚於本次。
 - **冪等**：同 date 重跑結果相同（`generated_at` 除外）——沿用前次 `track.json` 中 `since` **早於**本 date 的列，`since`＝本 date 的列
@@ -120,6 +122,16 @@
   - `deleted`＝`user.json` 最後一筆為 `del` 的代號（排序）。
 - 已知差異：diag 不涵蓋的台股，前端會退用 aisc 每日表的 20日漲幅／above60，後端不讀該表（那兩項缺值、分數可能與畫面不同）；
   2026-10-19 現行候選池 93 檔台股全在 diag 內，實際無差異。
+
+### 7.3a 已知限制（2026-10-19 驗收記錄，現況接受）
+- **待生效判斷以 `generated_at` 為準、不是 checkout 時點**：建置讀的是 workflow checkout 當下的 `user.json`，而前端拿 `at` 與
+  `track.generated_at`（建置結束時刻）比。checkout 之後、建置寫完之前寫入的動作，`at` 早於 `generated_at` 會被當成「已生效」，
+  實際卻要到下一次建置才生效——這段誤差窗內畫面少標一次「待生效」。
+- **Pages 延遲期間重新整理，按鈕會回彈**：寫入成功後同源 `data/pick2/user.json` 要等 Pages 重新部署才更新；期間重新整理只剩記憶體以外的狀態，
+  「待生效」標示消失、「加入追蹤／刪除」鈕重新出現。再按一次只會在 log 追加一筆同動作的重複紀錄，因同代號以最後一筆為準，**無害**。
+- **某日建置失敗會少一個 daily 快照**：`days`（以快照計）少算一天、`mdd` 少看那天收盤；之後的建置不會回補缺的那天。
+- **diag 與 screen 的資料日未互檢**：screen 步驟失敗時 `screen.json` 停在舊日，分數的目標價空間／評等兩項用的是舊資料，建置不擋也不標示
+  （同前端畫面的行為，前端頁頂各資料源自帶資料日）。
 
 ### 7.4 事後驗證
 - 追蹤紀錄可完全由 git 歷史重建（`data/pick2/daily/*.json`＋`track.json`＋`user.json`）。對照組＝同期候選池台股等權（`pool_ret`）。
