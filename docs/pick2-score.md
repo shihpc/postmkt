@@ -76,3 +76,52 @@
   波段驗證段證據不足、訓練段 IC 為負；中期證據不足。總分高不代表後續報酬較高；上市與上櫃混排的可比性未經驗證。」
   （依據：taiwan-stock-iching `docs/P4-PREVIEW.md` §12 裁定 #74 的逐期間驗證結果。）
 - 易經三欄**不進**多空總分，也不是預設排序鍵；點表頭可依它們排序。
+
+## 7. 追蹤名單（2026-10-19 使用者裁定）
+
+### 7.1 裁定
+- **自動選入**＝台股、單日多空總分 **≥ 80** 且有值項 **≥ 9**（`n`，即 §3 `items` 的筆數；**不加易經**）。
+- **無自動移出**：選入後追蹤到使用者刪除為止（分數掉下門檻、月度換池移出候選池都照樣追蹤）。
+- 使用者可在「選股二」tab **手動加入**（表格台股代號下「加入追蹤」鈕）與**刪除**（追蹤表「刪除」鈕，須 confirm）；
+  寫回 repo（GitHub PAT，密碼管理器帳號名 `github-pat-postmkt-analyses`，見 CLAUDE.md 約定 6），**下次每日建置生效**。
+- **被刪除的股不再自動選回**；手動加入可解除刪除，`since`＝加入後第一次建置日。只追蹤台股。
+- **無回測依據、先上線**（家族鐵律 8）：畫面（追蹤區塊與「加入追蹤」鈕）標「AI 研判，未經回測，非保證」、本節登錄、列入事後驗證（§7.4）。
+- LINE 推播由 taiwan-flow-live-v2 Worker 讀 `track.json` 發（該 repo 另案實作），本 repo 不推播。
+
+### 7.2 實作
+- 後端 `src/build_pick2.py`（掛在 `diag.yml` 的 `Build screen.json` 之後，`continue-on-error`、不擋 diag；commit 帶 `data/pick2/`）：
+  讀 `data/diag/diag.json`、`data/screen/screen.json`、taiwan-backtest raw main `aisc/universe.json`（逾時 30 秒、失敗重試一次；
+  本機檔可用 `--universe` 或環境變數 `PICK2_UNIVERSE` 注入）、`data/pick2/user.json`；資料日＝`diag.json` 的 `date`。
+  分數＝`pk2Score` 的 Python 移植（`SCORE_SPEC` 與 `PK2_SCORE_SPEC` 逐項同序同權重；四捨五入 `js_round`＝JS `Math.round`
+  half-up，**不可用 Python `round()`**；目標價空間先捨 1e-6；缺值不計分母；美股 null）。`tests/test_pick2_build.py` 以 node
+  抽 `index.html` 的 `pick2-pure`＋`pk2Rows()` 對跑 fixture（20 檔真實資料＋人造邊界例）與現行 `data/diag`／`data/screen` 全部代號，逐位相同。
+- **失敗不寫檔、exit 非 0**：universe 讀不到／無台股名單、diag／screen 讀不到、`user.json` 壞檔（不可當空，否則已刪除的股會被自動選回）、
+  `track.json` 壞檔或日期晚於本次。
+- **冪等**：同 date 重跑結果相同（`generated_at` 除外）——沿用前次 `track.json` 中 `since` **早於**本 date 的列，`since`＝本 date 的列
+  一律重算；`new_today` 只列 `since`＝本 date 者。第一次執行（無歷史）＝當日符合門檻者全部選入、`since`＝該日。
+- 前端（`index.html` grep `// ---- 追蹤名單`、`function pk2TrackHtml`、`async function pk2UserWrite`）：切到本 tab 才以同源讀
+  `data/pick2/track.json` 與 `data/pick2/user.json`（404＝尚無紀錄），首屏請求不變、CSP 未改（寫入走既有 `connect-src` 的 `api.github.com`）。
+  按鈕以記憶體 `CRED.gh`（`ghToken()`）對 Contents API `GET`→驗形狀→追加一筆→`PUT` 帶 `sha`，409／422 重讀再試（共 3 次）；
+  repo 上 `user.json` 形狀不合時拒寫。PAT 只進 `Authorization` header，不進 localStorage／DOM／URL；未載入時區塊內提供載入表單。
+  寫入成功先在記憶體標「待加入／待刪除（下次建置生效）」；重新整理後以 `track.json`＋`user.json` 判斷：`user.json` 中 `at` 晚於
+  `track.generated_at` 的動作＝尚未生效。**三站逐字同步碼 `ghSaveAnalysis`／`callClaude` 未改。**
+
+### 7.3 介面契約（taiwan-flow-live-v2 Worker 同時讀，欄位名不得自行更改）
+- `data/pick2/user.json`（前端寫、後端讀）：`{"schema":1,"log":[{"act":"add"|"del","code":"2330","at":"<ISO>"}]}`（append-only，同代號以最後一筆為準）。
+- `data/pick2/daily/<YYYY-MM-DD>.json`（後端每日）：`{"schema":1,"date","spec":"pick2-score-v1","rows":{"<code>":{"name","c","score","n"}}}`
+  （`rows`＝候選池台股全部）。**附加鍵 `extra`**（同形狀）只在有「追蹤中但不在當日候選池」的股時出現（換池移出／手動加入池外股），
+  用來算這些股的報酬與回撤；`pool_ret` 只看 `rows`、不看 `extra`。
+- `data/pick2/track.json`（後端每日）：`{"schema":1,"date","generated_at","rule":{"min_score":80,"min_items":9},"spec":"pick2-score-v1",
+  "tracking":[{"code","name","src":"auto"|"manual","since","entry_close","entry_score","last_close","last_score","ret","pool_ret","mdd","days"}],
+  "new_today":[{"code","name","src","score"}],"deleted":["<code>",...]}`。
+  - `entry_*`＝`since` 那天快照的收盤／分數，`last_*`＝本 date；`ret＝last_close/entry_close−1`；`pool_ret`＝候選池台股等權平均報酬
+    （`since` 與 `date` 兩日快照 `rows` 皆有 `c` 者）；`mdd`＝`since` 以來各快照收盤相對前高的最大跌幅（**≤ 0**，例 −0.25）；
+    `days`＝`since` **之後**的快照數（列入當天為 0）。百分比一律存小數、`js_round` 到 6 位；算不出為 `null`。
+  - `deleted`＝`user.json` 最後一筆為 `del` 的代號（排序）。
+- 已知差異：diag 不涵蓋的台股，前端會退用 aisc 每日表的 20日漲幅／above60，後端不讀該表（那兩項缺值、分數可能與畫面不同）；
+  2026-10-19 現行候選池 93 檔台股全在 diag 內，實際無差異。
+
+### 7.4 事後驗證
+- 追蹤紀錄可完全由 git 歷史重建（`data/pick2/daily/*.json`＋`track.json`＋`user.json`）。對照組＝同期候選池台股等權（`pool_ret`）。
+- 驗證時分 `src`（自動／手動）報告：自動選入組 `ret − pool_ret` 的分布、勝率、`mdd`；樣本累積前不下結論。
+- 驗證結論出來前不得改門檻（80／9）來「修」結果；要改＝改本節、`build_pick2.py` 常數與 `spec` 版本並記 CHANGELOG，舊紀錄不回頭重寫。
