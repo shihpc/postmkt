@@ -22,12 +22,16 @@ assert.equal(html.split(SB).length, 2, "選股二段落錨點須唯一");
 const sect = html.slice(html.indexOf(SB), html.indexOf(SE));
 assert.ok(sect.length > 1000 && sect.includes(B));
 
-const sb = { console };
+// b64EncodeUtf8／b64DecodeUtf8 定義在 pick2-pure 區段外（頁面共用），pk2UserWrite 會用到：逐字抽出放進沙箱
+const b64Src = html.split("\n").filter(l => /^const b64(Encode|Decode)Utf8 = /.test(l));
+assert.equal(b64Src.length, 2, "b64EncodeUtf8／b64DecodeUtf8 各一行");
+const sb = { console, TextEncoder, TextDecoder, btoa, atob };
 vm.createContext(sb);
-new vm.Script(pure + `
+new vm.Script(b64Src.join("\n") + "\n" + pure + `
 Object.assign(this, { PK2_TW_RE, PK2_US_RE, PK2_DISCLAIMER, pk2NormCode, pk2Key, pk2Num, pk2Bool, pk2ParseCsv, pk2CsvDates,
   pk2Universe, pk2EmptyPrefs, pk2ParsePrefs, pk2Apply, pk2Add, pk2Remove, pk2Rating,
-  PK2_SCORE_SPEC, PK2_SCORE_NOTE, PK2_ICH_NOTE, pk2BuyRatio, pk2Score, pk2ScoreTip, pk2ScoreCmp, pk2IchParse });`).runInContext(sb);
+  PK2_SCORE_SPEC, PK2_SCORE_NOTE, PK2_ICH_NOTE, pk2BuyRatio, pk2Score, pk2ScoreTip, pk2ScoreCmp, pk2IchParse,
+  PK2_TRACK_NOTE, PK2_USER_API, pk2UserParse, pk2TrackParse, pk2Pending, pk2TrackView, pk2TrackStatus, pk2UserWrite, b64DecodeUtf8 });`).runInContext(sb);
 const S = sb;
 const R = x => JSON.parse(JSON.stringify(x));   // vm 另一個 realm 的物件：deepEqual 前先轉回本 realm
 
@@ -315,7 +319,8 @@ ok("區段內 innerHTML 插值的外來字串（代號／名稱／日期／版�
   assert.ok(hits.length >= 10, String(hits.length));
   // 例外（逐一點名）：勾選狀態三元式只產生 " checked" 字面量；res.code 只進 PK2.msg（之後經 esc() 或 textContent 顯示，下一條斷言守）
   // stkBtn() 內部先過 HASH_CODE_RE 再 esc()（既有共用鈕）
-  const ALLOW = new Set(['PK2.sel.has(r.k) ? " checked" : ""', "res.code", 'r.m === "TW" ? stkBtn(r.code) : ""']);
+  // 追蹤名單表（2026-10-19）的代號欄同樣用共用 stkBtn(r.code)
+  const ALLOW = new Set(['PK2.sel.has(r.k) ? " checked" : ""', "res.code", 'r.m === "TW" ? stkBtn(r.code) : ""', "stkBtn(r.code)"]);
   const bad = hits.filter(x => !/^esc\(|\? esc\(/.test(x) && !ALLOW.has(x));
   assert.deepEqual(bad, []);
   // PK2.msg 只會以 esc(PK2.msg) 拼進 HTML，或經 textContent 寫入
@@ -339,4 +344,135 @@ ok("整段內嵌 script 可編譯", () => {
   for (const s of ss) new vm.Script(s);
 });
 
+
+// ================= 追蹤名單（2026-10-19）=================
+const TRK = { schema: 1, date: "2026-10-20", generated_at: "2026-10-20T22:30:00+08:00", rule: { min_score: 80, min_items: 9 }, spec: "pick2-score-v1",
+  tracking: [
+    { code: "1476", name: "儒鴻", src: "auto", since: "2026-10-19", entry_close: 321, entry_score: 83.3, last_close: 330, last_score: 70, ret: 0.028037, pool_ret: 0.01, mdd: -0.01, days: 1 },
+    { code: "2330", name: "台積電", src: "manual", since: "2026-10-20", entry_close: 1000, entry_score: 60, last_close: 1000, last_score: 60, ret: 0, pool_ret: 0, mdd: 0, days: 0 },
+    { code: "<img>", name: "x", src: "auto" } ],
+  new_today: [{ code: "2330", name: "台積電", src: "manual", score: 60 }], deleted: ["2603", "bad!"] };
+
+ok("pk2UserParse：schema 1＋log 陣列；壞筆略過、代號正規化；形狀不對回 null（不可當空覆寫）", () => {
+  assert.deepEqual(R(S.pk2UserParse({ schema: 1, log: [{ act: "add", code: " 2330 ", at: "t" }, { act: "x", code: "2317" },
+    { act: "del", code: "<img>" }, { act: "del", code: "00981a" }, null] })),
+    { schema: 1, log: [{ act: "add", code: "2330", at: "t" }, { act: "del", code: "00981A", at: "" }] });
+  for (const bad of [null, [], {}, { schema: 2, log: [] }, { schema: true, log: [] }, { schema: 1, log: {} }, "x"]) assert.equal(S.pk2UserParse(bad), null);
+});
+
+ok("pk2TrackParse：數值非有限數→null、代號白名單、new_today／deleted 清洗", () => {
+  const t = S.pk2TrackParse(TRK);
+  assert.equal(t.tracking.length, 2);
+  assert.equal(t.tracking[0].ret, 0.028037);
+  assert.equal(t.newToday.has("2330"), true);
+  assert.deepEqual(R(t.deleted), ["2603"]);
+  assert.equal(S.pk2TrackParse({ schema: 1, tracking: [{ code: "1101", entry_close: "12", days: NaN }] }).tracking[0].entry_close, null);
+  for (const bad of [null, {}, { schema: 1 }, { schema: 2, tracking: [] }]) assert.equal(S.pk2TrackParse(bad), null);
+});
+
+ok("合併 user.json：只有 at 晚於 track.generated_at 的動作算待生效；同代號以最後一筆為準；本機 pend 最後", () => {
+  const t = S.pk2TrackParse(TRK);
+  const user = S.pk2UserParse({ schema: 1, log: [
+    { act: "del", code: "1476", at: "2026-10-20T10:00:00Z" },     // 早於建置（台北 18:00）→ 已生效（建置已吸收）
+    { act: "add", code: "2603", at: "2026-10-20T15:00:00Z" },     // 晚於建置（台北 23:00）→ 待加入
+    { act: "del", code: "2330", at: "2026-10-20T15:01:00Z" },
+    { act: "add", code: "2330", at: "2026-10-20T15:02:00Z" } ] });  // 同代號最後一筆 add（已追蹤 → 不標）
+  const p = S.pk2Pending(t, user, {});
+  assert.deepEqual(R([...p.entries()]), [["2603", "add"], ["2330", "add"]]);
+  const v = R(S.pk2TrackView(t, user, { "1476": "del" }));
+  assert.deepEqual(v.map(r => [r.code, r.pend]), [["1476", "del"], ["2330", null], ["2603", "add"]]);
+  assert.equal(v[1].isNew, true);
+  assert.equal(S.pk2TrackStatus(t, user, {}, "1476"), "tracking");
+  assert.equal(S.pk2TrackStatus(t, user, { "1476": "del" }, "1476"), "pend-del");
+  assert.equal(S.pk2TrackStatus(t, user, {}, "2603"), "pend-add");
+  assert.equal(S.pk2TrackStatus(t, user, { "2603": "del" }, "2603"), "none");
+  assert.equal(S.pk2TrackStatus(t, user, {}, "9999"), "none");
+  // track 讀不到：user.json 全部算待生效
+  assert.equal(S.pk2TrackStatus(null, user, {}, "2603"), "pend-add");
+  assert.deepEqual(R(S.pk2TrackView(null, null, {})), []);
+});
+
+ok("說明句：追蹤名單標「AI 研判，未經回測，非保證」；表格「加入追蹤」鈕 tooltip 與表上說明同樣標示", () => {
+  assert.ok(S.PK2_TRACK_NOTE.startsWith("追蹤名單：AI 研判，未經回測，非保證。"));
+  assert.ok(/const PK2_TRACK_BTN_TIP = "AI 研判，未經回測，非保證；/.test(sect));
+  assert.ok(sect.includes("台股代號下的「加入追蹤」：AI 研判，未經回測，非保證。"));
+  assert.ok(sect.includes('title="${esc(PK2_TRACK_BTN_TIP)}"'));
+  assert.ok(sect.includes("${esc(PK2_TRACK_NOTE)}"));
+});
+
+ok("寫入路徑：API URL 只在 pk2UserWrite；PAT 只取 ghToken()、不進 storage／URL；刪除要 confirm；track／user 只在 pk2Ensure 載入", () => {
+  assert.equal(html.split("PK2_USER_API").length - 1, 3, "宣告＋GET＋PUT");
+  const w0 = sect.indexOf("async function pk2UserWrite("), w = sect.slice(w0, sect.indexOf("\n}\n", w0));
+  assert.ok(w.includes('"Authorization": "Bearer " + token') && !/\?[^"]*token|token=/.test(w));
+  assert.ok(!/(localStorage|sessionStorage)\.setItem\([^)]*(ghToken|token|CRED)/.test(sect));
+  assert.ok(sect.includes("pk2UserWrite(fetch, ghToken(), act, code, new Date().toISOString())"));
+  assert.ok(/act === "del" && !confirm\(/.test(sect));
+  const i = html.indexOf("function pk2Ensure(){"), ens = html.slice(i, html.indexOf("\n}\n", i));
+  assert.ok(ens.includes("loadJSON(PK2_TRACK_URL)") && ens.includes("loadJSON(PK2_USERJ_URL)"));
+  assert.equal(html.split("loadJSON(PK2_TRACK_URL)").length, 2);
+  assert.equal(html.split("loadJSON(PK2_USERJ_URL)").length, 2);
+  assert.ok(html.includes('const PK2_TRACK_URL = "data/pick2/track.json";') && html.includes('const PK2_USERJ_URL = "data/pick2/user.json";'));
+});
+
+// ---- pk2UserWrite：stub fetch（GET／PUT／409 重試／壞檔拒寫／權限錯誤）----
+const TOK = "TEST_ONLY_FAKE_TOKEN";
+function stubGh(seq){
+  const calls = [];
+  const f = async (url, opt = {}) => {
+    calls.push({ url, method: opt.method || "GET", headers: opt.headers, body: opt.body ? JSON.parse(opt.body) : null });
+    const r = seq.shift();
+    if (!r) throw new Error("多出的請求 " + url);
+    return { status: r.status, ok: r.status >= 200 && r.status < 300, json: async () => r.json || {} };
+  };
+  return { f, calls };
+}
+const enc = o => Buffer.from(JSON.stringify(o), "utf8").toString("base64");
+const dec = c => JSON.parse(S.b64DecodeUtf8(c.body.content));
+const AT = "2026-10-20T15:00:00.000Z";
+const atests = [];
+const aok = (name, f) => atests.push([name, f]);
+aok("pk2UserWrite：404＝新檔 → PUT 不帶 sha，內容 {schema:1, log:[一筆]}；token 只在 header", async () => {
+  const { f, calls } = stubGh([{ status: 404 }, { status: 201 }]);
+  const r = await S.pk2UserWrite(f, TOK, "add", "2330", AT);
+  assert.equal(r.ok, true, r.err);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, "https://api.github.com/repos/shihpc/postmkt/contents/data/pick2/user.json?ref=main");
+  assert.equal(calls[1].method, "PUT");
+  assert.equal(calls[1].body.sha, undefined);
+  assert.equal(calls[1].body.branch, "main");
+  assert.deepEqual(dec(calls[1]), { schema: 1, log: [{ act: "add", code: "2330", at: AT }] });
+  for (const c of calls){ assert.equal(c.headers.Authorization, "Bearer " + TOK); assert.ok(!c.url.includes(TOK)); assert.ok(!JSON.stringify(c.body || {}).includes(TOK)); }
+});
+aok("pk2UserWrite：既有檔 → 追加（append-only）、PUT 帶 sha；409 衝突重讀再試", async () => {
+  const cur = { schema: 1, log: [{ act: "del", code: "1476", at: "2026-10-19T00:00:00Z" }] };
+  const cur2 = { schema: 1, log: [...cur.log, { act: "add", code: "2603", at: "2026-10-20T14:00:00Z" }] };
+  const { f, calls } = stubGh([{ status: 200, json: { sha: "s1", content: enc(cur) } }, { status: 409 },
+    { status: 200, json: { sha: "s2", content: enc(cur2) } }, { status: 200 }]);
+  const r = await S.pk2UserWrite(f, TOK, "del", "2330", AT);
+  assert.equal(r.ok, true, r.err);
+  assert.equal(calls[1].body.sha, "s1");
+  assert.equal(calls[3].body.sha, "s2");
+  assert.deepEqual(dec(calls[3]).log, [...cur2.log, { act: "del", code: "2330", at: AT }]);
+  assert.deepEqual(R(r.user).log.length, 3);
+});
+aok("pk2UserWrite：連續 409 三次 → 失敗；repo 上壞檔 → 拒寫（不 PUT）；401／403 → 錯誤訊息；無 token／壞代號不發請求", async () => {
+  let s = stubGh([{ status: 404 }, { status: 409 }, { status: 404 }, { status: 422 }, { status: 404 }, { status: 409 }]);
+  let r = await S.pk2UserWrite(s.f, TOK, "add", "2330", AT);
+  assert.equal(r.ok, false); assert.ok(/衝突/.test(r.err));
+  s = stubGh([{ status: 200, json: { sha: "s", content: enc({ schema: 9, log: [] }) } }]);
+  r = await S.pk2UserWrite(s.f, TOK, "add", "2330", AT);
+  assert.equal(r.ok, false); assert.equal(s.calls.length, 1); assert.ok(/拒絕覆寫/.test(r.err));
+  s = stubGh([{ status: 404 }, { status: 403, json: { message: "Resource not accessible" } }]);
+  r = await S.pk2UserWrite(s.f, TOK, "add", "2330", AT);
+  assert.equal(r.ok, false); assert.ok(/403/.test(r.err)); assert.ok(!r.err.includes(TOK));
+  s = stubGh([{ status: 401 }]);
+  r = await S.pk2UserWrite(s.f, TOK, "add", "2330", AT);
+  assert.equal(r.ok, false); assert.ok(/401/.test(r.err));
+  s = stubGh([]);
+  assert.equal((await S.pk2UserWrite(s.f, "", "add", "2330", AT)).ok, false);
+  assert.equal((await S.pk2UserWrite(s.f, TOK, "add", "<img>", AT)).ok, false);
+  assert.equal((await S.pk2UserWrite(s.f, TOK, "zap", "2330", AT)).ok, false);
+  assert.equal(s.calls.length, 0);
+});
+for (const [name, f] of atests){ await f(); n++; console.log("ok  ", name); }
 console.log(`\n${n} 項全過`);
