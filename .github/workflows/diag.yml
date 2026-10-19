@@ -62,12 +62,19 @@ jobs:
         continue-on-error: true
         run: python src/build_screen.py
 
+      # 選股二追蹤名單（2026-10-19 使用者裁定；無回測依據、先上線，見 docs/pick2-score.md §7）：
+      # 讀 diag／screen／taiwan-backtest raw main universe.json／data/pick2/user.json → data/pick2/daily/<date>.json＋track.json。
+      # 失敗不擋 diag 主產物；build_pick2.py 失敗時不寫檔，commit 步驟自然不帶舊變更
+      - name: Build pick2 track
+        continue-on-error: true
+        run: python src/build_pick2.py
+
       - name: Commit and push
         uses: ./.github/actions/commit-data
         with:
-          paths: data/diag data/screen
+          paths: data/diag data/screen data/pick2
           message: "data: diag"
-          # data/screen 在 screen abort（不寫檔）時可能不存在，add_all 逐路徑容錯不致 pathspec 報錯
+          # data/screen 在 screen abort、data/pick2 在 pick2 失敗（皆不寫檔）時可能不存在，add_all 逐路徑容錯不致 pathspec 報錯
           add_all: "true"
 
       - name: Notify failure
