@@ -215,7 +215,16 @@
     資料日（diag.date／screen.date／aisc 表 date 欄分市場最大值），讀取失敗該來源寫「讀取失敗」、欄位「—」、不拋錯；universe 讀不到時名單只剩自加股並明講。
     頂列 stats 比照籌碼雷達清空；CSS 一律 `.pk2-*`；**不加新 hash key**（`#tab=pick2` 由 `HASH_TABS` 自動白名單）。
     手機：表格 37 欄（2026-10-18 加排序分數 4 欄，原 33）在 `.tblbox` 內橫捲（同整合排行），未藏欄；375／390／1280 實測整頁無水平捲軸、逐格零裁切（2026-10-18 Playwright 重量）。
-    測試 `tests/test_pick2.mjs`（31 項；pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest／taiwan-stock-iching checkout 另驗真實 universe 117 檔、latest.csv 與易經 latest.json）。
+    **追蹤名單（2026-10-19 使用者裁定：無回測依據、先上線；畫面標「AI 研判，未經回測，非保證」、列入事後驗證；規格與介面契約正本
+    `docs/pick2-score.md` §7）**：自動選入＝台股多空總分 ≥80 且有值項 ≥9（不含易經）、**無自動移出**；被刪除的股不再自動選回，
+    手動加入可解除（`since`＝加入後第一次建置日）。後端 `src/build_pick2.py`（`diag.yml` 的 screen 之後、`continue-on-error`，
+    commit 帶 `data/pick2/`）寫 `data/pick2/daily/<date>.json`＋`data/pick2/track.json`；`pk2Score` 的 Python 移植與 JS **逐位相同**
+    （`tests/test_pick2_build.py` 以 node 抽 `pick2-pure`＋`pk2Rows()` 對跑；四捨五入 `js_round`，**不可用 Python `round()`**）。
+    前端（grep `// ---- 追蹤名單`／`function pk2TrackHtml`／`async function pk2UserWrite`）切到本 tab 才讀 `data/pick2/track.json`／
+    `user.json`；「加入追蹤／刪除」以記憶體 `CRED.gh`（`ghToken()`）對 Contents API 追加寫 `data/pick2/user.json`（帶 sha、409 重試、
+    壞檔拒寫），**新寫的函式，三站同步碼 `ghSaveAnalysis` 未動**；PAT 只進 header。**本站因此有一個外部消費者**：taiwan-flow-live-v2 Worker
+    讀 raw main `data/pick2/track.json` 推 LINE——`track.json`／`user.json`／`daily/*.json` 欄位改名或改語意＝跨站變更。
+    測試 `tests/test_pick2.mjs`（39 項；pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest／taiwan-stock-iching checkout 另驗真實 universe 117 檔、latest.csv 與易經 latest.json）＋`tests/test_pick2_build.py`（14 項）。
     本機驗證同籌碼雷達（http.server 起在上一層，`../taiwan-backtest/` 才可達）。
   - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
     `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／
@@ -259,6 +268,7 @@
   測試／補跑用）
 - `src/build_diag.py` → `data/diag/diag.json`（持股診斷素材庫；cache.json 走 actions/cache 不進 git）
 - `src/build_mktbal.py` → `data/market_balance_history.json`（大盤餘額）
+- `src/build_pick2.py` → `data/pick2/`（選股二追蹤名單；掛在 diag workflow 的 screen 之後，`continue-on-error`；見上方「選股二」節）
 - `src/build_screen.py` → `data/screen/screen.json`（選股：TradingView 初篩＋鉅亨 FactSet 預估
   EPS/目標價/評等＋diag 合併；掛在 diag workflow 後段，`continue-on-error` 失敗不擋 diag）
 - 共用模組：`src/fmclient.py`（FinMind client＋token/台北時區）、`src/twseclient.py`（TWSE 節流）

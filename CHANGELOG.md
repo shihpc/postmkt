@@ -3,6 +3,23 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-10-19 選股二「追蹤名單」（使用者裁定：無回測、先上線）
+
+使用者 2026-10-19 裁定：自動選入＝台股單日多空總分 ≥80 且有值項 ≥9（不加易經）、**無自動移出**、可手動加入／刪除並寫回 repo、
+被刪除的股不再自動選回；無回測依據，依家族鐵律 8 先上線（畫面標「AI 研判，未經回測，非保證」、登錄 `docs/pick2-score.md` §7、
+列入事後驗證：追蹤紀錄 vs 候選池等權）。LINE 由 taiwan-flow-live-v2 Worker 另案發。
+- 後端 `src/build_pick2.py`（新）：`pk2Score` 的 Python 移植（逐位相同，node 對跑 parity）→ `data/pick2/daily/<date>.json`（候選池台股收盤／分數／有值項）
+  ＋`data/pick2/track.json`（`tracking`／`new_today`／`deleted`，含 `ret`／`pool_ret`／`mdd`／`days`）。universe 讀 taiwan-backtest raw main，
+  讀不到、`user.json` 壞檔等一律不寫檔、exit 非 0；同 date 重跑冪等。`diag.yml` 在 screen 之後新增 `Build pick2 track`（`continue-on-error`），
+  commit 範圍加 `data/pick2`。
+- 前端「選股二」：新增「追蹤名單」區塊（切到本 tab 才讀 `data/pick2/track.json`／`user.json`，首屏不變、CSP 未改）；台股代號下「加入追蹤」鈕、
+  追蹤表「刪除」鈕（confirm），以記憶體 PAT 對 Contents API 追加寫 `data/pick2/user.json`（帶 sha、409／422 重試 3 次、repo 上壞檔拒寫），
+  寫入成功先標「待生效」。新寫 `pk2UserWrite`，三站同步碼 `ghSaveAnalysis`／`callClaude` 未改。
+- 初始資料：以 2026-10-19 diag／screen 與 taiwan-backtest `origin/main` 的 universe（93 檔台股）建置，自動選入 5 檔
+  （8016 矽創 86.1、1476 儒鴻／3293 鈊象／6414 樺漢 83.3、2603 長榮 80.6，皆 12 項有值）。
+- 測試：`tests/test_pick2_build.py`（新，14 項：parity、門檻邊界 79.9／80 與 n 8／9、刪除不選回、手動加入、冪等、報酬／回撤手算、失敗不寫檔）；
+  `tests/test_pick2.mjs` 31→39 項（user.json 合併、待生效判斷、寫入流程 stub fetch、靜態守門）。
+
 ## 2026-10-18 選股二「多空總分」排序＋股市易經總分（使用者裁定：無回測、可先上線）
 
 使用者 2026-10-18 裁定：「選股二」要有排序；此分數**無回測依據**，依家族鐵律 8 經明確裁定先上線，條件＝畫面標
