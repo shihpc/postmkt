@@ -81,7 +81,7 @@
 
 ### 7.1 裁定
 - **自動選入**＝台股、單日多空總分 **≥ 80** 且有值項 **≥ 9**（`n`，即 §3 `items` 的筆數；**不加易經**）。
-- **無自動移出**：選入後追蹤到使用者刪除為止（分數掉下門檻、月度換池移出候選池都照樣追蹤）。
+- **無自動移出**：選入後追蹤到使用者按「停止追蹤」為止（分數掉下門檻、月度換池移出候選池都照樣追蹤）。
 - 使用者可在「選股二」tab **手動加入**（表格台股代號下「加入追蹤」鈕）與**停止追蹤**（追蹤表「停止追蹤」鈕，須 confirm；2026-10-23 由「刪除」改名，避免與名單的「刪除勾選」混淆，行為不變）；
   寫回 repo（GitHub PAT，密碼管理器帳號名 `github-pat-postmkt-analyses`，見 CLAUDE.md 約定 6），**下次每日建置生效**。
 - **被刪除的股不再自動選回**；手動加入可解除刪除，`since`＝加入後第一次建置日。只追蹤台股。
@@ -105,7 +105,7 @@
   `data/pick2/track.json` 與 `data/pick2/user.json`（404＝尚無紀錄），首屏請求不變、CSP 未改（寫入走既有 `connect-src` 的 `api.github.com`）。
   按鈕以記憶體 `CRED.gh`（`ghToken()`）對 Contents API `GET`→驗形狀→追加一筆→`PUT` 帶 `sha`，409／422 重讀再試（共 3 次）；
   repo 上 `user.json` 形狀不合時拒寫。PAT 只進 `Authorization` header，不進 localStorage／DOM／URL；未載入時區塊內提供載入表單。
-  寫入成功先在記憶體標「待加入／待刪除（下次建置生效）」；重新整理後以 `track.json`＋`user.json` 判斷：`user.json` 中 `at` 晚於
+  寫入成功先在記憶體標「待加入／待停止追蹤（下次建置生效）」；重新整理後以 `track.json`＋`user.json` 判斷：`user.json` 中 `at` 晚於
   `track.generated_at` 的動作＝尚未生效。**三站逐字同步碼 `ghSaveAnalysis`／`callClaude` 未改。**
 
 ### 7.3 介面契約（taiwan-flow-live-v2 Worker 同時讀，欄位名不得自行更改）

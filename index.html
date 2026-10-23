@@ -4657,9 +4657,9 @@ function pk2IchParse(j){
   }
   return { date: typeof j.date === "string" && PK2_DATE_RE.test(j.date) ? j.date : "", bs };
 }
-// ---- 追蹤名單（2026-10-19 使用者裁定：自動選入＝台股多空總分 ≥80 且有值項 ≥9、無自動移出、使用者可刪除／加入；
+// ---- 追蹤名單（2026-10-19 使用者裁定：自動選入＝台股多空總分 ≥80 且有值項 ≥9、無自動移出、使用者可停止追蹤／加入；
 // 無回測依據、先上線，畫面標「AI 研判，未經回測，非保證」、列入事後驗證；規格 docs/pick2-score.md §7）----
-// 後端 src/build_pick2.py 每日寫 data/pick2/track.json；前端「加入追蹤／刪除」以 GitHub Contents API 追加寫 data/pick2/user.json
+// 後端 src/build_pick2.py 每日寫 data/pick2/track.json；前端「加入追蹤／停止追蹤」以 GitHub Contents API 追加寫 data/pick2/user.json
 // （append-only，同代號以最後一筆為準），下次每日建置才生效。PAT 只取記憶體 CRED（ghToken()），只放 Authorization header。
 const PK2_TRACK_NOTE = "追蹤名單：AI 研判，未經回測，非保證。自動選入＝台股多空總分 ≥80 且有值項 ≥9（不含易經）；無自動移出，追蹤到你按「停止追蹤」為止；停止追蹤後不再自動選回（可再手動加入）。報酬為收盤價變化、未含成本與股利，僅供事後驗證對照。";
 const PK2_TRACK_SRC = { auto: "自動", manual: "手動" };
@@ -4710,7 +4710,7 @@ function pk2Pending(track, user, pend){
   for (const [c, a] of Object.entries(pend || {})) out.set(c, a);
   return out;
 }
-// 追蹤名單畫面列：track.tracking 各列附 pend（"del"＝待刪除；已追蹤者的待加入不標）；待加入且不在追蹤的另列 pend:"add"
+// 追蹤名單畫面列：track.tracking 各列附 pend（"del"＝待停止追蹤；已追蹤者的待加入不標）；待加入且不在追蹤的另列 pend:"add"
 function pk2TrackView(track, user, pend){
   const p = pk2Pending(track, user, pend);
   const rows = ((track && track.tracking) || []).map(t => ({ ...t, pend: p.get(t.code) === "del" ? "del" : null,
@@ -4719,7 +4719,7 @@ function pk2TrackView(track, user, pend){
   for (const [c, a] of p) if (a === "add" && !have.has(c)) rows.push({ code: c, name: "", pend: "add" });
   return rows;
 }
-// 主表「追蹤」欄狀態：tracking（追蹤中）／pend-add（待加入）／pend-del（待刪除）／none
+// 主表「追蹤」欄狀態：tracking（追蹤中）／pend-add（待加入）／pend-del（待停止追蹤）／none
 function pk2TrackStatus(track, user, pend, code){
   const p = pk2Pending(track, user, pend).get(code);
   const inT = !!(track && track.tracking.some(t => t.code === code));
@@ -4939,7 +4939,7 @@ function pk2TrackHtml(){
       {h:`同期候選池%<span class="mut" title="候選池台股等權平均報酬（列入日與資料日兩日皆有收盤者）">ⓘ</span>`, f:r => pk2S(pk2Pct(r.pool_ret), 2), sortVal:r => r.pool_ret},
       {h:`最大回撤%<span class="mut" title="列入以來各資料日收盤相對前高的最大跌幅">ⓘ</span>`, f:r => pk2F(pk2Pct(r.mdd), 2), sortVal:r => r.mdd},
       {h:`天數<span class="mut" title="列入日之後的每日建置快照數（交易日）">ⓘ</span>`, f:r => pk2F(r.days, 0), sortVal:r => r.days},
-      {h:"操作", f:r => r.pend === "add" ? "待加入（下次建置生效）" : r.pend === "del" ? "待刪除（下次建置生效）"
+      {h:"操作", f:r => r.pend === "add" ? "待加入（下次建置生效）" : r.pend === "del" ? "待停止追蹤（下次建置生效）"
         : `<button type="button" class="pk2-btn" data-pk2t="del" data-code="${esc(r.code)}" title="${esc(PK2_TRACK_BTN_TIP)}"${PK2.tbusy ? " disabled" : ""}>停止追蹤</button>`, sortVal:r => null},
     ];
     h += `<div class="pk2-tbl">${tbl(tcols, rows, { sortI: 2, sortD: -1, tie: (a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0) })}</div>`;
