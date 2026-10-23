@@ -507,7 +507,7 @@ const SUBS = {
   rrgd:"盤後日頻產業輪動雷達（RRG-Daily）：47 條產業鏈的相對輪動圖。X 軸 RS-Ratio＝鏈等權報酬指數相對大盤等權基準的相對強度（12 日窗 z-score 標準化，100 為中性）；Y 軸 RS-Momentum＝RS-Ratio 的 10 日變化率再做同法標準化。資料源 taiwan-flow-live-v2 data/chain_daily（每交易日夜間增量更新）。僅描述各鏈相對大盤的歷史位置與變化；回測顯示象限轉換對未來報酬無顯著預測力，非投資建議。",
   dates:"各資料源目前的資料日與產出時間；判斷哪些已是最新交易日、哪些尚未更新。資料為排程產出，當日盤後資料通常於當晚 21:00 後才更新，故白天多半看到前一交易日。",
   screen:"選股：以分析師預估（FactSet 經鉅亨網／TradingView）篩選明年預估 EPS 達門檻之個股，並列今明年預估 EPS／本益比、目標價中位數與潛在漲幅、營收動能與評等分布。預估值為券商共識、隨時修訂，屬 AI 彙整之市場預期而非買賣建議與保證。",
-  pick2:"選股二：AI 供應鏈候選池（taiwan-backtest aisc 名單，台股每月換池、美股凍結）逐檔列出價格趨勢／量能籌碼／基本面／aisc 描述欄位；名單可自行勾選刪除與新增（只存本機瀏覽器）。預設依「多空總分」排序（AI 研判，未經回測，非保證）並列股市易經總分供參考；另有「追蹤名單」（台股多空總分 ≥80 且有值項 ≥9 自動選入、可手動加入／刪除，AI 研判，未經回測，非保證）。各欄為描述性資料，非買賣訊號；R1 名單待回測、不據此下單。",
+  pick2:"選股二：AI 供應鏈候選池（taiwan-backtest aisc 名單，台股每月換池、美股凍結）逐檔列出價格趨勢／量能籌碼／基本面／aisc 描述欄位；名單可自行勾選刪除與新增（只存本機瀏覽器）。預設依「多空總分」排序（AI 研判，未經回測，非保證）並列股市易經總分供參考；另有「追蹤名單」（台股多空總分 ≥80 且有值項 ≥9 自動選入、可手動加入／停止追蹤，AI 研判，未經回測，非保證）。各欄為描述性資料，非買賣訊號；R1 名單待回測、不據此下單。",
   mychg:"持股異動：拿本機持股清單比對全市場逐檔資料（外資／投信買賣超張數、漲跌%），只列達門檻者，一眼看完再決定要不要進「持股診斷」細看。講的是 market_daily 資料日那一天的狀態、不是「今天」（資料日寫在段落標題與免責卡）。門檻為顯示用可調常數、無回測依據，不是買賣訊號，只是相對變化提醒。持股清單只存本機瀏覽器，比對全在瀏覽器端完成，持股代號不進任何網路請求（本 tab 不新增網路請求）。",
   chipradar:"籌碼雷達：上半為類股資金四象限（固定比較近 5 日與近 20 日三大法人／外資／投信／自營日均淨額，資料源 taiwan-flows 類股資金流）；下半為千張大戶持股週變化（本站持股診斷素材庫，約 1,200 檔、非全市場）。類股象限與大戶變化為現況描述，非買賣訊號；無回測依據。",
   social:"社群聲量：PTT Stock 板每日提及各股的篇數、推噓數與作者態度（AI 判讀），並依情緒＋千張大戶雙確認給規則式建議。AI 研判，未經回測，非保證。",
@@ -4661,7 +4661,7 @@ function pk2IchParse(j){
 // 無回測依據、先上線，畫面標「AI 研判，未經回測，非保證」、列入事後驗證；規格 docs/pick2-score.md §7）----
 // 後端 src/build_pick2.py 每日寫 data/pick2/track.json；前端「加入追蹤／刪除」以 GitHub Contents API 追加寫 data/pick2/user.json
 // （append-only，同代號以最後一筆為準），下次每日建置才生效。PAT 只取記憶體 CRED（ghToken()），只放 Authorization header。
-const PK2_TRACK_NOTE = "追蹤名單：AI 研判，未經回測，非保證。自動選入＝台股多空總分 ≥80 且有值項 ≥9（不含易經）；無自動移出，追蹤到你刪除為止；刪除後不再自動選回（可再手動加入）。報酬為收盤價變化、未含成本與股利，僅供事後驗證對照。";
+const PK2_TRACK_NOTE = "追蹤名單：AI 研判，未經回測，非保證。自動選入＝台股多空總分 ≥80 且有值項 ≥9（不含易經）；無自動移出，追蹤到你按「停止追蹤」為止；停止追蹤後不再自動選回（可再手動加入）。報酬為收盤價變化、未含成本與股利，僅供事後驗證對照。";
 const PK2_TRACK_SRC = { auto: "自動", manual: "手動" };
 const pk2IsoMs = s => (typeof s === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) ? Date.parse(s) : NaN;
 // user.json：{schema:1, log:[{act:"add"|"del", code, at}]}；形狀不對回 null（呼叫端不得把壞檔當空覆寫）；個別不合格的筆略過
@@ -4904,7 +4904,7 @@ function pk2TrackCell(code){
   const st = pk2TrackStatus(PK2.track, PK2.user, PK2.pend, code);
   if (st === "tracking") return `<span class="nm pk2-tk">追蹤中</span>`;
   if (st === "pend-add") return `<span class="nm pk2-tk">待加入（下次建置生效）</span>`;
-  if (st === "pend-del") return `<span class="nm pk2-tk">待刪除（下次建置生效）</span>`;
+  if (st === "pend-del") return `<span class="nm pk2-tk">待停止追蹤（下次建置生效）</span>`;
   return `<span class="nm pk2-tk"><button type="button" class="pk2-btn pk2-tb" data-pk2t="add" data-code="${esc(code)}" title="${esc(PK2_TRACK_BTN_TIP)}"${PK2.tbusy ? " disabled" : ""}>加入追蹤</button></span>`;
 }
 function pk2TrackHtml(){
@@ -4919,9 +4919,9 @@ function pk2TrackHtml(){
       + `｜追蹤 ${T.tracking.length} 檔（本資料日新選入 ${T.newToday.size} 檔）</div>`;
   }
   if (PK2.userErr) h += `<div class="pk2-note">使用者動作紀錄（data/pick2/user.json）讀取失敗：待生效狀態可能不完整。</div>`;
-  h += ghToken() ? `<div class="pk2-cnt">GitHub PAT 本分頁已載入：可加入／刪除追蹤（寫回 repo，下次每日建置生效）。</div>`
-    : `<details class="pk2-cred"><summary>加入／刪除追蹤需要 GitHub PAT（本分頁未載入，點此載入）</summary>`
-      + credFormHtml("gh", `GitHub Fine-grained PAT（只勾 postmkt repo、Contents Read/write）。加入／刪除追蹤會追加寫 repo 的 data/pick2/user.json；載入時只唯讀查一次 postmkt repo 驗證 PAT 有效，不證明它有寫入權限。`)
+  h += ghToken() ? `<div class="pk2-cnt">GitHub PAT 本分頁已載入：可加入／停止追蹤（寫回 repo，下次每日建置生效）。</div>`
+    : `<details class="pk2-cred"><summary>加入／停止追蹤需要 GitHub PAT（本分頁未載入，點此載入）</summary>`
+      + credFormHtml("gh", `GitHub Fine-grained PAT（只勾 postmkt repo、Contents Read/write）。加入／停止追蹤會追加寫 repo 的 data/pick2/user.json；載入時只唯讀查一次 postmkt repo 驗證 PAT 有效，不證明它有寫入權限。`)
       + `</details>`;
   h += `<div class="pk2-msg" id="pk2TMsg">${esc(PK2.tmsg)}</div>`;
   const rows = pk2TrackView(T, PK2.user, PK2.pend);
@@ -4940,25 +4940,25 @@ function pk2TrackHtml(){
       {h:`最大回撤%<span class="mut" title="列入以來各資料日收盤相對前高的最大跌幅">ⓘ</span>`, f:r => pk2F(pk2Pct(r.mdd), 2), sortVal:r => r.mdd},
       {h:`天數<span class="mut" title="列入日之後的每日建置快照數（交易日）">ⓘ</span>`, f:r => pk2F(r.days, 0), sortVal:r => r.days},
       {h:"操作", f:r => r.pend === "add" ? "待加入（下次建置生效）" : r.pend === "del" ? "待刪除（下次建置生效）"
-        : `<button type="button" class="pk2-btn" data-pk2t="del" data-code="${esc(r.code)}" title="${esc(PK2_TRACK_BTN_TIP)}"${PK2.tbusy ? " disabled" : ""}>刪除</button>`, sortVal:r => null},
+        : `<button type="button" class="pk2-btn" data-pk2t="del" data-code="${esc(r.code)}" title="${esc(PK2_TRACK_BTN_TIP)}"${PK2.tbusy ? " disabled" : ""}>停止追蹤</button>`, sortVal:r => null},
     ];
     h += `<div class="pk2-tbl">${tbl(tcols, rows, { sortI: 2, sortD: -1, tie: (a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0) })}</div>`;
   } else if (T) h += `<div class="pk2-note">目前沒有追蹤中的股票。</div>`;
-  if (T && T.deleted.length) h += `<div class="pk2-cnt">已刪除 ${T.deleted.length} 檔（不再自動選回，可在下表按「加入追蹤」重新加入）：${esc(T.deleted.join("、"))}</div>`;
+  if (T && T.deleted.length) h += `<div class="pk2-cnt">已停止追蹤 ${T.deleted.length} 檔（不再自動選回，可在下表按「加入追蹤」重新加入）：${esc(T.deleted.join("、"))}</div>`;
   return h + `</div>`;
 }
 function pk2SetTMsg(t){ PK2.tmsg = t; const el = document.getElementById("pk2TMsg"); if (el) el.textContent = t; }
 async function pk2TrackAct(act, code){
   if (PK2.tbusy) return;
   if (!ghToken()){ pk2SetTMsg("GitHub PAT 本分頁未載入：請先在上方「追蹤名單」區塊載入 PAT 再試。"); return; }
-  if (act === "del" && !confirm(`確定刪除追蹤 ${code}？刪除後不再自動選回（之後可再手動加入）。`)) return;
+  if (act === "del" && !confirm(`確定停止追蹤 ${code}？停止追蹤後不再自動選回（之後可再手動加入）。`)) return;
   PK2.tbusy = true; pk2SetTMsg("寫入中…");
   const r = await pk2UserWrite(fetch, ghToken(), act, code, new Date().toISOString());
   PK2.tbusy = false;
   if (r.ok){
     PK2.pend[code] = act;
     if (r.user) PK2.user = r.user;
-    PK2.tmsg = `已送出（${act === "add" ? "加入" : "刪除"} ${code}），下次每日建置生效。`;
+    PK2.tmsg = `已送出（${act === "add" ? "加入追蹤" : "停止追蹤"} ${code}），下次每日建置生效。`;
   } else PK2.tmsg = "寫入失敗：" + r.err;
   if (state.tab === "pick2") render();
 }
