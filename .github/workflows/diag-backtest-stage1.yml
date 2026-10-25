@@ -1,0 +1,100 @@
+name: diag backtest stage1
+
+# 持股診斷燈號回測 Stage 1（規格 docs/diag-backtest-spec.md §3.4，r4 定稿；使用者 2026-10-23 裁定）：
+# 只抓還原價並判定價格口徑，**不算任何報酬**。依決策樹
+#   TaiwanStockPriceAdj（覆蓋率 ≥99.0% 即採用）→ TaiwanStockDividendResult 自行還原 → 皆未達才退未還原 close，
+# 把決定寫進 backtest/diag_rules_price_source.json 並 commit 留痕；還原價原始資料另存成 workflow artifact
+# （backtest/cache/ 不進 git，決定檔內記 sha256 供 Stage 2 核對）。
+# 只能手動觸發、刻意不加 cron（§7.3 不進任何排程）。token 只經環境變數傳入 backtest/run_diag_rules.py，
+# 該腳本所有 log／例外訊息都先過 mask_secret()；GitHub 對 secrets 的 log 遮罩是第二道。
+on:
+  workflow_dispatch:
+    inputs:
+      calendar_end:
+        description: 價格日曆截止日（YYYY-MM-DD；預設 2026-10-22＝規格 §3.6 事前數字的口徑）
+        required: false
+        default: "2026-10-22"
+      allow_overwrite:
+        description: 決定檔已存在時仍重做（規格：決定不得在看過任何報酬後變更，非必要勿勾）
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+  issues: write   # notify-failure 開 issue 用
+
+concurrency:
+  group: diag-backtest-stage1
+  cancel-in-progress: false
+
+jobs:
+  stage1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      # diag.json 的 git 歷史就是回放來源（附錄 A 版本），需完整歷史；blob 依需求才抓
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      # v2 classify.json 歷史版本（§2.6 第 2 點）＋休市行事曆
+      - uses: actions/checkout@v7
+        with:
+          repository: shihpc/taiwan-flow-live-v2
+          path: _ext/v2
+          fetch-depth: 0
+          filter: blob:none
+
+      # taiwan-flows meta.calendar 與 data/daily（只看未還原 close 是否存在，不讀報酬）
+      - uses: actions/checkout@v7
+        with:
+          repository: shihpc/taiwan-flows
+          path: _ext/flows
+          fetch-depth: 1
+          filter: blob:none
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Stage 1（還原價與覆蓋率判定）
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+          CALENDAR_END: ${{ inputs.calendar_end }}
+          ALLOW_OVERWRITE: ${{ inputs.allow_overwrite }}
+        run: |
+          extra=""
+          if [ "$ALLOW_OVERWRITE" = "true" ]; then extra="--allow-overwrite"; fi
+          python backtest/run_diag_rules.py stage1 \
+            --repo . --ref HEAD \
+            --v2-repo _ext/v2 --v2-ref HEAD \
+            --flows-repo _ext/flows --flows-ref HEAD \
+            --calendar-end "$CALENDAR_END" $extra
+          cat backtest/diag_rules_price_source.json
+
+      - name: Upload price data
+        uses: actions/upload-artifact@v4
+        with:
+          name: diag-backtest-stage1-prices
+          path: |
+            backtest/cache/stage1/price_adj.json
+            backtest/cache/stage1/dividend_result.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Commit decision
+        uses: ./.github/actions/commit-data
+        with:
+          paths: backtest/diag_rules_price_source.json
+          message: "data: diag backtest stage1 price source"
+
+      - name: Notify failure
+        if: failure() || cancelled()
+        uses: ./.github/actions/notify-failure
+        with:
+          pipeline: postmkt-diag-backtest-stage1

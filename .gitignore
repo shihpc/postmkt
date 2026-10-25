@@ -5,3 +5,5 @@ __pycache__/
 .DS_Store
 # 增量快取改走 actions/cache（見 diag.yml），不進版本控制（2026-07-24）
 data/diag/cache.json
+# 持股診斷回測下載快取（docs/diag-backtest-spec.md §7.1；不進版本控制）
+backtest/cache/
