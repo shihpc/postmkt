@@ -357,7 +357,7 @@ def decide(adj: dict, divr: dict | None) -> str:
 FM_BASE = "https://api.finmindtrade.com/api/v4/data"
 PREFLIGHT_DATASET, PREFLIGHT_ID = "TaiwanStockPrice", "2330"   # 認證預檢：本站管線天天在用、方案必含的 dataset
 
-# 錯誤分類（2026-10-25 驗收必修 1；規格 §3.4〔r5〕，主對話裁量、待使用者確認）：只有 API **明確**表示「無權限／該 dataset 不可用」才算「取不到」，
+# 錯誤分類（2026-10-25 驗收必修 1；規格 §3.4〔r5〕，使用者 2026-10-25 裁定）：只有 API **明確**表示「無權限／該 dataset 不可用」才算「取不到」，
 # 其餘（認證失敗、網路、5xx、無法辨識的回應、個別代號重試後仍失敗）一律讓 job 失敗、不寫決定檔——
 # 決定檔 commit 後不可改，誤判成「取不到」會把「未還原」永久寫進去。
 # FinMind 錯誤訊息的確切字樣**未實查**（本沙箱無 token）；以下樣式刻意保守：認證樣式先判
