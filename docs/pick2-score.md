@@ -115,7 +115,11 @@
   用來算這些股的報酬與回撤；`pool_ret` 只看 `rows`、不看 `extra`。
 - `data/pick2/track.json`（後端每日）：`{"schema":1,"date","generated_at","rule":{"min_score":80,"min_items":9},"spec":"pick2-score-v1",
   "tracking":[{"code","name","src":"auto"|"manual","since","entry_close","entry_score","last_close","last_score","ret","pool_ret","mdd","days"}],
-  "new_today":[{"code","name","src","score"}],"deleted":["<code>",...]}`。
+  "new_today":[{"code","name","src","score"}],"deleted":["<code>",...],
+  "inputs":{"diag_date","diag_generated_at","screen_generated_at","screen_stale":true|false|null}}`。
+  - `inputs`（2026-10-25 加）：`screen_stale`＝`screen.generated_at` 早於 `diag.generated_at`（`diag.yml` 先建 diag 再建 screen，
+    screen 較早＝本次 screen 步驟沒寫檔，目標價空間／分析師評等沿用舊版）；任一時刻不可解析＝`null`。**只標示、不改分數與選入**。
+    `screen.date` 是 screen 的建置日（`taipei_today()`），**不是**行情資料日，故不與 `diag.date` 比（深夜那班兩者本來就差一天）。
   - `entry_*`＝`since` 那天快照的收盤／分數，`last_*`＝本 date；`ret＝last_close/entry_close−1`；`pool_ret`＝候選池台股等權平均報酬
     （`since` 與 `date` 兩日快照 `rows` 皆有 `c` 者）；`mdd`＝`since` 以來各快照收盤相對前高的最大跌幅（**≤ 0**，例 −0.25）；
     `days`＝`since` **之後**的快照數（列入當天為 0）。百分比一律存小數、`js_round` 到 6 位；算不出為 `null`。
@@ -130,8 +134,10 @@
 - **Pages 延遲期間重新整理，按鈕會回彈**：寫入成功後同源 `data/pick2/user.json` 要等 Pages 重新部署才更新；期間重新整理只剩記憶體以外的狀態，
   「待生效」標示消失、「加入追蹤／停止追蹤」鈕重新出現。再按一次只會在 log 追加一筆同動作的重複紀錄，因同代號以最後一筆為準，**無害**。
 - **某日建置失敗會少一個 daily 快照**：`days`（以快照計）少算一天、`mdd` 少看那天收盤；之後的建置不會回補缺的那天。
-- **diag 與 screen 的資料日未互檢**：screen 步驟失敗時 `screen.json` 停在舊日，分數的目標價空間／評等兩項用的是舊資料，建置不擋也不標示
-  （同前端畫面的行為，前端頁頂各資料源自帶資料日）。
+- **screen 未更新時只標示、不擋**（2026-10-25 起標示；原為「建置不擋也不標示」）：screen 步驟失敗時 `screen.json` 停在舊版，
+  分數的目標價空間／評等兩項用的是舊資料。建置照常（不擋、不改分數），`track.json` 記 `inputs.screen_stale=true`、log 出
+  `::warning::`，追蹤名單區塊顯示一行說明；無法判斷（`null`）也顯示。2026-10-16～24 共 12 版實查：screen `px` 與 diag `c`
+  93 檔全數相同、`screen_stale` 皆為 false，**目前尚無實際觸發樣本**。舊版 `track.json` 無 `inputs`＝不顯示。
 
 ### 7.4 事後驗證
 - 追蹤紀錄可完全由 git 歷史重建（`data/pick2/daily/*.json`＋`track.json`＋`user.json`）。對照組＝同期候選池台股等權（`pool_ret`）。

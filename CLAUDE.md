@@ -218,13 +218,13 @@
     **追蹤名單（2026-10-19 使用者裁定：無回測依據、先上線；畫面標「AI 研判，未經回測，非保證」、列入事後驗證；規格與介面契約正本
     `docs/pick2-score.md` §7）**：自動選入＝台股多空總分 ≥80 且有值項 ≥9（不含易經）、**無自動移出**；被刪除的股不再自動選回，
     手動加入可解除（`since`＝加入後第一次建置日）。後端 `src/build_pick2.py`（`diag.yml` 的 screen 之後、`continue-on-error`，
-    commit 帶 `data/pick2/`）寫 `data/pick2/daily/<date>.json`＋`data/pick2/track.json`；`pk2Score` 的 Python 移植與 JS **逐位相同**
+    commit 帶 `data/pick2/`）寫 `data/pick2/daily/<date>.json`＋`data/pick2/track.json`（2026-10-25 起另帶 `inputs.screen_stale`：screen 本次未更新只標示、不改分數，見 docs §7.2）；`pk2Score` 的 Python 移植與 JS **逐位相同**
     （`tests/test_pick2_build.py` 以 node 抽 `pick2-pure`＋`pk2Rows()` 對跑；四捨五入 `js_round`，**不可用 Python `round()`**）。
     前端（grep `// ---- 追蹤名單`／`function pk2TrackHtml`／`async function pk2UserWrite`）切到本 tab 才讀 `data/pick2/track.json`／
     `user.json`；「加入追蹤／停止追蹤」（2026-10-23 由「刪除」改名）以記憶體 `CRED.gh`（`ghToken()`）對 Contents API 追加寫 `data/pick2/user.json`（帶 sha、409 重試、
     壞檔拒寫），**新寫的函式，三站同步碼 `ghSaveAnalysis` 未動**；PAT 只進 header。**本站因此有一個外部消費者**：taiwan-flow-live-v2 Worker
     讀 raw main `data/pick2/track.json` 推 LINE——`track.json`／`user.json`／`daily/*.json` 欄位改名或改語意＝跨站變更。
-    測試 `tests/test_pick2.mjs`（39 項；pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest／taiwan-stock-iching checkout 另驗真實 universe 117 檔、latest.csv 與易經 latest.json）＋`tests/test_pick2_build.py`（14 項）。
+    測試 `tests/test_pick2.mjs`（40 項；pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest／taiwan-stock-iching checkout 另驗真實 universe 117 檔、latest.csv 與易經 latest.json）＋`tests/test_pick2_build.py`（20 項）。
     本機驗證同籌碼雷達（http.server 起在上一層，`../taiwan-backtest/` 才可達）。
   - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
     `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／

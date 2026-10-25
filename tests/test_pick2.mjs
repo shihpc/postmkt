@@ -31,7 +31,7 @@ new vm.Script(b64Src.join("\n") + "\n" + pure + `
 Object.assign(this, { PK2_TW_RE, PK2_US_RE, PK2_DISCLAIMER, pk2NormCode, pk2Key, pk2Num, pk2Bool, pk2ParseCsv, pk2CsvDates,
   pk2Universe, pk2EmptyPrefs, pk2ParsePrefs, pk2Apply, pk2Add, pk2Remove, pk2Rating,
   PK2_SCORE_SPEC, PK2_SCORE_NOTE, PK2_ICH_NOTE, pk2BuyRatio, pk2Score, pk2ScoreTip, pk2ScoreCmp, pk2IchParse,
-  PK2_TRACK_NOTE, PK2_USER_API, pk2UserParse, pk2TrackParse, pk2Pending, pk2TrackView, pk2TrackStatus, pk2UserWrite, b64DecodeUtf8 });`).runInContext(sb);
+  PK2_TRACK_NOTE, PK2_USER_API, pk2UserParse, pk2TrackParse, pk2Pending, pk2TrackView, pk2TrackStatus, pk2UserWrite, pk2InputsNote, b64DecodeUtf8 });`).runInContext(sb);
 const S = sb;
 const R = x => JSON.parse(JSON.stringify(x));   // vm 另一個 realm 的物件：deepEqual 前先轉回本 realm
 
@@ -358,6 +358,23 @@ ok("pk2UserParse：schema 1＋log 陣列；壞筆略過、代號正規化；形�
     { act: "del", code: "<img>" }, { act: "del", code: "00981a" }, null] })),
     { schema: 1, log: [{ act: "add", code: "2330", at: "t" }, { act: "del", code: "00981A", at: "" }] });
   for (const bad of [null, [], {}, { schema: 2, log: [] }, { schema: true, log: [] }, { schema: 1, log: {} }, "x"]) assert.equal(S.pk2UserParse(bad), null);
+});
+
+ok("track.inputs：screen 新鮮度清洗＋說明文字（新鮮／無 inputs 不出聲；舊版或無法判斷才出說明）", () => {
+  const P = x => S.pk2TrackParse({ schema: 1, date: "2026-10-22", tracking: [], ...x });
+  const f = s => "F(" + s + ")";
+  assert.equal(P({}).inputs, null);
+  assert.equal(S.pk2InputsNote(P({}), f), "");
+  assert.equal(S.pk2InputsNote(P({ inputs: { screen_stale: false, screen_generated_at: "x" } }), f), "");
+  const st = S.pk2InputsNote(P({ inputs: { screen_stale: true, screen_generated_at: "2026-10-23T02:50:58+08:00" } }), f);
+  assert.ok(st.includes("F(2026-10-23T02:50:58+08:00)") && st.includes("目標價空間") && st.includes("分析師評等") && st.includes("2026-10-22"));
+  for (const v of [null, "true", 1, undefined]){
+    const t = P({ inputs: { screen_stale: v } });
+    assert.equal(t.inputs.screen_stale, null);
+    assert.ok(S.pk2InputsNote(t, f).startsWith("無法判斷"));
+  }
+  assert.equal(P({ inputs: [1] }).inputs, null);
+  assert.equal(P({ inputs: { screen_stale: true, screen_generated_at: 5 } }).inputs.screen_generated_at, "");
 });
 
 ok("pk2TrackParse：數值非有限數→null、代號白名單、new_today／deleted 清洗", () => {

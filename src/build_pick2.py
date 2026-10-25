@@ -271,6 +271,27 @@ def metrics(code: str, since: str, date: str, snaps: dict[str, dict]) -> dict:
             "ret": r6(ret), "pool_ret": r6(pr), "mdd": r6(mdd), "days": max(len(dates) - 1, 0)}
 
 
+def iso_dt(v):
+    if not isinstance(v, str):
+        return None
+    try:
+        t = dt.datetime.fromisoformat(v)
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=TAIPEI)
+
+
+def screen_inputs(diag: dict, screen: dict) -> dict:
+    """screen.json 是否為本次建置所更新：diag.yml 先建 diag 再建 screen，screen.generated_at 早於 diag.generated_at
+    ＝本次 screen 步驟沒寫檔（失敗或中止），目標價空間／分析師評等兩項沿用舊版。任一時刻不可解析＝null（無法判斷）。
+    screen.date 是 screen 的建置日（taipei_today），不是行情資料日，故不拿它與 diag.date 比。"""
+    dg, sg = diag.get("generated_at"), screen.get("generated_at")
+    a, b = iso_dt(dg), iso_dt(sg)
+    return {"diag_date": diag.get("date"), "diag_generated_at": dg if isinstance(dg, str) else None,
+            "screen_generated_at": sg if isinstance(sg, str) else None,
+            "screen_stale": (b < a) if (a and b) else None}
+
+
 def build(date: str, uni: list[tuple[str, str]], diag: dict, screen: dict, user: dict[str, str],
           prev: dict | None, snaps: dict[str, dict], generated_at: str) -> tuple[dict, dict]:
     """回 (daily 快照, track)。snaps＝既有 daily 快照（不含本 date 亦可；本 date 會被覆寫）。"""
@@ -323,7 +344,8 @@ def build(date: str, uni: list[tuple[str, str]], diag: dict, screen: dict, user:
     new_today = [{"code": t["code"], "name": t["name"], "src": t["src"], "score": t["last_score"]}
                  for t in tracking if t["since"] == date]
     tr = {"schema": 1, "date": date, "generated_at": generated_at, "rule": {"min_score": MIN_SCORE, "min_items": MIN_ITEMS},
-          "spec": SPEC, "tracking": tracking, "new_today": new_today, "deleted": deleted}
+          "spec": SPEC, "tracking": tracking, "new_today": new_today, "deleted": deleted,
+          "inputs": screen_inputs(diag, screen)}
     return daily, tr
 
 
@@ -389,6 +411,12 @@ def main(argv=None) -> int:
     snaps = load_snaps(ddir)
     gen = dt.datetime.now(TAIPEI).isoformat(timespec="seconds")
     daily, tr = build(date, uni, diag, screen, user, prev if isinstance(prev, dict) else None, snaps, gen)
+    st = tr["inputs"]["screen_stale"]
+    if st is True:
+        print(f"::warning::screen.json（產出 {tr['inputs']['screen_generated_at']}）早於本次 diag，"
+              "目標價空間／分析師評等沿用舊版；track.json inputs.screen_stale=true")
+    elif st is None:
+        print("::warning::diag／screen 的 generated_at 無法解析，無法判斷 screen.json 是否為本次更新；inputs.screen_stale=null")
     write_json(ddir / f"{date}.json", daily)
     write_json(tp, tr)
     print(f"pick2 {date}: 候選池台股 {len(daily['rows'])} 檔、追蹤 {len(tr['tracking'])} 檔、"
