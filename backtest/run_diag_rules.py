@@ -18,8 +18,10 @@ Stage 2（任何報酬計算）刻意**不在本檔**：規格要求它必須等
   --v2-repo     taiwan-flow-live-v2（classify.json 歷史、twse_holidays.json）
   --flows-repo  taiwan-flows（data/meta.json 的 calendar、data/daily/*.json）
 
-FinMind token 只從環境變數 FINMIND_TOKEN 讀；FinMind 只能以 query 帶 token，所以所有
-log／例外訊息一律先過 mask_secret()（作法同 taiwan-flows src/finmind.py）。
+FinMind token 只從環境變數 FINMIND_TOKEN 讀，以 `Authorization: Bearer` header 送出（不進 URL）；
+所有 log／例外訊息／決定檔字串仍一律先過 mask_secret()（作法同 taiwan-flows src/finmind.py）。
+錯誤分類：只有 API 明確回應「無權限／dataset 不可用」才算決策樹的「取不到」；認證失敗、
+網路、5xx、個別代號重試後仍失敗一律讓 job 失敗、不寫決定檔（見 classify_api_error）。
 """
 from __future__ import annotations
 
@@ -351,18 +353,46 @@ def decide(adj: dict, divr: dict | None) -> str:
 
 # ---------------------------------------------------------------- FinMind（Stage 1 專用）
 FM_BASE = "https://api.finmindtrade.com/api/v4/data"
+PREFLIGHT_DATASET, PREFLIGHT_ID = "TaiwanStockPrice", "2330"   # 認證預檢：本站管線天天在用、方案必含的 dataset
+
+# 錯誤分類（2026-10-25 驗收必修 1）：只有 API **明確**表示「無權限／該 dataset 不可用」才算「取不到」，
+# 其餘（認證失敗、網路、5xx、無法辨識的回應、個別代號重試後仍失敗）一律讓 job 失敗、不寫決定檔——
+# 決定檔 commit 後不可改，誤判成「取不到」會把「未還原」永久寫進去。
+# FinMind 錯誤訊息的確切字樣**未實查**（本沙箱無 token）；以下樣式刻意保守：認證樣式先判
+# （命中＝job 失敗，安全方向），無權限樣式只認明確字眼，其餘一律歸「暫時／未知」。
+_AUTH_RE = re.compile(r"token|unauthori[sz]ed|login|log in|登入|認證|驗證失敗", re.I)
+# 刻意**不**認「dataset 名稱錯誤」類訊息：那更可能是我方程式寫錯，誤判成「取不到」會永久寫死「未還原」
+_UNAVAIL_RE = re.compile(r"your level|user level|sponsor|backer|permission|權限|升級|upgrade", re.I)
 
 
 class FetchError(RuntimeError):
-    pass
+    """暫時性或無法辨識的失敗：重試後仍失敗 → job 失敗、不寫決定檔。"""
+
+
+class AuthError(FetchError):
+    """認證失敗（HTTP 401／403 或訊息指向 token）：不重試、job 失敗。"""
+
+
+class DatasetUnavailable(FetchError):
+    """API 明確回應無權限或該 dataset 不可用＝決策樹的「取不到」。"""
+
+
+def classify_api_error(http_status: int | None, msg: str) -> type[FetchError]:
+    if http_status in (401, 403) or _AUTH_RE.search(msg or ""):
+        return AuthError
+    if _UNAVAIL_RE.search(msg or ""):
+        return DatasetUnavailable
+    return FetchError
 
 
 class FinMind:
-    """最小 FinMind client：token 只走 query（FinMind 慣例），訊息一律 mask_secret。"""
+    """最小 FinMind client。token 走 `Authorization: Bearer` header（FinMind 官方 SDK
+    FinMind/FinMind `FinMind/data/finmind_api.py` 即此寫法，commit 68a1452 實查），不進 URL；
+    訊息仍一律 mask_secret（第二道）。"""
 
     def __init__(self, token: str, session=None, retries: int = 3, rate_wait: float = 65, sleep=time.sleep):
         if not token:
-            raise FetchError("找不到環境變數 FINMIND_TOKEN")
+            raise AuthError("找不到環境變數 FINMIND_TOKEN")
         self.token = token
         if session is None:
             import requests
@@ -370,34 +400,65 @@ class FinMind:
         self.session, self.retries, self.rate_wait, self.sleep = session, retries, rate_wait, sleep
 
     def get(self, dataset: str, data_id: str, start: str, end: str) -> list[dict]:
-        q = {"dataset": dataset, "data_id": data_id, "start_date": start, "end_date": end, "token": self.token}
+        q = {"dataset": dataset, "data_id": data_id, "start_date": start, "end_date": end}
+        hdr = {"Authorization": f"Bearer {self.token}"}
         last = None
         for attempt in range(1, self.retries + 1):
             try:
-                r = self.session.get(FM_BASE, params=q, timeout=60)
-                code = getattr(r, "status_code", 200)
-                if code in (402, 429):
-                    raise FetchError(f"rate limited (HTTP {code})")
-                if code != 200:
-                    raise FetchError(f"HTTP {code}")
-                j = r.json()
-                if j.get("status") not in (200, None):
-                    raise FetchError(f"status {j.get('status')}: {j.get('msg')}")
-                return j.get("data") or []
-            except Exception as e:  # noqa: BLE001 — 統一重試；訊息遮罩後才保存
-                last = mask_secret(e, self.token)
+                r = self.session.get(FM_BASE, params=q, headers=hdr, timeout=60)
+            except Exception as e:  # noqa: BLE001 — 連線層錯誤＝暫時性，重試
+                last = mask_secret(f"{type(e).__name__}: {e}", self.token)
                 if attempt < self.retries:
-                    self.sleep(self.rate_wait if "rate limited" in last else 3)
-        raise FetchError(f"{dataset} {data_id}: {last}")
+                    self.sleep(3)
+                continue
+            code = getattr(r, "status_code", 200)
+            try:
+                j = r.json()
+            except Exception:  # noqa: BLE001
+                j = None
+            msg = mask_secret((j or {}).get("msg") or (j or {}).get("detail") or "", self.token) \
+                if isinstance(j, dict) else ""
+            status = j.get("status") if isinstance(j, dict) else None
+            if code in (402, 429) or status in (402, 429):
+                last = f"rate limited (HTTP {code} status {status}) {msg}".strip()
+                if attempt < self.retries:
+                    self.sleep(self.rate_wait)
+                continue
+            if code >= 500 or j is None or not isinstance(j, dict):
+                last = f"HTTP {code}（回應非 JSON 或伺服器錯誤）"
+                if attempt < self.retries:
+                    self.sleep(3)
+                continue
+            if code == 200 and status in (200, None) and isinstance(j.get("data", []), list):
+                return j.get("data") or []
+            kind = classify_api_error(code, msg)
+            err = f"{dataset} {data_id}: HTTP {code} status {status}: {msg}"
+            if kind is not FetchError:
+                raise kind(err)       # 認證／明確無權限：重試無意義
+            last = err
+            if attempt < self.retries:
+                self.sleep(3)
+        raise FetchError(f"{dataset} {data_id}: 重試 {self.retries} 次仍失敗：{last}")
+
+    def preflight(self, date: str) -> None:
+        """認證預檢：以方案必含的 dataset 打一次；任何失敗或回空都讓 job 失敗。"""
+        rows = self.get(PREFLIGHT_DATASET, PREFLIGHT_ID, date, date)
+        if not rows:
+            raise FetchError(f"認證預檢 {PREFLIGHT_DATASET} {PREFLIGHT_ID} {date} 回空，無法確認 token 與連線正常")
 
 
-def fetch_all(fm: FinMind, dataset: str, ranges: dict[str, tuple[str, str]], cache_dir: Path | None,
-              probe: int = 3) -> tuple[dict[str, list[dict]], dict]:
-    """逐代號查詢。前 probe 個代號全部失敗＝視為「取不到」（方案不含或端點異常），不再逐檔空轉。
-    回傳 ({code: rows}（只含成功者）, info)。"""
+def fetch_all(fm: FinMind, dataset: str, ranges: dict[str, tuple[str, str]], cache_dir: Path | None
+              ) -> tuple[dict[str, list[dict]], dict]:
+    """逐代號查詢，回傳 ({code: rows}, info)。
+
+    - 第一個實際送出的請求回 DatasetUnavailable → 「取不到」（obtained=False），結束。
+    - 已有代號成功後才出現 DatasetUnavailable → 前後矛盾，raise（job 失敗）。
+    - AuthError／FetchError（含個別代號重試後仍失敗）→ 直接往外拋（job 失敗、不寫決定檔）。
+      重跑時已成功的代號由 cache_dir 接續（同一個 runner 內有效）。
+    """
     out: dict[str, list[dict]] = {}
-    fails: dict[str, str] = {}
     codes = sorted(ranges)
+    sent = 0
     for n, c in enumerate(codes, 1):
         lo, hi = ranges[c]
         cf = cache_dir / f"{c}_{lo}_{hi}.json" if cache_dir else None
@@ -406,23 +467,21 @@ def fetch_all(fm: FinMind, dataset: str, ranges: dict[str, tuple[str, str]], cac
             continue
         try:
             rows = fm.get(dataset, c, lo, hi)
-        except FetchError as e:
-            fails[c] = mask_secret(e, fm.token)
-            if n == probe and not out:
-                return out, {"obtained": False, "reason": f"前 {probe} 檔查詢皆失敗：{fails[codes[0]]}",
-                             "failed_codes": len(fails), "queried": n}
-            continue
+        except DatasetUnavailable as e:
+            if sent == 0 and not out:
+                return {}, {"obtained": False, "reason": f"API 明確回應不可用：{mask_secret(e, fm.token)}",
+                            "queried": 1}
+            raise FetchError(f"{dataset}：已有 {len(out)} 檔成功後才回「不可用」，前後矛盾：{e}") from None
+        sent += 1
         out[c] = rows
         if cf:
             cf.parent.mkdir(parents=True, exist_ok=True)
             cf.write_text(json.dumps(rows, ensure_ascii=False))
         if n % 100 == 0:
-            log(f"  {dataset}: {n}/{len(codes)}（失敗 {len(fails)}）")
-    info = {"obtained": bool(out), "failed_codes": len(fails), "queried": len(codes)}
-    if fails:
-        info["failed_sample"] = dict(list(fails.items())[:5])
-    if not out:
-        info["reason"] = "所有代號查詢皆失敗"
+            log(f"  {dataset}: {n}/{len(codes)}")
+    info = {"obtained": True, "queried": len(codes), "codes_nonempty": sum(1 for v in out.values() if v)}
+    if out and not info["codes_nonempty"]:
+        info["note"] = "全部代號皆回空清單"
     return out, info
 
 
@@ -791,6 +850,85 @@ def cmd_versions(args) -> int:
     return 0 if not [x for x in diffs if "不在附錄 A" not in x] else 1
 
 
+# 結構預留（等使用者裁定，2026-10-25）：
+#  (a) 還原價原始資料的保存方式：目前只有 "artifact"（寫到 backtest/cache/stage1/，由 workflow 上傳成
+#      90 天 artifact）。若裁定「壓縮後 commit 進 repo」，在 persist_raw() 加一個模式即可，決定檔格式不變。
+#  (b) 是否同批抓全市場等權基準（約 1,817 檔）與興櫃代號的還原價（不計入覆蓋率）：目前只有 "none"。
+#      extra_ranges() 回傳額外代號的查詢區間；有值時用「採用的那個來源」另抓、另存，不進 need／覆蓋率。
+PERSIST_MODES = ("artifact",)
+EXTRA_UNIVERSE_MODES = ("none",)
+
+
+def persist_raw(name: str, obj, mode: str = "artifact") -> dict:
+    if mode == "artifact":
+        return _dump(CACHE / "stage1" / f"{name}.json", obj)
+    raise NotImplementedError(f"保存方式 {mode} 尚待使用者裁定")
+
+
+def extra_ranges(src, mode: str, need_ranges: dict[str, tuple[str, str]]) -> dict[str, tuple[str, str]]:
+    if mode == "none":
+        return {}
+    raise NotImplementedError(f"額外代號範圍 {mode} 尚待使用者裁定")
+
+
+def demand_hash(need: set[tuple[str, str]]) -> str:
+    """需求端點集合 hash：sha256("<code>,<YYYY-MM-DD>\\n"… 依排序)。Stage 2 可據此核對同一集合。"""
+    h = hashlib.sha256()
+    for c, d in sorted(need):
+        h.update(f"{c},{d}\n".encode())
+    return h.hexdigest()
+
+
+def _fields(rows_by_code: dict) -> list[str]:
+    return sorted({k for rows in rows_by_code.values() for r in rows[:1] for k in r})
+
+
+def stage1_core(fm: FinMind, need: set[tuple[str, str]], unadj_close: set[tuple[str, str]],
+                preflight_date: str, stage_dir: Path | None, persist: str = "artifact",
+                extra: dict | None = None) -> dict:
+    """§3.4 決策樹本體。任何 FetchError（含 AuthError）往外拋＝不產生決定。
+    兩個來源不論採用與否，只要有抓到就保存原始資料備查。"""
+    ranges = code_ranges(need)
+    log(f"認證預檢 {PREFLIGHT_DATASET} {PREFLIGHT_ID} {preflight_date} …")
+    fm.preflight(preflight_date)
+    files = {}
+    log("試 TaiwanStockPriceAdj …")
+    adj_rows, adj_info = fetch_all(fm, "TaiwanStockPriceAdj", ranges, stage_dir and stage_dir / "TaiwanStockPriceAdj")
+    cov, tot = coverage_priceadj(need, adj_rows)
+    adj = dict(adj_info, covered=cov, total=tot, coverage=round(cov / tot, 6) if tot else 0.0)
+    if adj_rows:
+        adj["fields"] = _fields(adj_rows)
+        files["TaiwanStockPriceAdj"] = persist_raw("price_adj", adj_rows, persist)
+    log(f"  PriceAdj：取得={adj['obtained']} 覆蓋 {cov}/{tot}")
+    divr = None
+    decision = decide(adj, None)
+    if decision != "TaiwanStockPriceAdj":
+        log("試 TaiwanStockDividendResult 自行還原 …")
+        div_rows, div_info = fetch_all(fm, "TaiwanStockDividendResult", ranges,
+                                       stage_dir and stage_dir / "TaiwanStockDividendResult")
+        if div_info["obtained"] and not div_info["codes_nonempty"]:
+            # 期間涵蓋除權息旺季，全部回空與「無權限但回空」無法區分；不得當成 100% 可還原
+            raise FetchError("TaiwanStockDividendResult 全部代號回空清單，無法與無權限區分，拒絕下決定")
+        cov2, tot2 = coverage_dividend(need, div_rows, unadj_close)
+        divr = dict(div_info, covered=cov2, total=tot2, coverage=round(cov2 / tot2, 6) if tot2 else 0.0)
+        divr["codes_unadjustable"] = sum(1 for c, (lo, hi) in ranges.items()
+                                         if c in div_rows and not dividend_code_adjustable(div_rows[c], lo, hi))
+        if div_rows:
+            divr["fields"] = _fields(div_rows)
+            files["TaiwanStockDividendResult"] = persist_raw("dividend_result", div_rows, persist)
+        log(f"  DividendResult：取得={divr['obtained']} 覆蓋 {cov2}/{tot2}")
+        decision = decide(adj, divr)
+    if extra:
+        ds = {"TaiwanStockPriceAdj": "TaiwanStockPriceAdj",
+              "TaiwanStockDividendResult": "TaiwanStockDividendResult"}.get(decision)
+        if ds:
+            rows, _ = fetch_all(fm, ds, extra, stage_dir and stage_dir / f"extra_{ds}")
+            files["extra"] = persist_raw(f"extra_{ds}", rows, persist)
+    for k, v in files.items():
+        v["adopted"] = (k == decision)
+    return {"adj": adj, "divr": divr, "decision": decision, "files": files}
+
+
 def cmd_stage1(args) -> int:
     if args.dry_run:
         return stage1_dry(args)
@@ -809,34 +947,13 @@ def cmd_stage1(args) -> int:
     log(f"需求端點 {len(need)}、代號 {len(ranges)}、日曆 {src.calendar[0]}～{src.calendar[-1]}")
     unadj = load_unadjusted(src, {d for _, d in need}, set(ranges))
     unadj_close = {(c, d) for c, d in need if has_close(unadj, c, d)}
-    fm = FinMind(token)
-    stage_dir = CACHE / "stage1"
-    out_files = {}
-    log("試 TaiwanStockPriceAdj …")
-    adj_rows, adj_info = fetch_all(fm, "TaiwanStockPriceAdj", ranges, stage_dir / "TaiwanStockPriceAdj")
-    cov, tot = coverage_priceadj(need, adj_rows)
-    adj = dict(adj_info, covered=cov, total=tot, coverage=round(cov / tot, 6) if tot else 0.0)
-    if adj_rows:
-        adj["fields"] = sorted({k for rows in adj_rows.values() for r in rows[:1] for k in r})
-    log(f"  PriceAdj：取得={adj['obtained']} 覆蓋 {cov}/{tot}")
-    divr = None
-    decision = decide(adj, None)
-    if decision != "TaiwanStockPriceAdj":
-        log("試 TaiwanStockDividendResult 自行還原 …")
-        div_rows, div_info = fetch_all(fm, "TaiwanStockDividendResult", ranges, stage_dir / "TaiwanStockDividendResult")
-        cov2, tot2 = coverage_dividend(need, div_rows, unadj_close)
-        divr = dict(div_info, covered=cov2, total=tot2, coverage=round(cov2 / tot2, 6) if tot2 else 0.0)
-        divr["codes_with_records"] = sum(1 for v in div_rows.values() if v)
-        divr["codes_unadjustable"] = sum(1 for c, (lo, hi) in ranges.items()
-                                         if c in div_rows and not dividend_code_adjustable(div_rows[c], lo, hi))
-        if div_rows:
-            divr["fields"] = sorted({k for rows in div_rows.values() for r in rows[:1] for k in r})
-        log(f"  DividendResult：取得={divr['obtained']} 覆蓋 {cov2}/{tot2}")
-        decision = decide(adj, divr)
-        if decision == "TaiwanStockDividendResult":
-            out_files["prices"] = _dump(stage_dir / "dividend_result.json", div_rows)
-    else:
-        out_files["prices"] = _dump(stage_dir / "price_adj.json", adj_rows)
+    try:
+        core = stage1_core(FinMind(token), need, unadj_close, src.calendar[-1], CACHE / "stage1",
+                           args.persist, extra_ranges(src, args.extra_universe, ranges))
+    except FetchError as e:
+        log(f"::error::{type(e).__name__}: {e}（未寫決定檔）")
+        return 1
+    decision = core["decision"]
     doc = {
         "schema": 1, "spec": SPEC, "stage": 1,
         "generated_at": dt.datetime.now(TAIPEI).isoformat(timespec="seconds"),
@@ -846,14 +963,14 @@ def cmd_stage1(args) -> int:
         "calendar_end": src.calendar_end, "calendar_span": [src.calendar[0], src.calendar[-1]],
         "sample": {"filtered_obs": sum(len(v) for v in codes_by_day.values()), "excluded": excl},
         "demand": {"endpoints": len(need), "codes": len(ranges), "with_unadjusted_close": len(unadj_close),
-                   "horizons": [H_MAIN, H_AUX], "t0_offsets": list(T0_OFFSETS)},
+                   "sha256": demand_hash(need), "horizons": [H_MAIN, H_AUX], "t0_offsets": list(T0_OFFSETS)},
         "coverage_min": COVERAGE_MIN,
-        "TaiwanStockPriceAdj": adj,
-        "TaiwanStockDividendResult": divr if divr is not None else {"attempted": False,
-                                                                     "reason": "PriceAdj 已達門檻，依決策樹結束"},
+        "TaiwanStockPriceAdj": core["adj"],
+        "TaiwanStockDividendResult": core["divr"] if core["divr"] is not None else {
+            "attempted": False, "reason": "PriceAdj 已達門檻，依決策樹結束"},
         "decision": decision,
         "report_first_line": "未還原除權息" if decision == "unadjusted_close" else None,
-        "price_data": out_files or None,
+        "price_data": {"persist": args.persist, "extra_universe": args.extra_universe, "files": core["files"]},
     }
     write_decision(doc, token)
     log(f"決定：{decision}；寫入 {PRICE_SOURCE_PATH}")
@@ -877,6 +994,7 @@ def stage1_dry(args) -> int:
     unadj = load_unadjusted(src, {d for _, d in need}, set(ranges))
     have = sum(1 for c, d in need if has_close(unadj, c, d))
     log(json.dumps({"filtered_obs": sum(len(v) for v in codes_by_day.values()), "excluded": excl,
+                    "demand_sha256": demand_hash(need),
                     "calendar_span": [src.calendar[0], src.calendar[-1]], "endpoints": len(need),
                     "codes": len(ranges), "with_unadjusted_close": have}, ensure_ascii=False))
     return 0
@@ -912,6 +1030,8 @@ def main(argv=None) -> int:
         if name == "stage1":
             p.add_argument("--allow-overwrite", action="store_true")
             p.add_argument("--dry-run", action="store_true", help="免 token：只算需求端點，不打 FinMind、不寫檔")
+            p.add_argument("--persist", choices=PERSIST_MODES, default="artifact")
+            p.add_argument("--extra-universe", choices=EXTRA_UNIVERSE_MODES, default="none")
     args = ap.parse_args(argv)
     try:
         return {"versions": cmd_versions, "counts": cmd_counts, "stage1": cmd_stage1}[args.cmd](args)

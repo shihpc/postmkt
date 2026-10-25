@@ -7,6 +7,7 @@ on:
     paths:
       - "**.py"
       - "tests/**"
+      - "backtest/**"
       - "requirements.txt"
       - ".github/workflows/test.yml"
       # tests/test_summary_call.py 與 tests/test_summary_model_field.py 會讀 index.html
@@ -16,6 +17,7 @@ on:
     paths:
       - "**.py"
       - "tests/**"
+      - "backtest/**"
       - "requirements.txt"
       - ".github/workflows/test.yml"
       # tests/test_summary_call.py 與 tests/test_summary_model_field.py 會讀 index.html

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -175,10 +174,12 @@ def test_write_decision_masks_values_and_stays_valid_json(tmp_path):
 
 
 class _Resp:
-    def __init__(self, code=200, body=None):
-        self.status_code, self._b = code, body or {"status": 200, "data": []}
+    def __init__(self, code=200, body=None, bad_json=False):
+        self.status_code, self._b, self._bad = code, ({"status": 200, "data": []} if body is None else body), bad_json
 
     def json(self):
+        if self._bad:
+            raise ValueError("not json")
         return self._b
 
 
@@ -186,62 +187,226 @@ class _Sess:
     def __init__(self, script):
         self.script, self.calls = list(script), []
 
-    def get(self, url, params=None, timeout=None):
-        self.calls.append(params)
+    def get(self, url, params=None, headers=None, timeout=None):
+        self.calls.append({"url": url, "params": params, "headers": headers})
         x = self.script.pop(0) if self.script else _Resp()
         if isinstance(x, Exception):
             raise x
         return x
 
 
-def test_finmind_errors_are_masked(capsys):
+def _fm(script, **kw):
+    sess = _Sess(script)
+    return R.FinMind(FAKE_TOKEN, session=sess, sleep=lambda s: None, **kw), sess
+
+
+def _ok(rows):
+    return _Resp(200, {"status": 200, "data": rows})
+
+
+def test_token_goes_in_bearer_header_not_url():
+    fm, sess = _fm([_ok([{"date": "2026-07-17"}])])
+    fm.get("TaiwanStockPriceAdj", "2330", "2026-07-17", "2026-10-22")
+    c = sess.calls[0]
+    assert c["headers"] == {"Authorization": f"Bearer {FAKE_TOKEN}"}
+    assert "token" not in c["params"] and FAKE_TOKEN not in json.dumps(c["params"]) + c["url"]
+    assert c["params"]["data_id"] == "2330"
+
+
+def test_network_errors_retry_then_fetcherror_masked(capsys):
     boom = ConnectionError(f"HTTPSConnectionPool: Max retries exceeded with url: /api/v4/data?token={FAKE_TOKEN}")
-    fm = R.FinMind(FAKE_TOKEN, session=_Sess([boom, boom, boom]), sleep=lambda s: None)
+    fm, sess = _fm([boom, boom, boom])
     with pytest.raises(R.FetchError) as ei:
-        fm.get("TaiwanStockPriceAdj", "2330", "2026-07-17", "2026-10-22")
+        fm.get("TaiwanStockPriceAdj", "2330", "a", "b")
+    assert type(ei.value) is R.FetchError and len(sess.calls) == 3
     assert FAKE_TOKEN not in str(ei.value) and "token=***" in str(ei.value)
-    # 非 200 JSON status 也是失敗；token 只在 query 參數裡
-    sess = _Sess([_Resp(200, {"status": 400, "msg": "Your level is register"})] * 3)
-    fm2 = R.FinMind(FAKE_TOKEN, session=sess, sleep=lambda s: None)
-    with pytest.raises(R.FetchError, match="level"):
-        fm2.get("TaiwanStockPriceAdj", "2330", "2026-07-17", "2026-10-22")
-    assert sess.calls[0]["token"] == FAKE_TOKEN and sess.calls[0]["data_id"] == "2330"
     assert FAKE_TOKEN not in capsys.readouterr().out
 
 
-def test_finmind_rate_limit_waits_then_succeeds():
+@pytest.mark.parametrize("resp", [_Resp(500, {"msg": "Internal"}), _Resp(502, bad_json=True), _Resp(200, bad_json=True),
+                                  _Resp(400, {"status": 400, "msg": "something odd happened"}),
+                                  _Resp(400, {"status": 400, "msg": "parameter dataset error"})])   # 疑似我方寫錯，不得當取不到
+def test_server_or_unrecognized_errors_are_transient_not_unavailable(resp):
+    fm, sess = _fm([resp] * 3)
+    with pytest.raises(R.FetchError) as ei:
+        fm.get("X", "2330", "a", "b")
+    assert type(ei.value) is R.FetchError and len(sess.calls) == 3
+
+
+@pytest.mark.parametrize("resp", [_Resp(401, {"msg": "x"}), _Resp(403, {"msg": "x"}),
+                                  _Resp(400, {"status": 400, "msg": "Token is invalid"}),
+                                  _Resp(200, {"status": 401, "msg": "please login"})])
+def test_auth_errors_no_retry(resp):
+    fm, sess = _fm([resp] * 3)
+    with pytest.raises(R.AuthError):
+        fm.get("X", "2330", "a", "b")
+    assert len(sess.calls) == 1
+
+
+@pytest.mark.parametrize("msg", ["Your level is register. Please update your user level.",
+                                 "permission denied for this dataset", "需升級 sponsor 才能使用"])
+def test_explicit_unavailable(msg):
+    fm, sess = _fm([_Resp(400, {"status": 400, "msg": msg})] * 3)
+    with pytest.raises(R.DatasetUnavailable):
+        fm.get("X", "2330", "a", "b")
+    assert len(sess.calls) == 1
+
+
+def test_rate_limit_waits_then_succeeds():
     waits = []
-    sess = _Sess([_Resp(402), _Resp(200, {"status": 200, "data": [{"date": "2026-07-17", "close": 1}]})])
+    sess = _Sess([_Resp(402), _Resp(200, {"status": 402, "msg": "limit"}), _ok([{"date": "d", "close": 1}])])
     fm = R.FinMind(FAKE_TOKEN, session=sess, sleep=waits.append, rate_wait=65)
-    assert fm.get("D", "1101", "a", "b") == [{"date": "2026-07-17", "close": 1}]
-    assert waits == [65]
+    assert fm.get("D", "1101", "a", "b") == [{"date": "d", "close": 1}]
+    assert waits == [65, 65]
 
 
-def test_finmind_requires_token():
-    with pytest.raises(R.FetchError):
+def test_requires_token():
+    with pytest.raises(R.AuthError):
         R.FinMind("")
 
 
-def test_fetch_all_probe_marks_unobtainable_and_masks(capsys):
-    boom = ConnectionError(f"bad url ?token={FAKE_TOKEN}")
-    fm = R.FinMind(FAKE_TOKEN, session=_Sess([boom] * 20), retries=1, sleep=lambda s: None)
-    ranges = {c: ("2026-07-17", "2026-07-31") for c in ("1101", "1102", "1103", "1104", "1105")}
-    rows, info = R.fetch_all(fm, "TaiwanStockPriceAdj", ranges, None, probe=3)
-    assert rows == {} and info["obtained"] is False and info["queried"] == 3
-    assert FAKE_TOKEN not in json.dumps(info) and FAKE_TOKEN not in capsys.readouterr().out
+def test_preflight_fails_on_empty_or_error():
+    fm, _ = _fm([_ok([])])
+    with pytest.raises(R.FetchError, match="回空"):
+        fm.preflight("2026-10-22")
+    fm, _ = _fm([_Resp(401, {"msg": "bad"})])
+    with pytest.raises(R.AuthError):
+        fm.preflight("2026-10-22")
+    fm, sess = _fm([_ok([{"date": "2026-10-22", "close": 1}])])
+    fm.preflight("2026-10-22")
+    assert sess.calls[0]["params"]["dataset"] == "TaiwanStockPrice"
 
 
-def test_fetch_all_partial_success_and_cache(tmp_path):
-    sess = _Sess([_Resp(200, {"status": 200, "data": []}), ConnectionError("x"),
-                  _Resp(200, {"status": 200, "data": [{"date": "2026-07-17"}]})])
-    fm = R.FinMind(FAKE_TOKEN, session=sess, retries=1, sleep=lambda s: None)
-    ranges = {"1101": ("a", "b"), "1102": ("a", "b"), "1103": ("a", "b")}
-    rows, info = R.fetch_all(fm, "X", ranges, tmp_path, probe=3)
-    assert set(rows) == {"1101", "1103"} and info["obtained"] and info["failed_codes"] == 1
-    # 快取命中不再打 API
-    fm2 = R.FinMind(FAKE_TOKEN, session=_Sess([ConnectionError("no")] * 5), retries=1, sleep=lambda s: None)
-    rows2, _ = R.fetch_all(fm2, "X", {"1101": ("a", "b"), "1103": ("a", "b")}, tmp_path)
-    assert rows2 == {"1101": [], "1103": [{"date": "2026-07-17"}]}
+RANGES = {c: ("2026-07-17", "2026-07-31") for c in ("1101", "1102", "1103")}
+
+
+def test_fetch_all_unavailable_on_first_request_is_unobtainable():
+    fm, sess = _fm([_Resp(400, {"status": 400, "msg": "Your level is Free"})])
+    rows, info = R.fetch_all(fm, "TaiwanStockPriceAdj", RANGES, None)
+    assert rows == {} and info["obtained"] is False and len(sess.calls) == 1
+    assert FAKE_TOKEN not in json.dumps(info)
+
+
+def test_fetch_all_unavailable_after_success_is_contradiction():
+    fm, _ = _fm([_ok([]), _Resp(400, {"status": 400, "msg": "Your level is Free"})])
+    with pytest.raises(R.FetchError, match="矛盾"):
+        R.fetch_all(fm, "X", RANGES, None)
+
+
+def test_fetch_all_single_code_failure_propagates():
+    """個別代號重試後仍失敗＝job 失敗，不靜默計入覆蓋率分母。"""
+    fm, _ = _fm([_ok([]), ConnectionError("x"), ConnectionError("x"), ConnectionError("x")])
+    with pytest.raises(R.FetchError):
+        R.fetch_all(fm, "X", RANGES, None)
+
+
+def test_fetch_all_auth_failure_propagates():
+    fm, _ = _fm([_Resp(401, {"msg": "x"})])
+    with pytest.raises(R.AuthError):
+        R.fetch_all(fm, "X", RANGES, None)
+
+
+def test_fetch_all_success_and_cache_resume(tmp_path):
+    fm, _ = _fm([_ok([]), _ok([{"date": "2026-07-17"}]), _ok([])])
+    rows, info = R.fetch_all(fm, "X", RANGES, tmp_path)
+    assert set(rows) == set(RANGES) and info["obtained"] and info["codes_nonempty"] == 1
+    fm2, sess2 = _fm([ConnectionError("no")] * 5)
+    rows2, _ = R.fetch_all(fm2, "X", RANGES, tmp_path)
+    assert rows2 == rows and sess2.calls == []
+
+
+NEED3 = {(c, d) for c in RANGES for d in ("2026-07-17", "2026-07-31")}
+
+
+def _route(table):
+    """依 dataset 回應的假 session：table[dataset] 為 callable(params)->_Resp 或 Exception。"""
+    class S(_Sess):
+        def get(self, url, params=None, headers=None, timeout=None):
+            self.calls.append({"params": params})
+            x = table[params["dataset"]](params)
+            if isinstance(x, Exception):
+                raise x
+            return x
+    return S([])
+
+
+def _pre(p):
+    return _ok([{"date": p["start_date"], "close": 1}])
+
+
+def test_core_priceadj_adopted_and_raw_saved(tmp_path, monkeypatch):
+    monkeypatch.setattr(R, "CACHE", tmp_path)
+    s = _route({"TaiwanStockPrice": _pre,
+                "TaiwanStockPriceAdj": lambda p: _ok([{"date": d, "close": 10} for d in ("2026-07-17", "2026-07-31")])})
+    core = R.stage1_core(R.FinMind(FAKE_TOKEN, session=s, sleep=lambda x: None), NEED3, NEED3, "2026-10-22", None)
+    assert core["decision"] == "TaiwanStockPriceAdj" and core["divr"] is None
+    assert core["files"]["TaiwanStockPriceAdj"]["adopted"] is True
+    assert (tmp_path / "stage1" / "price_adj.json").exists()
+
+
+def test_core_falls_to_dividend_and_saves_both(tmp_path, monkeypatch):
+    monkeypatch.setattr(R, "CACHE", tmp_path)
+    s = _route({"TaiwanStockPrice": _pre,
+                "TaiwanStockPriceAdj": lambda p: _ok([{"date": "2026-07-17", "close": 10}]),   # 50% 覆蓋
+                "TaiwanStockDividendResult": lambda p: _ok(
+                    [{"date": "2026-07-20", "reference_price": 9.5, "before_price": 10}] if p["data_id"] == "1101" else [])})
+    core = R.stage1_core(R.FinMind(FAKE_TOKEN, session=s, sleep=lambda x: None), NEED3, NEED3, "2026-10-22", None)
+    assert core["decision"] == "TaiwanStockDividendResult"
+    assert core["files"]["TaiwanStockPriceAdj"]["adopted"] is False
+    assert core["files"]["TaiwanStockDividendResult"]["adopted"] is True
+    assert (tmp_path / "stage1" / "price_adj.json").exists() and (tmp_path / "stage1" / "dividend_result.json").exists()
+
+
+def test_core_both_unavailable_is_unadjusted():
+    s = _route({"TaiwanStockPrice": _pre, "TaiwanStockPriceAdj": lambda p: _Resp(400, {"status": 400, "msg": "Your level is Free"}),
+                "TaiwanStockDividendResult": lambda p: _Resp(400, {"status": 400, "msg": "Your level is Free"})})
+    core = R.stage1_core(R.FinMind(FAKE_TOKEN, session=s, sleep=lambda x: None), NEED3, NEED3, "2026-10-22", None)
+    assert core["decision"] == "unadjusted_close" and core["files"] == {}
+
+
+@pytest.mark.parametrize("table", [
+    {"TaiwanStockPrice": lambda p: _Resp(401, {"msg": "x"})},                                   # 預檢認證失敗
+    {"TaiwanStockPrice": lambda p: ConnectionError("down")},                                     # 預檢網路失敗
+    {"TaiwanStockPrice": _pre, "TaiwanStockPriceAdj": lambda p: _Resp(503, {"msg": "busy"})},   # 5xx
+    {"TaiwanStockPrice": _pre, "TaiwanStockPriceAdj": lambda p: _ok([]),
+     "TaiwanStockDividendResult": lambda p: _ok([])},                                            # 股利表全空：無法區分
+])
+def test_core_failures_raise(table):
+    s = _route(table)
+    with pytest.raises(R.FetchError):
+        R.stage1_core(R.FinMind(FAKE_TOKEN, session=s, sleep=lambda x: None), NEED3, NEED3, "2026-10-22", None)
+
+
+def test_cmd_stage1_writes_nothing_on_fetch_failure(tmp_path, monkeypatch):
+    out = tmp_path / "ps.json"
+    monkeypatch.setattr(R, "PRICE_SOURCE_PATH", out)
+    monkeypatch.setenv("FINMIND_TOKEN", FAKE_TOKEN)
+
+    class Src:
+        calendar = ["2026-07-17", "2026-07-31"]
+        calendar_end = "2026-07-31"
+    monkeypatch.setattr(R, "make_sources", lambda a: Src())
+    monkeypatch.setattr(R, "sample_codes", lambda s: ({"2026-07-17": ["1101"]}, {}))
+    monkeypatch.setattr(R, "load_unadjusted", lambda s, d, c: {})
+
+    def core(*a, **k):
+        raise R.FetchError(f"down token={FAKE_TOKEN}")
+    monkeypatch.setattr(R, "stage1_core", core)
+    assert R.main(["stage1", "--v2-repo", "x", "--flows-repo", "y"]) == 1
+    assert not out.exists()
+
+
+def test_demand_hash_order_independent():
+    a = {("1101", "2026-07-17"), ("2330", "2026-07-31")}
+    assert R.demand_hash(a) == R.demand_hash(set(sorted(a, reverse=True))) and len(R.demand_hash(a)) == 64
+    assert R.demand_hash(a) != R.demand_hash(a | {("2330", "2026-08-03")})
+
+
+def test_reserved_modes_not_yet_decided():
+    assert R.PERSIST_MODES == ("artifact",) and R.EXTRA_UNIVERSE_MODES == ("none",)
+    assert R.extra_ranges(None, "none", {"1101": ("a", "b")}) == {}
+    with pytest.raises(NotImplementedError):
+        R.persist_raw("x", {}, "commit")
 
 
 def test_stage1_refuses_without_token_or_when_decision_exists(tmp_path, monkeypatch, capsys):
@@ -358,7 +523,20 @@ def test_compare_counts_reports_differences():
 
 
 def test_no_stage2_and_no_return_computation_in_module():
-    """本階段不得有 Stage 2／報酬計算（規格 §3.4：Stage 2 等決定檔 commit 後才開工）。"""
+    """本階段不得有 Stage 2／報酬計算（規格 §3.4：Stage 2 等決定檔 commit 後才開工）。
+
+    只掃程式碼（去掉註解與字串常量難以精確，改掃「計算用的識別字與呼叫」）：
+    bootstrap／Holm／Spearman／百分位／亂數／numpy／報酬比值等一律不得出現。"""
+    import re as _re
     src = (ROOT / "backtest" / "run_diag_rules.py").read_text(encoding="utf-8")
+    mjs = (ROOT / "backtest" / "diag_rules_eval.mjs").read_text(encoding="utf-8")
     assert "def cmd_stage2" not in src and '"stage2"' not in src
-    assert not os.path.exists(ROOT / "backtest" / "report_diag_rules.md")
+    banned = [r"\bimport numpy\b", r"\bnumpy\.", r"\bnp\.", r"default_rng", r"\brandom\.", r"percentile",
+              r"def \w*(bootstrap|holm|spearman|excess|forward_return|returns?)\w*\(",
+              r"\bstatistics\.", r"\bmean\(", r"\bmedian\(",
+              r"close\W*\]?\s*/", r"/\s*\w*close", r"\bR_i\b", r"\bs_D\b"]
+    for pat in banned:
+        assert not _re.search(pat, src, _re.I), f"run_diag_rules.py 不應出現 {pat}"
+        assert not _re.search(pat, mjs, _re.I), f"diag_rules_eval.mjs 不應出現 {pat}"
+    assert not (ROOT / "backtest" / "report_diag_rules.md").exists()
+    assert not any(p.name.startswith("stage2") for p in (ROOT / "backtest").iterdir())

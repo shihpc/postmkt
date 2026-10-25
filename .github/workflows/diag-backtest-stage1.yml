@@ -5,7 +5,8 @@ name: diag backtest stage1
 #   TaiwanStockPriceAdj（覆蓋率 ≥99.0% 即採用）→ TaiwanStockDividendResult 自行還原 → 皆未達才退未還原 close，
 # 把決定寫進 backtest/diag_rules_price_source.json 並 commit 留痕；還原價原始資料另存成 workflow artifact
 # （backtest/cache/ 不進 git，決定檔內記 sha256 供 Stage 2 核對）。
-# 只能手動觸發、刻意不加 cron（§7.3 不進任何排程）。token 只經環境變數傳入 backtest/run_diag_rules.py，
+# **只在 main 上 dispatch**（Run workflow 時分支選 main；其他分支第一步就失敗）。
+# 只能手動觸發、刻意不加 cron（§7.3 不進任何排程）。token 只經環境變數傳入 backtest/run_diag_rules.py（以 Authorization header 送出），
 # 該腳本所有 log／例外訊息都先過 mask_secret()；GitHub 對 secrets 的 log 遮罩是第二道。
 on:
   workflow_dispatch:
@@ -33,6 +34,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
+      - name: 只允許 main
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::本 workflow 只在 main 上 dispatch（目前 $GITHUB_REF）"; exit 1
+          fi
+
       # diag.json 的 git 歷史就是回放來源（附錄 A 版本），需完整歷史；blob 依需求才抓
       - uses: actions/checkout@v7
         with:
@@ -78,12 +85,12 @@ jobs:
           cat backtest/diag_rules_price_source.json
 
       - name: Upload price data
-        uses: actions/upload-artifact@v4
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
           name: diag-backtest-stage1-prices
-          path: |
-            backtest/cache/stage1/price_adj.json
-            backtest/cache/stage1/dividend_result.json
+          # 兩個來源不論採用與否都保存（決定檔 price_data.files 記各檔 sha256 與 adopted）
+          path: backtest/cache/stage1/*.json
           if-no-files-found: ignore
           retention-days: 90
 
