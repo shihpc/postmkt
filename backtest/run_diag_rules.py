@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""持股診斷燈號回測（規格正本：docs/diag-backtest-spec.md r4 定稿）。
+"""持股診斷燈號回測（規格正本：docs/diag-backtest-spec.md r5 定稿）。
 
 本檔只實作規格 §3.4 Stage 1 之前與 Stage 1 本身，以及不需要報酬值的部分：
 
@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import gzip
 import hashlib
 import json
 import os
@@ -40,10 +41,11 @@ ROOT = Path(__file__).resolve().parent.parent
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "cache"
 PRICE_SOURCE_PATH = HERE / "diag_rules_price_source.json"
+DATA_DIR = HERE / "data"          # 還原價原始資料（gzip，commit 進 repo；2026-10-25 使用者裁定 (a)）
 EVAL_MJS = HERE / "diag_rules_eval.mjs"
 DIAG_PATH = "data/diag/diag.json"
 TAIPEI = dt.timezone(dt.timedelta(hours=8))
-SPEC = "docs/diag-backtest-spec.md r4"
+SPEC = "docs/diag-backtest-spec.md r5"
 
 # ---------------------------------------------------------------- 寫死的規格常數
 H_MAIN, H_AUX = 10, 3            # §3.1 期距（交易日）
@@ -495,6 +497,7 @@ class Sources:
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", calendar_end or ""):
             raise ValueError(f"--calendar-end 格式須為 YYYY-MM-DD：{calendar_end!r}")
         meta = self.fl.json(flows_ref, "data/meta.json")
+        self.meta_stocks = meta.get("stocks") or {}
         self.calendar_full = list(meta["calendar"])
         self.calendar = [d for d in self.calendar_full if d <= calendar_end]
         self.calendar_end = calendar_end
@@ -533,19 +536,40 @@ def iter_versions(src: Sources):
         yield d, sha, j, cls
 
 
-def sample_codes(src: Sources) -> tuple[dict[str, list[str]], dict]:
+def sample_codes(src: Sources, extra: dict | None = None) -> tuple[dict[str, list[str]], dict]:
+    """回 (主樣本代號 by 資料日, 排除計數)。extra 給 dict 時另收集：
+    extra["emerging"][D]＝該日 diag 宇宙中的興櫃代號（§2.6 另列子樣本）、
+    extra["cls"][D]＝該日對應的 classify map（全市場基準 §3.3 第 3 條用）。"""
     codes_by_day, excl = {}, {"raw": 0, "non4": 0, "etf0": 0, "emerging": 0, "not_in_classify": 0}
     for d, _sha, j, cls in iter_versions(src):
-        keep = []
+        keep, emg = [], []
         for c in j.get("stocks") or {}:
             excl["raw"] += 1
             why = filter_reason(c, cls)
             if why:
                 excl[why] += 1
+                if why == "emerging":
+                    emg.append(c)
             else:
                 keep.append(c)
         codes_by_day[d] = keep
+        if extra is not None:
+            extra.setdefault("emerging", {})[d] = emg
+            extra.setdefault("cls", {})[d] = cls
     return codes_by_day, excl
+
+
+def benchmark_codes(daily_codes, meta_stocks: dict, cls_map: dict) -> list[str]:
+    """§3.3 全市場等權基準成分（價格端點條件留給計算時）：當日 taiwan-flows daily 中，
+    代號符合 §2.6 第 1 點、`meta.stocks[code].is_etf == false`、classify t ∈ {twse, tpex}。"""
+    out = []
+    for c in daily_codes:
+        if filter_reason(c, cls_map) is not None:
+            continue
+        if (meta_stocks.get(c) or {}).get("is_etf") is not False:
+            continue
+        out.append(c)
+    return out
 
 
 def load_unadjusted(src: Sources, dates: set[str], codes: set[str]) -> dict[str, dict[str, tuple]]:
@@ -855,20 +879,71 @@ def cmd_versions(args) -> int:
 #      90 天 artifact）。若裁定「壓縮後 commit 進 repo」，在 persist_raw() 加一個模式即可，決定檔格式不變。
 #  (b) 是否同批抓全市場等權基準（約 1,817 檔）與興櫃代號的還原價（不計入覆蓋率）：目前只有 "none"。
 #      extra_ranges() 回傳額外代號的查詢區間；有值時用「採用的那個來源」另抓、另存，不進 need／覆蓋率。
-PERSIST_MODES = ("artifact",)
-EXTRA_UNIVERSE_MODES = ("none",)
+# 2026-10-25 使用者裁定：(a) 預設 "commit"＝gzip 後寫 backtest/data/ 並由 workflow commit（artifact 另保留）；
+# (b) 預設 "benchmark_emerging"＝同批抓全市場等權基準（§3.3）與興櫃代號（§2.6 子樣本）的還原價，
+#     用採用的那個來源、另存，**不計入需求集合與覆蓋率**。
+PERSIST_MODES = ("commit", "artifact")
+EXTRA_UNIVERSE_MODES = ("benchmark_emerging", "none")
 
 
-def persist_raw(name: str, obj, mode: str = "artifact") -> dict:
+def persist_raw(name: str, obj, mode: str = "commit") -> dict:
     if mode == "artifact":
         return _dump(CACHE / "stage1" / f"{name}.json", obj)
-    raise NotImplementedError(f"保存方式 {mode} 尚待使用者裁定")
+    if mode == "commit":
+        return _dump_gz(DATA_DIR / f"diag_rules_{name}.json.gz", obj)
+    raise ValueError(f"未知保存方式 {mode}")
 
 
-def extra_ranges(src, mode: str, need_ranges: dict[str, tuple[str, str]]) -> dict[str, tuple[str, str]]:
+def _dump_gz(p: Path, obj) -> dict:
+    """可重現的 gzip（mtime=0、排序鍵）：同內容 → 同位元組 → 同 sha256。"""
+    raw = json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    gz = gzip.compress(raw, compresslevel=9, mtime=0)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(gz)
+    try:
+        name = str(p.relative_to(ROOT))
+    except ValueError:
+        name = str(p)
+    return {"file": name, "sha256": hashlib.sha256(gz).hexdigest(), "bytes": len(gz),
+            "raw_sha256": hashlib.sha256(raw).hexdigest(), "raw_bytes": len(raw)}
+
+
+def extra_endpoints(bench_by_day: dict[str, list[str]], emerging_by_day: dict[str, list[str]],
+                    calendar: list[str]) -> set[tuple[str, str]]:
+    """額外代號的端點：與主樣本同一組期距與進場點（T+10／T+3 × t0=D／D+1）。"""
+    days = set(bench_by_day) | set(emerging_by_day)
+    merged = {d: sorted(set(bench_by_day.get(d, [])) | set(emerging_by_day.get(d, []))) for d in days}
+    return demand_endpoints(merged, calendar)
+
+
+def extra_ranges(extra_need: set[tuple[str, str]], need: set[tuple[str, str]]) -> dict[str, tuple[str, str]]:
+    """只抓主需求集合沒涵蓋的端點；區間＝這些端點各代號的 [首日, 末日]。"""
+    return code_ranges(extra_need - need)
+
+
+def collect_extra(src, mode: str, extra_info: dict, need: set[tuple[str, str]]) -> tuple[dict, dict]:
+    """回 (extra ranges, 摘要)。"""
     if mode == "none":
-        return {}
-    raise NotImplementedError(f"額外代號範圍 {mode} 尚待使用者裁定")
+        return {}, {"mode": "none"}
+    if mode != "benchmark_emerging":
+        raise ValueError(f"未知額外代號範圍 {mode}")
+    bench = {}
+    for d in extra_info.get("cls", {}):
+        try:
+            j = src.fl.json(src.fl_ref, f"data/daily/{d.replace('-', '')}.json")
+        except RuntimeError:
+            bench[d] = []
+            continue
+        ic = j["cols"].index("code")
+        bench[d] = benchmark_codes((r[ic] for r in j["rows"]), src.meta_stocks, extra_info["cls"][d])
+    emg = extra_info.get("emerging", {})
+    xneed = extra_endpoints(bench, emg, src.calendar)
+    rng = extra_ranges(xneed, need)
+    summ = {"mode": mode, "benchmark_codes": len({c for v in bench.values() for c in v}),
+            "benchmark_codes_per_day_max": max((len(v) for v in bench.values()), default=0),
+            "emerging_codes": len({c for v in emg.values() for c in v}),
+            "extra_endpoints": len(xneed - need), "extra_codes": len(rng)}
+    return rng, summ
 
 
 def demand_hash(need: set[tuple[str, str]]) -> str:
@@ -884,7 +959,7 @@ def _fields(rows_by_code: dict) -> list[str]:
 
 
 def stage1_core(fm: FinMind, need: set[tuple[str, str]], unadj_close: set[tuple[str, str]],
-                preflight_date: str, stage_dir: Path | None, persist: str = "artifact",
+                preflight_date: str, stage_dir: Path | None, persist: str = "commit",
                 extra: dict | None = None) -> dict:
     """§3.4 決策樹本體。任何 FetchError（含 AuthError）往外拋＝不產生決定。
     兩個來源不論採用與否，只要有抓到就保存原始資料備查。"""
@@ -922,10 +997,13 @@ def stage1_core(fm: FinMind, need: set[tuple[str, str]], unadj_close: set[tuple[
         ds = {"TaiwanStockPriceAdj": "TaiwanStockPriceAdj",
               "TaiwanStockDividendResult": "TaiwanStockDividendResult"}.get(decision)
         if ds:
+            log(f"另抓額外代號 {len(extra)} 檔（{ds}，不計入覆蓋率）…")
             rows, _ = fetch_all(fm, ds, extra, stage_dir and stage_dir / f"extra_{ds}")
-            files["extra"] = persist_raw(f"extra_{ds}", rows, persist)
+            files["extra"] = persist_raw("extra_price_adj" if ds == "TaiwanStockPriceAdj" else "extra_dividend_result",
+                                         rows, persist)
+            files["extra"].update(dataset=ds, codes=len(rows))
     for k, v in files.items():
-        v["adopted"] = (k == decision)
+        v["adopted"] = (k == decision) or (k == "extra")
     return {"adj": adj, "divr": divr, "decision": decision, "files": files}
 
 
@@ -941,15 +1019,18 @@ def cmd_stage1(args) -> int:
         log("::error::找不到環境變數 FINMIND_TOKEN")
         return 2
     src = make_sources(args)
-    codes_by_day, excl = sample_codes(src)
+    xinfo: dict = {}
+    codes_by_day, excl = sample_codes(src, xinfo)
     need = demand_endpoints(codes_by_day, src.calendar)
     ranges = code_ranges(need)
     log(f"需求端點 {len(need)}、代號 {len(ranges)}、日曆 {src.calendar[0]}～{src.calendar[-1]}")
     unadj = load_unadjusted(src, {d for _, d in need}, set(ranges))
     unadj_close = {(c, d) for c, d in need if has_close(unadj, c, d)}
+    xranges, xsumm = collect_extra(src, args.extra_universe, xinfo, need)
+    log(f"額外代號（不計入覆蓋率）：{xsumm}")
     try:
         core = stage1_core(FinMind(token), need, unadj_close, src.calendar[-1], CACHE / "stage1",
-                           args.persist, extra_ranges(src, args.extra_universe, ranges))
+                           args.persist, xranges)
     except FetchError as e:
         log(f"::error::{type(e).__name__}: {e}（未寫決定檔）")
         return 1
@@ -970,7 +1051,7 @@ def cmd_stage1(args) -> int:
             "attempted": False, "reason": "PriceAdj 已達門檻，依決策樹結束"},
         "decision": decision,
         "report_first_line": "未還原除權息" if decision == "unadjusted_close" else None,
-        "price_data": {"persist": args.persist, "extra_universe": args.extra_universe, "files": core["files"]},
+        "price_data": {"persist": args.persist, "extra_universe": xsumm, "files": core["files"]},
     }
     write_decision(doc, token)
     log(f"決定：{decision}；寫入 {PRICE_SOURCE_PATH}")
@@ -988,11 +1069,14 @@ def write_decision(doc: dict, token: str | None = None, path: Path | None = None
 def stage1_dry(args) -> int:
     """免 token：只組需求端點並報告數量與未還原 close 存在數，不打 FinMind、不寫決定檔。"""
     src = make_sources(args)
-    codes_by_day, excl = sample_codes(src)
+    xinfo: dict = {}
+    codes_by_day, excl = sample_codes(src, xinfo)
     need = demand_endpoints(codes_by_day, src.calendar)
     ranges = code_ranges(need)
     unadj = load_unadjusted(src, {d for _, d in need}, set(ranges))
     have = sum(1 for c, d in need if has_close(unadj, c, d))
+    xranges, xsumm = collect_extra(src, args.extra_universe, xinfo, need)
+    log("額外代號（不計入覆蓋率）：" + json.dumps(xsumm, ensure_ascii=False))
     log(json.dumps({"filtered_obs": sum(len(v) for v in codes_by_day.values()), "excluded": excl,
                     "demand_sha256": demand_hash(need),
                     "calendar_span": [src.calendar[0], src.calendar[-1]], "endpoints": len(need),
@@ -1030,8 +1114,8 @@ def main(argv=None) -> int:
         if name == "stage1":
             p.add_argument("--allow-overwrite", action="store_true")
             p.add_argument("--dry-run", action="store_true", help="免 token：只算需求端點，不打 FinMind、不寫檔")
-            p.add_argument("--persist", choices=PERSIST_MODES, default="artifact")
-            p.add_argument("--extra-universe", choices=EXTRA_UNIVERSE_MODES, default="none")
+            p.add_argument("--persist", choices=PERSIST_MODES, default="commit")
+            p.add_argument("--extra-universe", choices=EXTRA_UNIVERSE_MODES, default="benchmark_emerging")
     args = ap.parse_args(argv)
     try:
         return {"versions": cmd_versions, "counts": cmd_counts, "stage1": cmd_stage1}[args.cmd](args)

@@ -23,6 +23,14 @@ _spec.loader.exec_module(R)
 FAKE_TOKEN = "fmTOKEN_abcdefghijklmnop0123456789"
 
 
+@pytest.fixture(autouse=True)
+def _no_repo_writes(tmp_path, monkeypatch):
+    """所有測試的寫檔都導到 tmp，不得寫進 repo 的 backtest/data／cache／決定檔。"""
+    monkeypatch.setattr(R, "DATA_DIR", tmp_path / "_data")
+    monkeypatch.setattr(R, "CACHE", tmp_path / "_cache")
+    monkeypatch.setattr(R, "PRICE_SOURCE_PATH", tmp_path / "_ps.json")
+
+
 # ---------------------------------------------------------------- 選版規則 §2.1
 CAL = ["2026-09-23", "2026-09-24", "2026-09-29", "2026-09-30"]
 CLOSED = {"2026-09-25", "2026-09-28", "2026-10-01"}
@@ -335,17 +343,17 @@ def _pre(p):
 
 
 def test_core_priceadj_adopted_and_raw_saved(tmp_path, monkeypatch):
-    monkeypatch.setattr(R, "CACHE", tmp_path)
+    monkeypatch.setattr(R, "DATA_DIR", tmp_path)
     s = _route({"TaiwanStockPrice": _pre,
                 "TaiwanStockPriceAdj": lambda p: _ok([{"date": d, "close": 10} for d in ("2026-07-17", "2026-07-31")])})
     core = R.stage1_core(R.FinMind(FAKE_TOKEN, session=s, sleep=lambda x: None), NEED3, NEED3, "2026-10-22", None)
     assert core["decision"] == "TaiwanStockPriceAdj" and core["divr"] is None
     assert core["files"]["TaiwanStockPriceAdj"]["adopted"] is True
-    assert (tmp_path / "stage1" / "price_adj.json").exists()
+    assert (tmp_path / "diag_rules_price_adj.json.gz").exists()
 
 
 def test_core_falls_to_dividend_and_saves_both(tmp_path, monkeypatch):
-    monkeypatch.setattr(R, "CACHE", tmp_path)
+    monkeypatch.setattr(R, "DATA_DIR", tmp_path)
     s = _route({"TaiwanStockPrice": _pre,
                 "TaiwanStockPriceAdj": lambda p: _ok([{"date": "2026-07-17", "close": 10}]),   # 50% 覆蓋
                 "TaiwanStockDividendResult": lambda p: _ok(
@@ -354,7 +362,8 @@ def test_core_falls_to_dividend_and_saves_both(tmp_path, monkeypatch):
     assert core["decision"] == "TaiwanStockDividendResult"
     assert core["files"]["TaiwanStockPriceAdj"]["adopted"] is False
     assert core["files"]["TaiwanStockDividendResult"]["adopted"] is True
-    assert (tmp_path / "stage1" / "price_adj.json").exists() and (tmp_path / "stage1" / "dividend_result.json").exists()
+    assert (tmp_path / "diag_rules_price_adj.json.gz").exists()
+    assert (tmp_path / "diag_rules_dividend_result.json.gz").exists()
 
 
 def test_core_both_unavailable_is_unadjusted():
@@ -386,7 +395,8 @@ def test_cmd_stage1_writes_nothing_on_fetch_failure(tmp_path, monkeypatch):
         calendar = ["2026-07-17", "2026-07-31"]
         calendar_end = "2026-07-31"
     monkeypatch.setattr(R, "make_sources", lambda a: Src())
-    monkeypatch.setattr(R, "sample_codes", lambda s: ({"2026-07-17": ["1101"]}, {}))
+    monkeypatch.setattr(R, "sample_codes", lambda s, extra=None: ({"2026-07-17": ["1101"]}, {}))
+    monkeypatch.setattr(R, "collect_extra", lambda *a: ({}, {"mode": "none"}))
     monkeypatch.setattr(R, "load_unadjusted", lambda s, d, c: {})
 
     def core(*a, **k):
@@ -402,11 +412,62 @@ def test_demand_hash_order_independent():
     assert R.demand_hash(a) != R.demand_hash(a | {("2330", "2026-08-03")})
 
 
-def test_reserved_modes_not_yet_decided():
-    assert R.PERSIST_MODES == ("artifact",) and R.EXTRA_UNIVERSE_MODES == ("none",)
-    assert R.extra_ranges(None, "none", {"1101": ("a", "b")}) == {}
-    with pytest.raises(NotImplementedError):
-        R.persist_raw("x", {}, "commit")
+def test_persist_commit_gzip_reproducible(tmp_path, monkeypatch):
+    import gzip
+    monkeypatch.setattr(R, "DATA_DIR", tmp_path / "data")
+    obj = {"2330": [{"date": "2026-07-17", "close": 1000}], "1101": []}
+    m1 = R.persist_raw("price_adj", obj, "commit")
+    b1 = (tmp_path / "data" / "diag_rules_price_adj.json.gz").read_bytes()
+    m2 = R.persist_raw("price_adj", dict(reversed(list(obj.items()))), "commit")
+    assert m1["sha256"] == m2["sha256"] and m1["bytes"] == len(b1)
+    assert json.loads(gzip.decompress(b1)) == obj
+    assert R.PERSIST_MODES[0] == "commit" and R.EXTRA_UNIVERSE_MODES[0] == "benchmark_emerging"
+    with pytest.raises(ValueError):
+        R.persist_raw("x", {}, "nope")
+
+
+def test_benchmark_codes_rules():
+    meta = {"2330": {"is_etf": False}, "6488": {"is_etf": False}, "7584": {"is_etf": False},
+            "0050": {"is_etf": True}, "1234": {"is_etf": True}}
+    cls = {"2330": {"t": "twse"}, "6488": {"t": "tpex"}, "7584": {"t": "emerging"}, "1234": {"t": "twse"},
+           "0050": {"t": "twse"}, "9999": {"t": "twse"}}
+    got = R.benchmark_codes(["2330", "6488", "7584", "0050", "1234", "9999", "00631L"], meta, cls)
+    assert got == ["2330", "6488"]      # 9999 無 meta（is_etf 不明）→ 不納入
+
+
+def test_extra_endpoints_and_ranges_exclude_main_need():
+    cal = [f"d{i:02d}" for i in range(15)]
+    need = R.demand_endpoints({"d00": ["A"]}, cal)
+    xneed = R.extra_endpoints({"d00": ["A", "B"]}, {"d01": ["E"]}, cal)
+    rng = R.extra_ranges(xneed, need)
+    assert "A" not in rng and set(rng) == {"B", "E"}
+    assert rng["B"] == ("d00", "d11") and rng["E"] == ("d01", "d12")
+    assert R.collect_extra(None, "none", {}, need) == ({}, {"mode": "none"})
+
+
+def test_core_extra_fetched_with_adopted_source_not_in_coverage(tmp_path, monkeypatch):
+    monkeypatch.setattr(R, "DATA_DIR", tmp_path / "data")
+    seen = []
+
+    def adj(p):
+        seen.append(p["data_id"])
+        return _ok([{"date": d, "close": 10} for d in ("2026-07-17", "2026-07-31")])
+    s = _route({"TaiwanStockPrice": _pre, "TaiwanStockPriceAdj": adj})
+    extra = {"9910": ("2026-07-17", "2026-07-31")}
+    core = R.stage1_core(R.FinMind(FAKE_TOKEN, session=s, sleep=lambda x: None), NEED3, NEED3, "2026-10-22", None,
+                         "commit", extra)
+    assert core["adj"]["total"] == len(NEED3) and core["adj"]["covered"] == len(NEED3)   # 額外代號不進分母
+    assert "9910" in seen and core["files"]["extra"]["dataset"] == "TaiwanStockPriceAdj"
+    assert (tmp_path / "data" / "diag_rules_extra_price_adj.json.gz").exists()
+    assert (tmp_path / "data" / "diag_rules_price_adj.json.gz").exists()
+
+
+def test_core_no_extra_when_unadjusted():
+    unav = lambda p: _Resp(400, {"status": 400, "msg": "Your level is Free"})  # noqa: E731
+    s = _route({"TaiwanStockPrice": _pre, "TaiwanStockPriceAdj": unav, "TaiwanStockDividendResult": unav})
+    core = R.stage1_core(R.FinMind(FAKE_TOKEN, session=s, sleep=lambda x: None), NEED3, NEED3, "2026-10-22", None,
+                         "commit", {"9910": ("a", "b")})
+    assert core["decision"] == "unadjusted_close" and "extra" not in core["files"]
 
 
 def test_stage1_refuses_without_token_or_when_decision_exists(tmp_path, monkeypatch, capsys):

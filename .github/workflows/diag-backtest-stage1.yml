@@ -3,8 +3,9 @@ name: diag backtest stage1
 # 持股診斷燈號回測 Stage 1（規格 docs/diag-backtest-spec.md §3.4，r4 定稿；使用者 2026-10-23 裁定）：
 # 只抓還原價並判定價格口徑，**不算任何報酬**。依決策樹
 #   TaiwanStockPriceAdj（覆蓋率 ≥99.0% 即採用）→ TaiwanStockDividendResult 自行還原 → 皆未達才退未還原 close，
-# 把決定寫進 backtest/diag_rules_price_source.json 並 commit 留痕；還原價原始資料另存成 workflow artifact
-# （backtest/cache/ 不進 git，決定檔內記 sha256 供 Stage 2 核對）。
+# 把決定寫進 backtest/diag_rules_price_source.json 並 commit 留痕；還原價原始資料（兩個來源都存、
+# 另含全市場等權基準與興櫃代號，2026-10-25 使用者裁定）gzip 後寫 backtest/data/ 一併 commit，
+# 決定檔記各檔 sha256 供 Stage 2 核對；同一批檔案另上傳 artifact 備查。
 # **只在 main 上 dispatch**（Run workflow 時分支選 main；其他分支第一步就失敗）。
 # 只能手動觸發、刻意不加 cron（§7.3 不進任何排程）。token 只經環境變數傳入 backtest/run_diag_rules.py（以 Authorization header 送出），
 # 該腳本所有 log／例外訊息都先過 mask_secret()；GitHub 對 secrets 的 log 遮罩是第二道。
@@ -90,15 +91,19 @@ jobs:
         with:
           name: diag-backtest-stage1-prices
           # 兩個來源不論採用與否都保存（決定檔 price_data.files 記各檔 sha256 與 adopted）
-          path: backtest/cache/stage1/*.json
+          path: |
+            backtest/data/*.json.gz
+            backtest/cache/stage1/*.json
           if-no-files-found: ignore
           retention-days: 90
 
       - name: Commit decision
         uses: ./.github/actions/commit-data
         with:
-          paths: backtest/diag_rules_price_source.json
+          paths: backtest/diag_rules_price_source.json backtest/data
           message: "data: diag backtest stage1 price source"
+          # backtest/data 在兩來源皆取不到時可能不存在；add_all 逐路徑容錯
+          add_all: "true"
 
       - name: Notify failure
         if: failure() || cancelled()
