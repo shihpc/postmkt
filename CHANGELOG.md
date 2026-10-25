@@ -14,6 +14,16 @@
 同日盤中版（taiwan-flow-live-v2 輪動雷達側欄）的同型頁籤由「動能領先」改為「領先象限（依位移）」，
 因那邊排序鍵是 30 分淨位移；兩站排序鍵不同，名稱刻意不同。
 
+## 2026-10-25 選股二追蹤名單：標示 screen.json 未更新
+
+`docs/pick2-score.md` §7.3a 原記「diag 與 screen 的資料日未互檢……建置不擋也不標示」。`build_pick2.py` 改在 `track.json` 加
+`inputs`（`diag_date`／`diag_generated_at`／`screen_generated_at`／`screen_stale`）：`screen.generated_at` 早於 `diag.generated_at`
+＝本次 screen 步驟沒寫檔 → `screen_stale=true`、log `::warning::`；時刻不可解析＝`null`。前端追蹤名單區塊在 true／null 時顯示一行說明
+（`pk2InputsNote`）。**只標示、不擋建置、不改分數與選入**（測試以同輸入、只差 screen 時刻斷言 daily 與 track 其餘欄位逐位相同）。
+判定刻意不用 `screen.date`：它是 screen 建置日（`taipei_today()`），深夜那班本來就比 `diag.date` 晚一天，拿來比會天天誤報
+（2026-10-16～24 共 12 版實查：screen `px` 與 diag `c` 93 檔全數相同，`screen_stale` 皆 false）。
+Worker 只讀 `schema`／`date`／`tracking`／`new_today`，新增鍵不影響推播。
+
 ## 2026-10-23 選股二：追蹤表「刪除」鈕改名「停止追蹤」
 
 使用者要求。原本追蹤表每列的「刪除」與下方名單的「刪除勾選」（只存本機）同名，使用者實際按錯過一次。

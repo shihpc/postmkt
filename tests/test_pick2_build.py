@@ -120,7 +120,7 @@ def test_threshold_boundaries(fake_score):
     assert [x["code"] for x in tr["new_today"]] == ["1102", "1104"]
     assert all(t["src"] == "auto" and t["since"] == "2026-10-19" for t in tr["tracking"])
     assert tr["rule"] == {"min_score": 80, "min_items": 9} and tr["spec"] == "pick2-score-v1" and tr["schema"] == 1
-    assert set(tr) == {"schema", "date", "generated_at", "rule", "spec", "tracking", "new_today", "deleted"}
+    assert set(tr) == {"schema", "date", "generated_at", "rule", "spec", "tracking", "new_today", "deleted", "inputs"}
     assert set(tr["tracking"][0]) == {"code", "name", "src", "since", "entry_close", "entry_score", "last_close", "last_score",
                                       "ret", "pool_ret", "mdd", "days"}
     assert set(tr["new_today"][0]) == {"code", "name", "src", "score"}
@@ -204,6 +204,34 @@ def test_main_ok_and_contract(tmp_path):
     assert d["rows"]["2330"] == {"name": "台積電", "c": 1000.0, "score": 100.0, "n": 1}
     t = json.loads((tmp_path / "data/pick2/track.json").read_text(encoding="utf-8"))
     assert [x["code"] for x in t["tracking"]] == ["2330"] and t["tracking"][0]["src"] == "manual"
+
+
+@pytest.mark.parametrize("dg,sg,want", [
+    ("2026-10-24T02:42:58+08:00", "2026-10-24T02:45:40+08:00", False),   # 本次 screen 有更新
+    ("2026-10-24T02:42:58+08:00", "2026-10-23T02:50:58+08:00", True),    # screen 步驟沒寫檔、停在前一晚
+    ("2026-10-23T18:42:58+00:00", "2026-10-24T02:42:58+08:00", False),   # 不同時區同一時刻＝不算舊
+    ("2026-10-24T02:42:58+08:00", None, None),
+    ("壞", "2026-10-24T02:45:40+08:00", None),
+])
+def test_screen_inputs(dg, sg, want):
+    d = {"date": "2026-10-22", "generated_at": dg}
+    s = {"date": "2026-10-24", "generated_at": sg}
+    got = bp.screen_inputs(d, s)
+    assert got["screen_stale"] is want
+    assert got["diag_date"] == "2026-10-22" and got["screen_generated_at"] == (sg if isinstance(sg, str) else None)
+
+
+def test_screen_stale_does_not_change_scores(fake_score):
+    scores = {"1101": (85.0, 12), "1102": (70.0, 12)}
+    fake_score.update(scores)
+    diag, screen, uni = mk(scores)
+    a = bp.build("2026-10-19", uni, {**diag, "generated_at": "2026-10-19T21:00:00+08:00"},
+                 {**screen, "generated_at": "2026-10-19T21:05:00+08:00"}, {}, None, {}, "g")
+    b = bp.build("2026-10-19", uni, {**diag, "generated_at": "2026-10-19T21:00:00+08:00"},
+                 {**screen, "generated_at": "2026-10-18T21:05:00+08:00"}, {}, None, {}, "g")
+    assert a[1]["inputs"]["screen_stale"] is False and b[1]["inputs"]["screen_stale"] is True
+    assert a[0] == b[0]
+    assert {k: v for k, v in a[1].items() if k != "inputs"} == {k: v for k, v in b[1].items() if k != "inputs"}
 
 
 @pytest.mark.parametrize("bad", ["universe", "user"])

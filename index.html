@@ -4693,8 +4693,21 @@ function pk2TrackParse(j){
   const nt = new Set((Array.isArray(j.new_today) ? j.new_today : []).map(x => x && x.code).filter(c => typeof c === "string"));
   const deleted = (Array.isArray(j.deleted) ? j.deleted : []).map(c => pk2NormCode("TW", typeof c === "string" ? c : "")).filter(Boolean);
   const rule = j.rule && typeof j.rule === "object" ? j.rule : {};
+  const inp = j.inputs && typeof j.inputs === "object" && !Array.isArray(j.inputs) ? j.inputs : null;
+  const inputs = inp ? { screen_stale: inp.screen_stale === true ? true : inp.screen_stale === false ? false : null,
+    screen_generated_at: typeof inp.screen_generated_at === "string" ? inp.screen_generated_at : "" } : null;
   return { date: d(j.date), generated_at: typeof j.generated_at === "string" ? j.generated_at : "",
-    rule: { min_score: n(rule.min_score), min_items: n(rule.min_items) }, tracking, newToday: nt, deleted };
+    rule: { min_score: n(rule.min_score), min_items: n(rule.min_items) }, tracking, newToday: nt, deleted, inputs };
+}
+// track.inputs 的 screen 新鮮度說明（後端以 screen.generated_at 早於 diag.generated_at 判定本次 screen 步驟未更新）。
+// 回純文字（呼叫端 esc）；新鮮或舊版 track.json 無 inputs＝""。fmt＝時刻格式化函式（注入，純函式可測）
+function pk2InputsNote(T, fmt){
+  const i = T && T.inputs;
+  if (!i || i.screen_stale === false) return "";
+  if (i.screen_stale === true)
+    return "本次建置的 screen.json 未更新（沿用 " + (i.screen_generated_at ? fmt(i.screen_generated_at) : "—")
+      + " 產出的版本）：多空總分中「目標價空間」「分析師評等」兩項為該版資料，其餘項目為資料日 " + (T.date || "—") + "。";
+  return "無法判斷本次建置的 screen.json 是否已更新（產出時刻無法解析）：「目標價空間」「分析師評等」兩項可能為舊版資料。";
 }
 // 尚未被建置吸收的動作：user.json 中 at 晚於 track.generated_at 的筆（track 讀不到時全部算）＋本機記憶體 pend（剛寫入成功者）。
 // 回 Map code→"add"|"del"（同代號以最後一筆為準；pend 在 user.json 之後）
@@ -4917,6 +4930,8 @@ function pk2TrackHtml(){
     const rl = T.rule || {};
     h += `<div class="pk2-cnt">資料日 ${esc(T.date || "—")}｜建置 ${esc(fmtGenTaipei(T.generated_at))}（台灣）｜自動選入門檻：多空總分 ≥${esc(String(rl.min_score ?? "—"))}、有值項 ≥${esc(String(rl.min_items ?? "—"))}`
       + `｜追蹤 ${T.tracking.length} 檔（本資料日新選入 ${T.newToday.size} 檔）</div>`;
+    const inote = pk2InputsNote(T, fmtGenTaipei);
+    if (inote) h += `<div class="pk2-note">${esc(inote)}</div>`;
   }
   if (PK2.userErr) h += `<div class="pk2-note">使用者動作紀錄（data/pick2/user.json）讀取失敗：待生效狀態可能不完整。</div>`;
   h += ghToken() ? `<div class="pk2-cnt">GitHub PAT 本分頁已載入：可加入／停止追蹤（寫回 repo，下次每日建置生效）。</div>`
