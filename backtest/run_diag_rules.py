@@ -357,14 +357,16 @@ def decide(adj: dict, divr: dict | None) -> str:
 FM_BASE = "https://api.finmindtrade.com/api/v4/data"
 PREFLIGHT_DATASET, PREFLIGHT_ID = "TaiwanStockPrice", "2330"   # 認證預檢：本站管線天天在用、方案必含的 dataset
 
-# 錯誤分類（2026-10-25 驗收必修 1）：只有 API **明確**表示「無權限／該 dataset 不可用」才算「取不到」，
+# 錯誤分類（2026-10-25 驗收必修 1；規格 §3.4〔r5〕，主對話裁量、待使用者確認）：只有 API **明確**表示「無權限／該 dataset 不可用」才算「取不到」，
 # 其餘（認證失敗、網路、5xx、無法辨識的回應、個別代號重試後仍失敗）一律讓 job 失敗、不寫決定檔——
 # 決定檔 commit 後不可改，誤判成「取不到」會把「未還原」永久寫進去。
 # FinMind 錯誤訊息的確切字樣**未實查**（本沙箱無 token）；以下樣式刻意保守：認證樣式先判
 # （命中＝job 失敗，安全方向），無權限樣式只認明確字眼，其餘一律歸「暫時／未知」。
 _AUTH_RE = re.compile(r"token|unauthori[sz]ed|login|log in|登入|認證|驗證失敗", re.I)
-# 刻意**不**認「dataset 名稱錯誤」類訊息：那更可能是我方程式寫錯，誤判成「取不到」會永久寫死「未還原」
-_UNAVAIL_RE = re.compile(r"your level|user level|sponsor|backer|permission|權限|升級|upgrade", re.I)
+# 只認 FinMind 會員等級類字樣（"Your level is …"／"user level"）；sponsor／upgrade／permission 等寬字刻意不認。
+# 也刻意**不**認「dataset 名稱錯誤」類訊息：那更可能是我方程式寫錯，誤判成「取不到」會永久寫死「未還原」。
+# 另在 fetch_all 判「取不到」前會以第二檔代號再確認一次（2026-10-25 r5 驗收）。
+_UNAVAIL_RE = re.compile(r"your level|user level", re.I)
 
 
 class FetchError(RuntimeError):
@@ -392,7 +394,14 @@ class FinMind:
     FinMind/FinMind `FinMind/data/finmind_api.py` 即此寫法，commit 68a1452 實查），不進 URL；
     訊息仍一律 mask_secret（第二道）。"""
 
-    def __init__(self, token: str, session=None, retries: int = 3, rate_wait: float = 65, sleep=time.sleep):
+    # 限流退避（2026-10-25 r5 驗收 ⑤）：同一請求第 1 次限流等 rate_wait（65 秒，涵蓋每分鐘突發）；
+    # 第 2 次起視為每小時額度用完，等到下一個整點＋RATE_HOUR_BUFFER 秒。整個 run 的限流總等待超過
+    # rate_budget（預設 75 分；workflow timeout 180 分）就 raise、job 失敗並在訊息中寫明原因。
+    # FinMind 每小時額度是滾動窗或整點重置，官方未明寫【未知】；等到整點＋緩衝在兩種情況下都不會短於需要的時間太多。
+    RATE_HOUR_BUFFER = 120
+
+    def __init__(self, token: str, session=None, retries: int = 3, rate_wait: float = 65, sleep=time.sleep,
+                 rate_budget: float = 75 * 60, now=time.time):
         if not token:
             raise AuthError("找不到環境變數 FINMIND_TOKEN")
         self.token = token
@@ -400,12 +409,29 @@ class FinMind:
             import requests
             session = requests.Session()
         self.session, self.retries, self.rate_wait, self.sleep = session, retries, rate_wait, sleep
+        self.rate_budget, self.rate_spent, self.now = rate_budget, 0.0, now
+
+    def _rate_backoff(self, n: int, what: str) -> None:
+        if n == 1:
+            wait = self.rate_wait
+        else:
+            t = self.now()
+            wait = 3600 - (t % 3600) + self.RATE_HOUR_BUFFER
+        if self.rate_spent + wait > self.rate_budget:
+            raise FetchError(f"{what}：FinMind 限流，累計等待 {self.rate_spent:.0f} 秒＋本次 {wait:.0f} 秒將超過上限 "
+                             f"{self.rate_budget:.0f} 秒（疑似每小時額度用完），停止並讓 job 失敗")
+        log(f"  ! {what}：FinMind 限流（第 {n} 次），等待 {wait:.0f} 秒"
+            + ("（疑似每小時額度用完，等到下一個整點後）" if n > 1 else ""))
+        self.rate_spent += wait
+        self.sleep(wait)
 
     def get(self, dataset: str, data_id: str, start: str, end: str) -> list[dict]:
         q = {"dataset": dataset, "data_id": data_id, "start_date": start, "end_date": end}
         hdr = {"Authorization": f"Bearer {self.token}"}
         last = None
-        for attempt in range(1, self.retries + 1):
+        attempt, n_rate = 0, 0
+        while attempt < self.retries:
+            attempt += 1
             try:
                 r = self.session.get(FM_BASE, params=q, headers=hdr, timeout=60)
             except Exception as e:  # noqa: BLE001 — 連線層錯誤＝暫時性，重試
@@ -422,9 +448,9 @@ class FinMind:
                 if isinstance(j, dict) else ""
             status = j.get("status") if isinstance(j, dict) else None
             if code in (402, 429) or status in (402, 429):
-                last = f"rate limited (HTTP {code} status {status}) {msg}".strip()
-                if attempt < self.retries:
-                    self.sleep(self.rate_wait)
+                n_rate += 1
+                self._rate_backoff(n_rate, f"{dataset} {data_id}")
+                attempt -= 1          # 限流不消耗一般重試次數；由限流總等待上限收斂
                 continue
             if code >= 500 or j is None or not isinstance(j, dict):
                 last = f"HTTP {code}（回應非 JSON 或伺服器錯誤）"
@@ -449,6 +475,22 @@ class FinMind:
             raise FetchError(f"認證預檢 {PREFLIGHT_DATASET} {PREFLIGHT_ID} {date} 回空，無法確認 token 與連線正常")
 
 
+def _confirm_unavailable(fm: FinMind, dataset: str, ranges: dict, first: str, err: Exception) -> dict:
+    """第一檔回「無權限」後，用第二檔代號再確認一次；兩檔都回同類才判「取不到」。
+    第二檔成功＝矛盾、其他錯誤照拋；只有一檔可查時無法確認＝拋錯（job 失敗）。"""
+    others = [c for c in sorted(ranges) if c != first]
+    if not others:
+        raise FetchError(f"{dataset}：只有 1 檔可查，無法二次確認「不可用」：{err}")
+    c2 = others[0]
+    lo, hi = ranges[c2]
+    try:
+        fm.get(dataset, c2, lo, hi)
+    except DatasetUnavailable as e2:
+        return {"obtained": False, "queried": 2,
+                "reason": f"API 明確回應不可用（{first}、{c2} 兩檔皆同）：{mask_secret(e2, fm.token)}"}
+    raise FetchError(f"{dataset}：{first} 回「不可用」但 {c2} 查詢成功，前後矛盾：{err}")
+
+
 def fetch_all(fm: FinMind, dataset: str, ranges: dict[str, tuple[str, str]], cache_dir: Path | None
               ) -> tuple[dict[str, list[dict]], dict]:
     """逐代號查詢，回傳 ({code: rows}, info)。
@@ -471,8 +513,7 @@ def fetch_all(fm: FinMind, dataset: str, ranges: dict[str, tuple[str, str]], cac
             rows = fm.get(dataset, c, lo, hi)
         except DatasetUnavailable as e:
             if sent == 0 and not out:
-                return {}, {"obtained": False, "reason": f"API 明確回應不可用：{mask_secret(e, fm.token)}",
-                            "queried": 1}
+                return {}, _confirm_unavailable(fm, dataset, ranges, c, e)
             raise FetchError(f"{dataset}：已有 {len(out)} 檔成功後才回「不可用」，前後矛盾：{e}") from None
         sent += 1
         out[c] = rows
@@ -998,7 +1039,10 @@ def stage1_core(fm: FinMind, need: set[tuple[str, str]], unadj_close: set[tuple[
               "TaiwanStockDividendResult": "TaiwanStockDividendResult"}.get(decision)
         if ds:
             log(f"另抓額外代號 {len(extra)} 檔（{ds}，不計入覆蓋率）…")
-            rows, _ = fetch_all(fm, ds, extra, stage_dir and stage_dir / f"extra_{ds}")
+            rows, xi = fetch_all(fm, ds, extra, stage_dir and stage_dir / f"extra_{ds}")
+            if not xi["obtained"]:
+                # 主需求才剛用同一來源抓成功；額外代號回「不可用」是矛盾，不寫空檔、不標 adopted
+                raise FetchError(f"額外代號以 {ds} 抓取時回「不可用」，與主需求矛盾：{xi.get('reason')}")
             files["extra"] = persist_raw("extra_price_adj" if ds == "TaiwanStockPriceAdj" else "extra_dividend_result",
                                          rows, persist)
             files["extra"].update(dataset=ds, codes=len(rows))

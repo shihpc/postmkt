@@ -252,7 +252,7 @@ def test_auth_errors_no_retry(resp):
 
 
 @pytest.mark.parametrize("msg", ["Your level is register. Please update your user level.",
-                                 "permission denied for this dataset", "需升級 sponsor 才能使用"])
+                                 "your level is Free", "please update user level"])
 def test_explicit_unavailable(msg):
     fm, sess = _fm([_Resp(400, {"status": 400, "msg": msg})] * 3)
     with pytest.raises(R.DatasetUnavailable):
@@ -260,12 +260,41 @@ def test_explicit_unavailable(msg):
     assert len(sess.calls) == 1
 
 
-def test_rate_limit_waits_then_succeeds():
+@pytest.mark.parametrize("msg", ["permission denied for this dataset", "需升級 sponsor 才能使用", "please upgrade",
+                                 "權限不足"])
+def test_broad_words_are_not_unavailable(msg):
+    """sponsor／upgrade／permission／升級／權限 等寬字不判「取不到」，一律當暫時性失敗（job 失敗）。"""
+    fm, sess = _fm([_Resp(400, {"status": 400, "msg": msg})] * 3)
+    with pytest.raises(R.FetchError) as ei:
+        fm.get("X", "2330", "a", "b")
+    assert type(ei.value) is R.FetchError and len(sess.calls) == 3
+
+
+def test_401_with_level_message_is_auth_error():
+    fm, sess = _fm([_Resp(401, {"status": 401, "msg": "Your level is register"})])
+    with pytest.raises(R.AuthError):
+        fm.get("X", "2330", "a", "b")
+    assert len(sess.calls) == 1
+
+
+def test_rate_limit_backoff_minute_then_next_hour_then_succeeds():
     waits = []
+    t = [3600 * 10 + 1500.0]          # 整點後 25 分
     sess = _Sess([_Resp(402), _Resp(200, {"status": 402, "msg": "limit"}), _ok([{"date": "d", "close": 1}])])
-    fm = R.FinMind(FAKE_TOKEN, session=sess, sleep=waits.append, rate_wait=65)
+    fm = R.FinMind(FAKE_TOKEN, session=sess, sleep=waits.append, rate_wait=65, now=lambda: t[0])
     assert fm.get("D", "1101", "a", "b") == [{"date": "d", "close": 1}]
-    assert waits == [65, 65]
+    assert waits == [65, 3600 - 1500 + R.FinMind.RATE_HOUR_BUFFER]
+    assert len(sess.calls) == 3       # 限流不消耗一般重試次數
+
+
+def test_rate_limit_budget_exhausted_fails_clearly():
+    waits = []
+    sess = _Sess([_Resp(429)] * 50)
+    fm = R.FinMind(FAKE_TOKEN, session=sess, sleep=waits.append, rate_wait=65, rate_budget=3000, now=lambda: 0.0)
+    with pytest.raises(R.FetchError, match="限流.*上限"):
+        fm.get("D", "1101", "a", "b")
+    assert waits == [65]              # 下一次要等 3720 秒，超過上限 → 不等、直接失敗
+    assert sum(waits) <= 3000
 
 
 def test_requires_token():
@@ -288,11 +317,27 @@ def test_preflight_fails_on_empty_or_error():
 RANGES = {c: ("2026-07-17", "2026-07-31") for c in ("1101", "1102", "1103")}
 
 
-def test_fetch_all_unavailable_on_first_request_is_unobtainable():
-    fm, sess = _fm([_Resp(400, {"status": 400, "msg": "Your level is Free"})])
+def test_fetch_all_unavailable_confirmed_by_second_code():
+    lv = _Resp(400, {"status": 400, "msg": "Your level is Free"})
+    fm, sess = _fm([lv, lv])
     rows, info = R.fetch_all(fm, "TaiwanStockPriceAdj", RANGES, None)
-    assert rows == {} and info["obtained"] is False and len(sess.calls) == 1
+    assert rows == {} and info["obtained"] is False and info["queried"] == 2 and len(sess.calls) == 2
+    assert [c["params"]["data_id"] for c in sess.calls] == ["1101", "1102"]
     assert FAKE_TOKEN not in json.dumps(info)
+
+
+def test_fetch_all_unavailable_not_confirmed():
+    lv = _Resp(400, {"status": 400, "msg": "Your level is Free"})
+    fm, _ = _fm([lv, _ok([])])                                    # 第二檔成功＝矛盾
+    with pytest.raises(R.FetchError, match="矛盾"):
+        R.fetch_all(fm, "X", RANGES, None)
+    fm, _ = _fm([lv] + [_Resp(500, {"msg": "x"})] * 3)            # 第二檔暫時性失敗＝照拋
+    with pytest.raises(R.FetchError) as ei:
+        R.fetch_all(fm, "X", RANGES, None)
+    assert type(ei.value) is R.FetchError
+    fm, _ = _fm([lv])                                             # 只有一檔＝無法確認
+    with pytest.raises(R.FetchError, match="二次確認"):
+        R.fetch_all(fm, "X", {"1101": ("a", "b")}, None)
 
 
 def test_fetch_all_unavailable_after_success_is_contradiction():
@@ -421,6 +466,7 @@ def test_persist_commit_gzip_reproducible(tmp_path, monkeypatch):
     m2 = R.persist_raw("price_adj", dict(reversed(list(obj.items()))), "commit")
     assert m1["sha256"] == m2["sha256"] and m1["bytes"] == len(b1)
     assert json.loads(gzip.decompress(b1)) == obj
+    assert b1[:2] == b"\x1f\x8b" and b1[4:8] == b"\x00\x00\x00\x00"   # gzip header MTIME（byte 4–7）＝0
     assert R.PERSIST_MODES[0] == "commit" and R.EXTRA_UNIVERSE_MODES[0] == "benchmark_emerging"
     with pytest.raises(ValueError):
         R.persist_raw("x", {}, "nope")
@@ -460,6 +506,22 @@ def test_core_extra_fetched_with_adopted_source_not_in_coverage(tmp_path, monkey
     assert "9910" in seen and core["files"]["extra"]["dataset"] == "TaiwanStockPriceAdj"
     assert (tmp_path / "data" / "diag_rules_extra_price_adj.json.gz").exists()
     assert (tmp_path / "data" / "diag_rules_price_adj.json.gz").exists()
+
+
+def test_core_extra_unavailable_raises_and_writes_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(R, "DATA_DIR", tmp_path / "data")
+    lv = _Resp(400, {"status": 400, "msg": "Your level is Free"})
+
+    def adj(p):
+        if p["data_id"] in ("9910", "9911"):
+            return lv
+        return _ok([{"date": d, "close": 10} for d in ("2026-07-17", "2026-07-31")])
+    s = _route({"TaiwanStockPrice": _pre, "TaiwanStockPriceAdj": adj})
+    extra = {"9910": ("2026-07-17", "2026-07-31"), "9911": ("2026-07-17", "2026-07-31")}
+    with pytest.raises(R.FetchError, match="額外代號"):
+        R.stage1_core(R.FinMind(FAKE_TOKEN, session=s, sleep=lambda x: None), NEED3, NEED3, "2026-10-22", None,
+                      "commit", extra)
+    assert not (tmp_path / "data" / "diag_rules_extra_price_adj.json.gz").exists()
 
 
 def test_core_no_extra_when_unadjusted():
