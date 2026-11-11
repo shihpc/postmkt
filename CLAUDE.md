@@ -268,11 +268,14 @@
   測試／補跑用）
 - `src/build_diag.py` → `data/diag/diag.json`（持股診斷素材庫；cache.json 走 actions/cache 不進 git）
 - `src/build_mktbal.py` → `data/market_balance_history.json`（大盤餘額）
+- `src/build_revenue.py` → `data/revenue/`（月營收 Beat／Miss；2026-11-12 階段一，**只產資料、尚無 tab 讀它**；規格 `docs/revenue-beatmiss.md`。
+  輸入 `data/revenue/universe.json`（次產業股票池）與 `expect.json`（A／B 層預期，人工維護、須附來源；**不得填彭博數值**）。
+  分類無回測依據，上畫面前須依鐵律 8 取得裁定；`revenue.yml` 每月 11–16 日 07:30 台北，只有 GitHub cron）
 - `src/build_pick2.py` → `data/pick2/`（選股二追蹤名單；掛在 diag workflow 的 screen 之後，`continue-on-error`；見上方「選股二」節）
 - `src/build_screen.py` → `data/screen/screen.json`（選股：TradingView 初篩＋鉅亨 FactSet 預估
   EPS/目標價/評等＋diag 合併；掛在 diag workflow 後段，`continue-on-error` 失敗不擋 diag）
 - 共用模組：`src/fmclient.py`（FinMind client＋token/台北時區）、`src/twseclient.py`（TWSE 節流）
-- workflows：build/diag/mktbal/summary（各自 cron＋v2 Worker 哨兵 dispatch）＋ test.yml；
+- workflows：build/diag/mktbal/summary（各自 cron＋v2 Worker 哨兵 dispatch）＋ revenue（月營收，只有 GitHub cron）＋ test.yml；
   commit/push 與失敗告警在 `.github/actions/` composite
 
 ## 不可破壞的約定（踩過坑的）

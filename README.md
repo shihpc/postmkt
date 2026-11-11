@@ -105,6 +105,12 @@
   CORS，已實測）。Anthropic key 由瀏覽器密碼管理器保管、載入後只在本分頁記憶體（2026-10-01 起，不再存
   localStorage；細節見 CLAUDE.md 約定 6），只送 Anthropic，不進 repo。
   模型 `state.insightModel`（預設 `claude-opus-4-8`）。輸出走 `mdToHtml()` 極簡 markdown 渲染。
+- `src/build_revenue.py`：月營收 Beat／Miss 管線（2026-11-12 階段一，規格與驗收條件 `docs/revenue-beatmiss.md`）。
+  逐檔抓 FinMind `TaiwanStockMonthRevenue`，對 `data/revenue/universe.json` 的科技／半導體股算「季累計達成率 vs 預期」，
+  輸出 `data/revenue/<YYYY-MM>.json`＋`index.json`。預期基準＝`data/revenue/expect.json`（A 公司財測／B 媒體引用預估，人工維護）
+  或模型（C）。`.github/workflows/revenue.yml`：每月 11–16 日 07:30 台北（只有 GitHub cron、無 Worker 觸發），內容相同不重寫檔。
+  **目前只產資料、沒有任何 tab 讀它**；分類無回測依據（資料檔自帶「AI 研判，未經回測，非保證」），上畫面前須依鐵律 8 取得裁定。
+  **彭博數值不得進本 repo**（公開 repo／Pages）。
 - `src/build_mktbal.py`：大盤層級四項餘額（融資/融券/借券賣出/不限用途借貸）管線，輸出
   `data/market_balance_history.json`（daily 近30交易日＋monthly 近36月底，皆升序陣列）。
   `.github/workflows/mktbal.yml`：平日 22:20 台北排程（排在 build.yml/diag.yml 之後）＋

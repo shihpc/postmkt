@@ -1,0 +1,68 @@
+name: build revenue data
+
+# 月營收 Beat／Miss（規格 docs/revenue-beatmiss.md）。申報期限＝每月 10 日、遇假日順延，
+# 故每月 11–16 日 07:30 台北各跑一次：涵蓋順延與晚報；內容相同時 builder 不重寫檔、不產生 commit。
+on:
+  schedule:
+    - cron: "30 23 10-15 * *"   # UTC 10–15 日 23:30 ＝ 台北 11–16 日 07:30
+  workflow_dispatch:
+    inputs:
+      months:
+        description: "營收月份（YYYY-MM，空白分隔可多個）；留空＝台北今日的上個月"
+        required: false
+        type: string
+        default: ""
+  push:
+    branches: [main]   # 只限 main（沿用 diag.yml／mktbal.yml 教訓）
+    paths:
+      - src/build_revenue.py
+      - data/revenue/universe.json
+      - data/revenue/expect.json
+      - .github/workflows/revenue.yml
+
+permissions:
+  contents: write
+  issues: write   # 失敗通知開 issue 用
+
+concurrency:
+  group: build-revenue
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Build data/revenue
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+          MONTHS: ${{ inputs.months }}
+        run: |
+          args=""
+          for m in $MONTHS; do
+            if ! echo "$m" | grep -Eq '^[0-9]{4}-(0[1-9]|1[0-2])$'; then echo "::error::月份格式錯誤：$m"; exit 1; fi
+            args="$args --month $m"
+          done
+          python src/build_revenue.py $args
+
+      - name: Commit and push
+        uses: ./.github/actions/commit-data
+        with:
+          paths: data/revenue
+          message: "data: revenue"
+
+      - name: Notify failure
+        # cancelled 也要告警：跑一半被取消同樣代表該場沒產出，而 failure() 在 cancelled 時不成立
+        if: failure() || cancelled()
+        uses: ./.github/actions/notify-failure
+        with:
+          pipeline: revenue
