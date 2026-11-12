@@ -1,0 +1,5095 @@
+{
+ "schema": 1,
+ "spec": "docs/revenue-beatmiss.md §7",
+ "eval_from": "2019-04",
+ "eval_to": "2026-09",
+ "n_months": 90,
+ "n_events": 13047,
+ "n_events_with_return": {
+  "5": 13013,
+  "10": 13014,
+  "20": 13012
+ },
+ "n_benchmark_only_rows": 208,
+ "universe_n": 150,
+ "revenue_start": "2018-01-01",
+ "price_start": "2019-01-01",
+ "calendar": {
+  "code": "2330",
+  "from": "2019-01-02",
+  "to": "2026-11-12",
+  "n_days": 1908
+ },
+ "price_dataset": "TaiwanStockPriceAdj",
+ "price_adjusted": true,
+ "taiex_available": true,
+ "taiex_dataset": "TaiwanStockTotalReturnIndex:TAIEX",
+ "fetch_failed": {
+  "revenue": [],
+  "price": []
+ },
+ "horizons": [
+  5,
+  10,
+  20
+ ],
+ "main_horizon": 20,
+ "thresholds": {
+  "c": 15.0,
+  "c_lumpy": 25.0,
+  "hi_yoy": 50.0,
+  "hi_qoq": 15.0,
+  "lo": -10.0
+ },
+ "units": "報酬／超額／價差皆為 %；t＝月均值平均 ÷（月均值樣本標準差 ÷ √月數）",
+ "by_class": {
+  "高預期仍Beat": {
+   "5": {
+    "n_events": 356,
+    "mean": -0.6701,
+    "median": -1.2698,
+    "win_rate": 41.29,
+    "t_event": -1.685,
+    "n_months": 85,
+    "monthly_mean": -0.1116,
+    "monthly_sd": 5.155,
+    "t_monthly": -0.2
+   },
+   "10": {
+    "n_events": 356,
+    "mean": -0.2582,
+    "median": -1.6107,
+    "win_rate": 42.7,
+    "t_event": -0.421,
+    "n_months": 85,
+    "monthly_mean": 1.1547,
+    "monthly_sd": 11.9957,
+    "t_monthly": 0.887
+   },
+   "20": {
+    "n_events": 356,
+    "mean": 1.5733,
+    "median": -0.8175,
+    "win_rate": 46.07,
+    "t_event": 1.879,
+    "n_months": 85,
+    "monthly_mean": 2.382,
+    "monthly_sd": 12.1408,
+    "t_monthly": 1.809
+   }
+  },
+  "低預期仍Miss": {
+   "5": {
+    "n_events": 380,
+    "mean": 0.3274,
+    "median": -0.3365,
+    "win_rate": 47.11,
+    "t_event": 0.965,
+    "n_months": 82,
+    "monthly_mean": 0.0601,
+    "monthly_sd": 4.0933,
+    "t_monthly": 0.133
+   },
+   "10": {
+    "n_events": 380,
+    "mean": 0.1765,
+    "median": -0.804,
+    "win_rate": 43.16,
+    "t_event": 0.426,
+    "n_months": 82,
+    "monthly_mean": -0.5438,
+    "monthly_sd": 5.2458,
+    "t_monthly": -0.939
+   },
+   "20": {
+    "n_events": 380,
+    "mean": 0.1934,
+    "median": -0.5806,
+    "win_rate": 47.37,
+    "t_event": 0.326,
+    "n_months": 82,
+    "monthly_mean": -0.7307,
+    "monthly_sd": 6.8815,
+    "t_monthly": -0.962
+   }
+  },
+  "Beat": {
+   "5": {
+    "n_events": 1745,
+    "mean": 0.1244,
+    "median": -0.5284,
+    "win_rate": 45.21,
+    "t_event": 0.817,
+    "n_months": 90,
+    "monthly_mean": 0.0871,
+    "monthly_sd": 1.7046,
+    "t_monthly": 0.485
+   },
+   "10": {
+    "n_events": 1745,
+    "mean": 0.4069,
+    "median": -0.8367,
+    "win_rate": 44.53,
+    "t_event": 1.939,
+    "n_months": 90,
+    "monthly_mean": 0.5295,
+    "monthly_sd": 2.4625,
+    "t_monthly": 2.04
+   },
+   "20": {
+    "n_events": 1744,
+    "mean": 1.316,
+    "median": -1.0164,
+    "win_rate": 45.7,
+    "t_event": 3.95,
+    "n_months": 90,
+    "monthly_mean": 1.7336,
+    "monthly_sd": 3.5861,
+    "t_monthly": 4.586
+   }
+  },
+  "Miss": {
+   "5": {
+    "n_events": 1110,
+    "mean": -0.2326,
+    "median": -0.684,
+    "win_rate": 42.34,
+    "t_event": -1.446,
+    "n_months": 90,
+    "monthly_mean": -0.4234,
+    "monthly_sd": 2.0396,
+    "t_monthly": -1.969
+   },
+   "10": {
+    "n_events": 1110,
+    "mean": -0.2576,
+    "median": -1.1995,
+    "win_rate": 42.43,
+    "t_event": -1.112,
+    "n_months": 90,
+    "monthly_mean": -0.3848,
+    "monthly_sd": 3.109,
+    "t_monthly": -1.174
+   },
+   "20": {
+    "n_events": 1110,
+    "mean": -0.8942,
+    "median": -2.4899,
+    "win_rate": 38.29,
+    "t_event": -2.591,
+    "n_months": 90,
+    "monthly_mean": -0.9772,
+    "monthly_sd": 4.1906,
+    "t_monthly": -2.212
+   }
+  },
+  "符合": {
+   "5": {
+    "n_events": 9422,
+    "mean": 0.007,
+    "median": -0.5725,
+    "win_rate": 44.06,
+    "t_event": 0.122,
+    "n_months": 90,
+    "monthly_mean": 0.0006,
+    "monthly_sd": 0.3599,
+    "t_monthly": 0.015
+   },
+   "10": {
+    "n_events": 9423,
+    "mean": -0.0566,
+    "median": -0.9323,
+    "win_rate": 43.3,
+    "t_event": -0.7,
+    "n_months": 90,
+    "monthly_mean": -0.0686,
+    "monthly_sd": 0.5514,
+    "t_monthly": -1.18
+   },
+   "20": {
+    "n_events": 9422,
+    "mean": -0.2104,
+    "median": -1.7791,
+    "win_rate": 41.57,
+    "t_event": -1.718,
+    "n_months": 90,
+    "monthly_mean": -0.2238,
+    "monthly_sd": 0.7949,
+    "t_monthly": -2.671
+   }
+  },
+  "Beat類合計": {
+   "5": {
+    "n_events": 2101,
+    "mean": -0.0102,
+    "median": -0.629,
+    "win_rate": 44.55,
+    "t_event": -0.071,
+    "n_months": 90,
+    "monthly_mean": 0.0357,
+    "monthly_sd": 1.6986,
+    "t_monthly": 0.199
+   },
+   "10": {
+    "n_events": 2101,
+    "mean": 0.2942,
+    "median": -0.9322,
+    "win_rate": 44.22,
+    "t_event": 1.45,
+    "n_months": 90,
+    "monthly_mean": 0.5041,
+    "monthly_sd": 2.534,
+    "t_monthly": 1.887
+   },
+   "20": {
+    "n_events": 2100,
+    "mean": 1.3596,
+    "median": -0.9837,
+    "win_rate": 45.76,
+    "t_event": 4.373,
+    "n_months": 90,
+    "monthly_mean": 1.6298,
+    "monthly_sd": 3.481,
+    "t_monthly": 4.442
+   }
+  },
+  "Miss類合計": {
+   "5": {
+    "n_events": 1490,
+    "mean": -0.0898,
+    "median": -0.5668,
+    "win_rate": 43.56,
+    "t_event": -0.607,
+    "n_months": 90,
+    "monthly_mean": -0.2275,
+    "monthly_sd": 1.9048,
+    "t_monthly": -1.133
+   },
+   "10": {
+    "n_events": 1490,
+    "mean": -0.1469,
+    "median": -1.1189,
+    "win_rate": 42.62,
+    "t_event": -0.726,
+    "n_months": 90,
+    "monthly_mean": -0.3077,
+    "monthly_sd": 2.9186,
+    "t_monthly": -1.0
+   },
+   "20": {
+    "n_events": 1490,
+    "mean": -0.6168,
+    "median": -2.2363,
+    "win_rate": 40.6,
+    "t_event": -2.066,
+    "n_months": 90,
+    "monthly_mean": -0.8782,
+    "monthly_sd": 3.6709,
+    "t_monthly": -2.269
+   }
+  }
+ },
+ "by_class_vs_taiex": {
+  "高預期仍Beat": {
+   "5": {
+    "n_events": 356,
+    "mean": -0.8287,
+    "median": -1.5002,
+    "win_rate": 39.89,
+    "t_event": -1.977,
+    "n_months": 85,
+    "monthly_mean": -0.0572,
+    "monthly_sd": 5.749,
+    "t_monthly": -0.092
+   },
+   "10": {
+    "n_events": 356,
+    "mean": 0.3267,
+    "median": -0.5535,
+    "win_rate": 46.91,
+    "t_event": 0.527,
+    "n_months": 85,
+    "monthly_mean": 1.7572,
+    "monthly_sd": 12.3298,
+    "t_monthly": 1.314
+   },
+   "20": {
+    "n_events": 356,
+    "mean": 2.3101,
+    "median": -0.4934,
+    "win_rate": 47.47,
+    "t_event": 2.604,
+    "n_months": 85,
+    "monthly_mean": 3.3571,
+    "monthly_sd": 13.3673,
+    "t_monthly": 2.315
+   }
+  },
+  "低預期仍Miss": {
+   "5": {
+    "n_events": 380,
+    "mean": 0.6559,
+    "median": 0.2775,
+    "win_rate": 52.89,
+    "t_event": 1.81,
+    "n_months": 82,
+    "monthly_mean": 0.2653,
+    "monthly_sd": 4.9729,
+    "t_monthly": 0.483
+   },
+   "10": {
+    "n_events": 380,
+    "mean": 1.0166,
+    "median": 0.4821,
+    "win_rate": 52.89,
+    "t_event": 2.386,
+    "n_months": 82,
+    "monthly_mean": 0.2414,
+    "monthly_sd": 5.5637,
+    "t_monthly": 0.393
+   },
+   "20": {
+    "n_events": 380,
+    "mean": 1.8025,
+    "median": 0.6444,
+    "win_rate": 53.68,
+    "t_event": 2.898,
+    "n_months": 82,
+    "monthly_mean": 0.557,
+    "monthly_sd": 8.028,
+    "t_monthly": 0.628
+   }
+  },
+  "Beat": {
+   "5": {
+    "n_events": 1745,
+    "mean": 0.2425,
+    "median": -0.4763,
+    "win_rate": 45.67,
+    "t_event": 1.489,
+    "n_months": 90,
+    "monthly_mean": 0.1884,
+    "monthly_sd": 2.8578,
+    "t_monthly": 0.625
+   },
+   "10": {
+    "n_events": 1745,
+    "mean": 1.1533,
+    "median": 0.0145,
+    "win_rate": 50.14,
+    "t_event": 5.226,
+    "n_months": 90,
+    "monthly_mean": 1.1921,
+    "monthly_sd": 3.7649,
+    "t_monthly": 3.004
+   },
+   "20": {
+    "n_events": 1744,
+    "mean": 2.4926,
+    "median": 0.0488,
+    "win_rate": 50.29,
+    "t_event": 7.135,
+    "n_months": 90,
+    "monthly_mean": 2.7711,
+    "monthly_sd": 5.1946,
+    "t_monthly": 5.061
+   }
+  },
+  "Miss": {
+   "5": {
+    "n_events": 1110,
+    "mean": -0.0447,
+    "median": -0.5839,
+    "win_rate": 44.95,
+    "t_event": -0.257,
+    "n_months": 90,
+    "monthly_mean": -0.3221,
+    "monthly_sd": 3.0615,
+    "t_monthly": -0.998
+   },
+   "10": {
+    "n_events": 1110,
+    "mean": 0.4951,
+    "median": -0.2237,
+    "win_rate": 48.11,
+    "t_event": 2.006,
+    "n_months": 90,
+    "monthly_mean": 0.2778,
+    "monthly_sd": 4.2219,
+    "t_monthly": 0.624
+   },
+   "20": {
+    "n_events": 1110,
+    "mean": 0.2723,
+    "median": -1.5541,
+    "win_rate": 43.87,
+    "t_event": 0.753,
+    "n_months": 90,
+    "monthly_mean": 0.0603,
+    "monthly_sd": 5.9996,
+    "t_monthly": 0.095
+   }
+  },
+  "符合": {
+   "5": {
+    "n_events": 9422,
+    "mean": 0.0996,
+    "median": -0.5164,
+    "win_rate": 44.99,
+    "t_event": 1.626,
+    "n_months": 90,
+    "monthly_mean": 0.1018,
+    "monthly_sd": 2.1858,
+    "t_monthly": 0.442
+   },
+   "10": {
+    "n_events": 9423,
+    "mean": 0.5821,
+    "median": -0.3585,
+    "win_rate": 47.67,
+    "t_event": 6.889,
+    "n_months": 90,
+    "monthly_mean": 0.594,
+    "monthly_sd": 2.4923,
+    "t_monthly": 2.261
+   },
+   "20": {
+    "n_events": 9422,
+    "mean": 0.7755,
+    "median": -0.8372,
+    "win_rate": 46.17,
+    "t_event": 6.053,
+    "n_months": 90,
+    "monthly_mean": 0.8136,
+    "monthly_sd": 3.7551,
+    "t_monthly": 2.056
+   }
+  },
+  "Beat類合計": {
+   "5": {
+    "n_events": 2101,
+    "mean": 0.061,
+    "median": -0.6102,
+    "win_rate": 44.69,
+    "t_event": 0.398,
+    "n_months": 90,
+    "monthly_mean": 0.1369,
+    "monthly_sd": 2.9399,
+    "t_monthly": 0.442
+   },
+   "10": {
+    "n_events": 2101,
+    "mean": 1.0133,
+    "median": -0.0543,
+    "win_rate": 49.6,
+    "t_event": 4.794,
+    "n_months": 90,
+    "monthly_mean": 1.1666,
+    "monthly_sd": 3.7306,
+    "t_monthly": 2.967
+   },
+   "20": {
+    "n_events": 2100,
+    "mean": 2.4617,
+    "median": -0.0476,
+    "win_rate": 49.81,
+    "t_event": 7.535,
+    "n_months": 90,
+    "monthly_mean": 2.6673,
+    "monthly_sd": 5.3536,
+    "t_monthly": 4.727
+   }
+  },
+  "Miss類合計": {
+   "5": {
+    "n_events": 1490,
+    "mean": 0.134,
+    "median": -0.3427,
+    "win_rate": 46.98,
+    "t_event": 0.842,
+    "n_months": 90,
+    "monthly_mean": -0.1263,
+    "monthly_sd": 3.0482,
+    "t_monthly": -0.393
+   },
+   "10": {
+    "n_events": 1490,
+    "mean": 0.6281,
+    "median": -0.0743,
+    "win_rate": 49.33,
+    "t_event": 2.941,
+    "n_months": 90,
+    "monthly_mean": 0.3549,
+    "monthly_sd": 3.8748,
+    "t_monthly": 0.869
+   },
+   "20": {
+    "n_events": 1490,
+    "mean": 0.6626,
+    "median": -0.7868,
+    "win_rate": 46.38,
+    "t_event": 2.116,
+    "n_months": 90,
+    "monthly_mean": 0.1593,
+    "monthly_sd": 5.6074,
+    "t_monthly": 0.27
+   }
+  }
+ },
+ "spread": {
+  "5": {
+   "n_months": 90,
+   "skipped_months": 0,
+   "mean": 0.2632,
+   "sd": 2.6841,
+   "t": 0.93,
+   "pos_rate": 53.33
+  },
+  "10": {
+   "n_months": 90,
+   "skipped_months": 0,
+   "mean": 0.8118,
+   "sd": 3.8995,
+   "t": 1.975,
+   "pos_rate": 58.89
+  },
+  "20": {
+   "n_months": 90,
+   "skipped_months": 0,
+   "mean": 2.508,
+   "sd": 5.2977,
+   "t": 4.491,
+   "pos_rate": 71.11
+  }
+ },
+ "halves": {
+  "first": {
+   "from": "2019-04",
+   "to": "2022-12",
+   "n_months": 45,
+   "by_class": {
+    "高預期仍Beat": {
+     "5": {
+      "n_events": 139,
+      "mean": -0.6204,
+      "median": -0.5301,
+      "win_rate": 43.88,
+      "t_event": -1.199,
+      "n_months": 42,
+      "monthly_mean": 0.006,
+      "monthly_sd": 5.4222,
+      "t_monthly": 0.007
+     },
+     "10": {
+      "n_events": 139,
+      "mean": 0.9781,
+      "median": -1.2685,
+      "win_rate": 41.73,
+      "t_event": 0.899,
+      "n_months": 42,
+      "monthly_mean": 2.5127,
+      "monthly_sd": 15.6077,
+      "t_monthly": 1.043
+     },
+     "20": {
+      "n_events": 139,
+      "mean": 3.0626,
+      "median": 0.2363,
+      "win_rate": 50.36,
+      "t_event": 2.374,
+      "n_months": 42,
+      "monthly_mean": 4.5767,
+      "monthly_sd": 14.9789,
+      "t_monthly": 1.98
+     }
+    },
+    "低預期仍Miss": {
+     "5": {
+      "n_events": 178,
+      "mean": -0.1383,
+      "median": -0.305,
+      "win_rate": 47.19,
+      "t_event": -0.373,
+      "n_months": 41,
+      "monthly_mean": -0.7153,
+      "monthly_sd": 2.9256,
+      "t_monthly": -1.565
+     },
+     "10": {
+      "n_events": 178,
+      "mean": 0.2756,
+      "median": -0.5897,
+      "win_rate": 45.51,
+      "t_event": 0.543,
+      "n_months": 41,
+      "monthly_mean": -0.8946,
+      "monthly_sd": 4.1744,
+      "t_monthly": -1.372
+     },
+     "20": {
+      "n_events": 178,
+      "mean": 0.323,
+      "median": -0.4113,
+      "win_rate": 47.75,
+      "t_event": 0.479,
+      "n_months": 41,
+      "monthly_mean": -1.169,
+      "monthly_sd": 6.2715,
+      "t_monthly": -1.193
+     }
+    },
+    "Beat": {
+     "5": {
+      "n_events": 865,
+      "mean": 0.0128,
+      "median": -0.544,
+      "win_rate": 43.82,
+      "t_event": 0.066,
+      "n_months": 45,
+      "monthly_mean": 0.0223,
+      "monthly_sd": 1.7553,
+      "t_monthly": 0.085
+     },
+     "10": {
+      "n_events": 865,
+      "mean": 0.3338,
+      "median": -0.7188,
+      "win_rate": 45.2,
+      "t_event": 1.235,
+      "n_months": 45,
+      "monthly_mean": 0.4616,
+      "monthly_sd": 2.1441,
+      "t_monthly": 1.444
+     },
+     "20": {
+      "n_events": 864,
+      "mean": 1.2002,
+      "median": -0.6842,
+      "win_rate": 46.53,
+      "t_event": 2.985,
+      "n_months": 45,
+      "monthly_mean": 1.5436,
+      "monthly_sd": 3.2737,
+      "t_monthly": 3.163
+     }
+    },
+    "Miss": {
+     "5": {
+      "n_events": 619,
+      "mean": -0.3451,
+      "median": -0.4593,
+      "win_rate": 43.94,
+      "t_event": -1.876,
+      "n_months": 45,
+      "monthly_mean": -0.6494,
+      "monthly_sd": 1.7744,
+      "t_monthly": -2.455
+     },
+     "10": {
+      "n_events": 619,
+      "mean": -0.6031,
+      "median": -1.1326,
+      "win_rate": 42.33,
+      "t_event": -2.36,
+      "n_months": 45,
+      "monthly_mean": -0.8929,
+      "monthly_sd": 2.2555,
+      "t_monthly": -2.655
+     },
+     "20": {
+      "n_events": 619,
+      "mean": -1.0583,
+      "median": -2.404,
+      "win_rate": 37.48,
+      "t_event": -2.713,
+      "n_months": 45,
+      "monthly_mean": -1.1024,
+      "monthly_sd": 3.2271,
+      "t_monthly": -2.292
+     }
+    },
+    "符合": {
+     "5": {
+      "n_events": 4618,
+      "mean": 0.0505,
+      "median": -0.4083,
+      "win_rate": 44.98,
+      "t_event": 0.729,
+      "n_months": 45,
+      "monthly_mean": 0.053,
+      "monthly_sd": 0.3037,
+      "t_monthly": 1.17
+     },
+     "10": {
+      "n_events": 4617,
+      "mean": -0.035,
+      "median": -0.7676,
+      "win_rate": 43.75,
+      "t_event": -0.363,
+      "n_months": 45,
+      "monthly_mean": -0.0315,
+      "monthly_sd": 0.3918,
+      "t_monthly": -0.539
+     },
+     "20": {
+      "n_events": 4615,
+      "mean": -0.1859,
+      "median": -1.3554,
+      "win_rate": 42.51,
+      "t_event": -1.292,
+      "n_months": 45,
+      "monthly_mean": -0.1825,
+      "monthly_sd": 0.6203,
+      "t_monthly": -1.973
+     }
+    },
+    "Beat類合計": {
+     "5": {
+      "n_events": 1004,
+      "mean": -0.0748,
+      "median": -0.5418,
+      "win_rate": 43.82,
+      "t_event": -0.411,
+      "n_months": 45,
+      "monthly_mean": 0.0872,
+      "monthly_sd": 1.7626,
+      "t_monthly": 0.332
+     },
+     "10": {
+      "n_events": 1004,
+      "mean": 0.423,
+      "median": -0.7563,
+      "win_rate": 44.72,
+      "t_event": 1.526,
+      "n_months": 45,
+      "monthly_mean": 0.825,
+      "monthly_sd": 2.5005,
+      "t_monthly": 2.213
+     },
+     "20": {
+      "n_events": 1003,
+      "mean": 1.4583,
+      "median": -0.5833,
+      "win_rate": 47.06,
+      "t_event": 3.739,
+      "n_months": 45,
+      "monthly_mean": 2.0794,
+      "monthly_sd": 3.5227,
+      "t_monthly": 3.96
+     }
+    },
+    "Miss類合計": {
+     "5": {
+      "n_events": 797,
+      "mean": -0.2989,
+      "median": -0.4587,
+      "win_rate": 44.67,
+      "t_event": -1.811,
+      "n_months": 45,
+      "monthly_mean": -0.5792,
+      "monthly_sd": 1.4241,
+      "t_monthly": -2.728
+     },
+     "10": {
+      "n_events": 797,
+      "mean": -0.4069,
+      "median": -1.0181,
+      "win_rate": 43.04,
+      "t_event": -1.779,
+      "n_months": 45,
+      "monthly_mean": -0.6793,
+      "monthly_sd": 1.9166,
+      "t_monthly": -2.378
+     },
+     "20": {
+      "n_events": 797,
+      "mean": -0.7498,
+      "median": -2.0842,
+      "win_rate": 39.77,
+      "t_event": -2.213,
+      "n_months": 45,
+      "monthly_mean": -0.9257,
+      "monthly_sd": 2.7924,
+      "t_monthly": -2.224
+     }
+    }
+   },
+   "spread": {
+    "5": {
+     "n_months": 45,
+     "skipped_months": 0,
+     "mean": 0.6665,
+     "sd": 2.6679,
+     "t": 1.676,
+     "pos_rate": 64.44
+    },
+    "10": {
+     "n_months": 45,
+     "skipped_months": 0,
+     "mean": 1.5044,
+     "sd": 3.5574,
+     "t": 2.837,
+     "pos_rate": 62.22
+    },
+    "20": {
+     "n_months": 45,
+     "skipped_months": 0,
+     "mean": 3.0051,
+     "sd": 4.8062,
+     "t": 4.194,
+     "pos_rate": 77.78
+    }
+   }
+  },
+  "second": {
+   "from": "2023-01",
+   "to": "2026-09",
+   "n_months": 45,
+   "by_class": {
+    "高預期仍Beat": {
+     "5": {
+      "n_events": 217,
+      "mean": -0.7019,
+      "median": -1.5637,
+      "win_rate": 39.63,
+      "t_event": -1.247,
+      "n_months": 43,
+      "monthly_mean": -0.2265,
+      "monthly_sd": 4.9418,
+      "t_monthly": -0.301
+     },
+     "10": {
+      "n_events": 217,
+      "mean": -1.0501,
+      "median": -2.165,
+      "win_rate": 43.32,
+      "t_event": -1.454,
+      "n_months": 43,
+      "monthly_mean": -0.1717,
+      "monthly_sd": 6.8081,
+      "t_monthly": -0.165
+     },
+     "20": {
+      "n_events": 217,
+      "mean": 0.6193,
+      "median": -1.9713,
+      "win_rate": 43.32,
+      "t_event": 0.566,
+      "n_months": 43,
+      "monthly_mean": 0.2384,
+      "monthly_sd": 8.1394,
+      "t_monthly": 0.192
+     }
+    },
+    "低預期仍Miss": {
+     "5": {
+      "n_events": 202,
+      "mean": 0.7379,
+      "median": -0.3365,
+      "win_rate": 47.03,
+      "t_event": 1.347,
+      "n_months": 41,
+      "monthly_mean": 0.8356,
+      "monthly_sd": 4.913,
+      "t_monthly": 1.089
+     },
+     "10": {
+      "n_events": 202,
+      "mean": 0.0892,
+      "median": -1.1284,
+      "win_rate": 41.09,
+      "t_event": 0.139,
+      "n_months": 41,
+      "monthly_mean": -0.193,
+      "monthly_sd": 6.1682,
+      "t_monthly": -0.2
+     },
+     "20": {
+      "n_events": 202,
+      "mean": 0.0792,
+      "median": -0.5806,
+      "win_rate": 47.03,
+      "t_event": 0.084,
+      "n_months": 41,
+      "monthly_mean": -0.2925,
+      "monthly_sd": 7.4945,
+      "t_monthly": -0.25
+     }
+    },
+    "Beat": {
+     "5": {
+      "n_events": 880,
+      "mean": 0.234,
+      "median": -0.4862,
+      "win_rate": 46.59,
+      "t_event": 1.001,
+      "n_months": 45,
+      "monthly_mean": 0.1519,
+      "monthly_sd": 1.6697,
+      "t_monthly": 0.61
+     },
+     "10": {
+      "n_events": 880,
+      "mean": 0.4789,
+      "median": -1.073,
+      "win_rate": 43.86,
+      "t_event": 1.494,
+      "n_months": 45,
+      "monthly_mean": 0.5974,
+      "monthly_sd": 2.7676,
+      "t_monthly": 1.448
+     },
+     "20": {
+      "n_events": 880,
+      "mean": 1.4296,
+      "median": -1.3579,
+      "win_rate": 44.89,
+      "t_event": 2.7,
+      "n_months": 45,
+      "monthly_mean": 1.9236,
+      "monthly_sd": 3.9015,
+      "t_monthly": 3.307
+     }
+    },
+    "Miss": {
+     "5": {
+      "n_events": 491,
+      "mean": -0.0909,
+      "median": -0.9486,
+      "win_rate": 40.33,
+      "t_event": -0.324,
+      "n_months": 45,
+      "monthly_mean": -0.1973,
+      "monthly_sd": 2.2719,
+      "t_monthly": -0.583
+     },
+     "10": {
+      "n_events": 491,
+      "mean": 0.1781,
+      "median": -1.2542,
+      "win_rate": 42.57,
+      "t_event": 0.432,
+      "n_months": 45,
+      "monthly_mean": 0.1233,
+      "monthly_sd": 3.733,
+      "t_monthly": 0.222
+     },
+     "20": {
+      "n_events": 491,
+      "mean": -0.6872,
+      "median": -2.6174,
+      "win_rate": 39.31,
+      "t_event": -1.134,
+      "n_months": 45,
+      "monthly_mean": -0.852,
+      "monthly_sd": 5.0076,
+      "t_monthly": -1.141
+     }
+    },
+    "符合": {
+     "5": {
+      "n_events": 4804,
+      "mean": -0.0348,
+      "median": -0.8085,
+      "win_rate": 43.17,
+      "t_event": -0.385,
+      "n_months": 45,
+      "monthly_mean": -0.0518,
+      "monthly_sd": 0.4052,
+      "t_monthly": -0.858
+     },
+     "10": {
+      "n_events": 4806,
+      "mean": -0.0773,
+      "median": -1.1646,
+      "win_rate": 42.86,
+      "t_event": -0.602,
+      "n_months": 45,
+      "monthly_mean": -0.1056,
+      "monthly_sd": 0.6772,
+      "t_monthly": -1.046
+     },
+     "20": {
+      "n_events": 4807,
+      "mean": -0.2339,
+      "median": -2.2414,
+      "win_rate": 40.67,
+      "t_event": -1.191,
+      "n_months": 45,
+      "monthly_mean": -0.2652,
+      "monthly_sd": 0.9434,
+      "t_monthly": -1.886
+     }
+    },
+    "Beat類合計": {
+     "5": {
+      "n_events": 1097,
+      "mean": 0.0489,
+      "median": -0.7033,
+      "win_rate": 45.21,
+      "t_event": 0.224,
+      "n_months": 45,
+      "monthly_mean": -0.0159,
+      "monthly_sd": 1.6505,
+      "t_monthly": -0.065
+     },
+     "10": {
+      "n_events": 1097,
+      "mean": 0.1764,
+      "median": -1.3135,
+      "win_rate": 43.76,
+      "t_event": 0.599,
+      "n_months": 45,
+      "monthly_mean": 0.1831,
+      "monthly_sd": 2.5544,
+      "t_monthly": 0.481
+     },
+     "20": {
+      "n_events": 1097,
+      "mean": 1.2693,
+      "median": -1.5067,
+      "win_rate": 44.58,
+      "t_event": 2.663,
+      "n_months": 45,
+      "monthly_mean": 1.1802,
+      "monthly_sd": 3.4186,
+      "t_monthly": 2.316
+     }
+    },
+    "Miss類合計": {
+     "5": {
+      "n_events": 693,
+      "mean": 0.1507,
+      "median": -0.7662,
+      "win_rate": 42.28,
+      "t_event": 0.591,
+      "n_months": 45,
+      "monthly_mean": 0.1241,
+      "monthly_sd": 2.249,
+      "t_monthly": 0.37
+     },
+     "10": {
+      "n_events": 693,
+      "mean": 0.1522,
+      "median": -1.2245,
+      "win_rate": 42.14,
+      "t_event": 0.439,
+      "n_months": 45,
+      "monthly_mean": 0.064,
+      "monthly_sd": 3.6434,
+      "t_monthly": 0.118
+     },
+     "20": {
+      "n_events": 693,
+      "mean": -0.4638,
+      "median": -2.3154,
+      "win_rate": 41.56,
+      "t_event": -0.909,
+      "n_months": 45,
+      "monthly_mean": -0.8306,
+      "monthly_sd": 4.4109,
+      "t_monthly": -1.263
+     }
+    }
+   },
+   "spread": {
+    "5": {
+     "n_months": 45,
+     "skipped_months": 0,
+     "mean": -0.14,
+     "sd": 2.6689,
+     "t": -0.352,
+     "pos_rate": 42.22
+    },
+    "10": {
+     "n_months": 45,
+     "skipped_months": 0,
+     "mean": 0.1192,
+     "sd": 4.1379,
+     "t": 0.193,
+     "pos_rate": 55.56
+    },
+    "20": {
+     "n_months": 45,
+     "skipped_months": 0,
+     "mean": 2.0108,
+     "sd": 5.7588,
+     "t": 2.342,
+     "pos_rate": 64.44
+    }
+   }
+  }
+ },
+ "yearly": {
+  "2019": {
+   "by_class": {
+    "高預期仍Beat": {
+     "5": {
+      "n_events": 23,
+      "mean": -1.2419,
+      "median": -1.5912,
+      "win_rate": 43.48,
+      "t_event": -1.62,
+      "n_months": 9,
+      "monthly_mean": -1.7272,
+      "monthly_sd": 2.8837,
+      "t_monthly": -1.797
+     },
+     "10": {
+      "n_events": 23,
+      "mean": -2.4589,
+      "median": -2.198,
+      "win_rate": 34.78,
+      "t_event": -1.93,
+      "n_months": 9,
+      "monthly_mean": -2.9531,
+      "monthly_sd": 3.428,
+      "t_monthly": -2.584
+     },
+     "20": {
+      "n_events": 23,
+      "mean": -0.2876,
+      "median": -0.4841,
+      "win_rate": 43.48,
+      "t_event": -0.156,
+      "n_months": 9,
+      "monthly_mean": -1.0905,
+      "monthly_sd": 6.614,
+      "t_monthly": -0.495
+     }
+    },
+    "低預期仍Miss": {
+     "5": {
+      "n_events": 28,
+      "mean": 0.3325,
+      "median": 0.03,
+      "win_rate": 50.0,
+      "t_event": 0.26,
+      "n_months": 8,
+      "monthly_mean": 0.0362,
+      "monthly_sd": 3.2794,
+      "t_monthly": 0.031
+     },
+     "10": {
+      "n_events": 28,
+      "mean": 0.6438,
+      "median": -0.6617,
+      "win_rate": 42.86,
+      "t_event": 0.453,
+      "n_months": 8,
+      "monthly_mean": -0.8608,
+      "monthly_sd": 3.7276,
+      "t_monthly": -0.653
+     },
+     "20": {
+      "n_events": 28,
+      "mean": 0.8856,
+      "median": -0.5822,
+      "win_rate": 42.86,
+      "t_event": 0.493,
+      "n_months": 8,
+      "monthly_mean": -1.1842,
+      "monthly_sd": 6.1017,
+      "t_monthly": -0.549
+     }
+    },
+    "Beat": {
+     "5": {
+      "n_events": 190,
+      "mean": -0.1998,
+      "median": -0.9527,
+      "win_rate": 40.0,
+      "t_event": -0.554,
+      "n_months": 9,
+      "monthly_mean": -0.2156,
+      "monthly_sd": 1.1356,
+      "t_monthly": -0.57
+     },
+     "10": {
+      "n_events": 190,
+      "mean": -0.0947,
+      "median": -0.9106,
+      "win_rate": 39.47,
+      "t_event": -0.175,
+      "n_months": 9,
+      "monthly_mean": 0.0345,
+      "monthly_sd": 1.6344,
+      "t_monthly": 0.063
+     },
+     "20": {
+      "n_events": 190,
+      "mean": 0.4647,
+      "median": -1.7267,
+      "win_rate": 42.11,
+      "t_event": 0.602,
+      "n_months": 9,
+      "monthly_mean": 0.321,
+      "monthly_sd": 1.9797,
+      "t_monthly": 0.486
+     }
+    },
+    "Miss": {
+     "5": {
+      "n_events": 86,
+      "mean": -0.2457,
+      "median": -0.3754,
+      "win_rate": 45.35,
+      "t_event": -0.581,
+      "n_months": 9,
+      "monthly_mean": -0.5716,
+      "monthly_sd": 1.5402,
+      "t_monthly": -1.113
+     },
+     "10": {
+      "n_events": 86,
+      "mean": 0.0709,
+      "median": -0.5752,
+      "win_rate": 46.51,
+      "t_event": 0.105,
+      "n_months": 9,
+      "monthly_mean": -0.2285,
+      "monthly_sd": 2.0779,
+      "t_monthly": -0.33
+     },
+     "20": {
+      "n_events": 86,
+      "mean": 0.2474,
+      "median": -0.718,
+      "win_rate": 44.19,
+      "t_event": 0.226,
+      "n_months": 9,
+      "monthly_mean": 0.0632,
+      "monthly_sd": 3.7189,
+      "t_monthly": 0.051
+     }
+    },
+    "符合": {
+     "5": {
+      "n_events": 931,
+      "mean": 0.1278,
+      "median": -0.539,
+      "win_rate": 43.07,
+      "t_event": 0.91,
+      "n_months": 9,
+      "monthly_mean": 0.1372,
+      "monthly_sd": 0.217,
+      "t_monthly": 1.897
+     },
+     "10": {
+      "n_events": 931,
+      "mean": 0.1208,
+      "median": -0.8047,
+      "win_rate": 43.61,
+      "t_event": 0.63,
+      "n_months": 9,
+      "monthly_mean": 0.138,
+      "monthly_sd": 0.3393,
+      "t_monthly": 1.22
+     },
+     "20": {
+      "n_events": 931,
+      "mean": -0.0684,
+      "median": -1.3177,
+      "win_rate": 42.64,
+      "t_event": -0.249,
+      "n_months": 9,
+      "monthly_mean": -0.0746,
+      "monthly_sd": 0.4331,
+      "t_monthly": -0.517
+     }
+    },
+    "Beat類合計": {
+     "5": {
+      "n_events": 213,
+      "mean": -0.3123,
+      "median": -0.9827,
+      "win_rate": 40.38,
+      "t_event": -0.94,
+      "n_months": 9,
+      "monthly_mean": -0.3315,
+      "monthly_sd": 1.2122,
+      "t_monthly": -0.82
+     },
+     "10": {
+      "n_events": 213,
+      "mean": -0.35,
+      "median": -1.1429,
+      "win_rate": 38.97,
+      "t_event": -0.697,
+      "n_months": 9,
+      "monthly_mean": -0.2738,
+      "monthly_sd": 1.5888,
+      "t_monthly": -0.517
+     },
+     "20": {
+      "n_events": 213,
+      "mean": 0.3834,
+      "median": -1.2233,
+      "win_rate": 42.25,
+      "t_event": 0.536,
+      "n_months": 9,
+      "monthly_mean": 0.2521,
+      "monthly_sd": 1.9052,
+      "t_monthly": 0.397
+     }
+    },
+    "Miss類合計": {
+     "5": {
+      "n_events": 114,
+      "mean": -0.1037,
+      "median": -0.2547,
+      "win_rate": 46.49,
+      "t_event": -0.233,
+      "n_months": 9,
+      "monthly_mean": -0.542,
+      "monthly_sd": 1.388,
+      "t_monthly": -1.171
+     },
+     "10": {
+      "n_events": 114,
+      "mean": 0.2116,
+      "median": -0.6142,
+      "win_rate": 45.61,
+      "t_event": 0.344,
+      "n_months": 9,
+      "monthly_mean": -0.422,
+      "monthly_sd": 2.2601,
+      "t_monthly": -0.56
+     },
+     "20": {
+      "n_events": 114,
+      "mean": 0.4041,
+      "median": -0.718,
+      "win_rate": 43.86,
+      "t_event": 0.433,
+      "n_months": 9,
+      "monthly_mean": -0.4368,
+      "monthly_sd": 3.4578,
+      "t_monthly": -0.379
+     }
+    }
+   },
+   "spread": {
+    "5": {
+     "n_months": 9,
+     "skipped_months": 0,
+     "mean": 0.2105,
+     "sd": 2.2349,
+     "t": 0.283,
+     "pos_rate": 55.56
+    },
+    "10": {
+     "n_months": 9,
+     "skipped_months": 0,
+     "mean": 0.1482,
+     "sd": 3.4232,
+     "t": 0.13,
+     "pos_rate": 44.44
+    },
+    "20": {
+     "n_months": 9,
+     "skipped_months": 0,
+     "mean": 0.6889,
+     "sd": 4.6705,
+     "t": 0.443,
+     "pos_rate": 66.67
+    }
+   }
+  },
+  "2020": {
+   "by_class": {
+    "高預期仍Beat": {
+     "5": {
+      "n_events": 33,
+      "mean": -1.2296,
+      "median": -2.2704,
+      "win_rate": 30.3,
+      "t_event": -0.951,
+      "n_months": 10,
+      "monthly_mean": -0.2891,
+      "monthly_sd": 8.5914,
+      "t_monthly": -0.106
+     },
+     "10": {
+      "n_events": 33,
+      "mean": 3.1141,
+      "median": -2.2568,
+      "win_rate": 33.33,
+      "t_event": 0.912,
+      "n_months": 10,
+      "monthly_mean": 8.6704,
+      "monthly_sd": 29.8831,
+      "t_monthly": 0.918
+     },
+     "20": {
+      "n_events": 33,
+      "mean": 3.0482,
+      "median": -0.6861,
+      "win_rate": 48.48,
+      "t_event": 0.973,
+      "n_months": 10,
+      "monthly_mean": 7.9162,
+      "monthly_sd": 25.7023,
+      "t_monthly": 0.974
+     }
+    },
+    "低預期仍Miss": {
+     "5": {
+      "n_events": 45,
+      "mean": -0.6172,
+      "median": -1.3586,
+      "win_rate": 33.33,
+      "t_event": -0.728,
+      "n_months": 10,
+      "monthly_mean": -1.9644,
+      "monthly_sd": 2.8961,
+      "t_monthly": -2.145
+     },
+     "10": {
+      "n_events": 45,
+      "mean": 0.5382,
+      "median": -0.2539,
+      "win_rate": 48.89,
+      "t_event": 0.454,
+      "n_months": 10,
+      "monthly_mean": -1.3722,
+      "monthly_sd": 5.0733,
+      "t_monthly": -0.855
+     },
+     "20": {
+      "n_events": 45,
+      "mean": 1.5381,
+      "median": -1.2376,
+      "win_rate": 48.89,
+      "t_event": 0.972,
+      "n_months": 10,
+      "monthly_mean": -1.4572,
+      "monthly_sd": 8.4862,
+      "t_monthly": -0.543
+     }
+    },
+    "Beat": {
+     "5": {
+      "n_events": 297,
+      "mean": 0.2338,
+      "median": -0.4675,
+      "win_rate": 44.78,
+      "t_event": 0.631,
+      "n_months": 12,
+      "monthly_mean": 0.3244,
+      "monthly_sd": 2.2844,
+      "t_monthly": 0.492
+     },
+     "10": {
+      "n_events": 297,
+      "mean": 0.4933,
+      "median": -1.149,
+      "win_rate": 41.08,
+      "t_event": 0.915,
+      "n_months": 12,
+      "monthly_mean": 0.6777,
+      "monthly_sd": 2.906,
+      "t_monthly": 0.808
+     },
+     "20": {
+      "n_events": 297,
+      "mean": 0.4905,
+      "median": -1.9322,
+      "win_rate": 41.75,
+      "t_event": 0.641,
+      "n_months": 12,
+      "monthly_mean": 0.8003,
+      "monthly_sd": 3.5945,
+      "t_monthly": 0.771
+     }
+    },
+    "Miss": {
+     "5": {
+      "n_events": 155,
+      "mean": -0.9622,
+      "median": -1.318,
+      "win_rate": 40.65,
+      "t_event": -2.319,
+      "n_months": 12,
+      "monthly_mean": -1.2361,
+      "monthly_sd": 1.9693,
+      "t_monthly": -2.174
+     },
+     "10": {
+      "n_events": 155,
+      "mean": -1.2304,
+      "median": -2.0417,
+      "win_rate": 37.42,
+      "t_event": -2.092,
+      "n_months": 12,
+      "monthly_mean": -1.4991,
+      "monthly_sd": 2.3265,
+      "t_monthly": -2.232
+     },
+     "20": {
+      "n_events": 155,
+      "mean": -0.7577,
+      "median": -3.2061,
+      "win_rate": 36.13,
+      "t_event": -0.777,
+      "n_months": 12,
+      "monthly_mean": -0.7873,
+      "monthly_sd": 4.0277,
+      "t_monthly": -0.677
+     }
+    },
+    "符合": {
+     "5": {
+      "n_events": 1163,
+      "mean": 0.0723,
+      "median": -0.4026,
+      "win_rate": 44.88,
+      "t_event": 0.502,
+      "n_months": 12,
+      "monthly_mean": 0.0792,
+      "monthly_sd": 0.2803,
+      "t_monthly": 0.979
+     },
+     "10": {
+      "n_events": 1163,
+      "mean": -0.1169,
+      "median": -1.019,
+      "win_rate": 41.53,
+      "t_event": -0.546,
+      "n_months": 12,
+      "monthly_mean": -0.1051,
+      "monthly_sd": 0.5341,
+      "t_monthly": -0.681
+     },
+     "20": {
+      "n_events": 1164,
+      "mean": -0.097,
+      "median": -2.1468,
+      "win_rate": 39.6,
+      "t_event": -0.29,
+      "n_months": 12,
+      "monthly_mean": -0.0907,
+      "monthly_sd": 0.9188,
+      "t_monthly": -0.342
+     }
+    },
+    "Beat類合計": {
+     "5": {
+      "n_events": 330,
+      "mean": 0.0874,
+      "median": -0.5572,
+      "win_rate": 43.33,
+      "t_event": 0.244,
+      "n_months": 12,
+      "monthly_mean": 0.323,
+      "monthly_sd": 2.0992,
+      "t_monthly": 0.533
+     },
+     "10": {
+      "n_events": 330,
+      "mean": 0.7553,
+      "median": -1.3709,
+      "win_rate": 40.3,
+      "t_event": 1.276,
+      "n_months": 12,
+      "monthly_mean": 1.4962,
+      "monthly_sd": 3.507,
+      "t_monthly": 1.478
+     },
+     "20": {
+      "n_events": 330,
+      "mean": 0.7463,
+      "median": -1.6113,
+      "win_rate": 42.42,
+      "t_event": 0.987,
+      "n_months": 12,
+      "monthly_mean": 1.526,
+      "monthly_sd": 4.6301,
+      "t_monthly": 1.142
+     }
+    },
+    "Miss類合計": {
+     "5": {
+      "n_events": 200,
+      "mean": -0.8846,
+      "median": -1.3224,
+      "win_rate": 39.0,
+      "t_event": -2.372,
+      "n_months": 12,
+      "monthly_mean": -1.0215,
+      "monthly_sd": 1.3631,
+      "t_monthly": -2.596
+     },
+     "10": {
+      "n_events": 200,
+      "mean": -0.8325,
+      "median": -1.6141,
+      "win_rate": 40.0,
+      "t_event": -1.573,
+      "n_months": 12,
+      "monthly_mean": -0.9973,
+      "monthly_sd": 1.8561,
+      "t_monthly": -1.861
+     },
+     "20": {
+      "n_events": 200,
+      "mean": -0.2412,
+      "median": -2.3721,
+      "win_rate": 39.0,
+      "t_event": -0.288,
+      "n_months": 12,
+      "monthly_mean": -0.2926,
+      "monthly_sd": 3.6396,
+      "t_monthly": -0.278
+     }
+    }
+   },
+   "spread": {
+    "5": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 1.3445,
+     "sd": 2.7115,
+     "t": 1.718,
+     "pos_rate": 75.0
+    },
+    "10": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 2.4935,
+     "sd": 3.8147,
+     "t": 2.264,
+     "pos_rate": 75.0
+    },
+    "20": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 1.8186,
+     "sd": 5.6638,
+     "t": 1.112,
+     "pos_rate": 58.33
+    }
+   }
+  },
+  "2021": {
+   "by_class": {
+    "高預期仍Beat": {
+     "5": {
+      "n_events": 47,
+      "mean": -0.9304,
+      "median": -0.277,
+      "win_rate": 42.55,
+      "t_event": -0.954,
+      "n_months": 12,
+      "monthly_mean": -0.081,
+      "monthly_sd": 4.3865,
+      "t_monthly": -0.064
+     },
+     "10": {
+      "n_events": 47,
+      "mean": 0.4834,
+      "median": -0.7932,
+      "win_rate": 40.43,
+      "t_event": 0.271,
+      "n_months": 12,
+      "monthly_mean": 1.1936,
+      "monthly_sd": 9.5875,
+      "t_monthly": 0.431
+     },
+     "20": {
+      "n_events": 47,
+      "mean": 3.3953,
+      "median": -1.4133,
+      "win_rate": 46.81,
+      "t_event": 1.301,
+      "n_months": 12,
+      "monthly_mean": 5.3832,
+      "monthly_sd": 12.9406,
+      "t_monthly": 1.441
+     }
+    },
+    "低預期仍Miss": {
+     "5": {
+      "n_events": 30,
+      "mean": -0.9483,
+      "median": -1.0547,
+      "win_rate": 43.33,
+      "t_event": -1.152,
+      "n_months": 11,
+      "monthly_mean": -1.2508,
+      "monthly_sd": 3.1177,
+      "t_monthly": -1.331
+     },
+     "10": {
+      "n_events": 30,
+      "mean": -0.6233,
+      "median": -0.3286,
+      "win_rate": 43.33,
+      "t_event": -0.471,
+      "n_months": 11,
+      "monthly_mean": -0.9454,
+      "monthly_sd": 4.9444,
+      "t_monthly": -0.634
+     },
+     "20": {
+      "n_events": 30,
+      "mean": -3.5613,
+      "median": -4.5647,
+      "win_rate": 33.33,
+      "t_event": -2.487,
+      "n_months": 11,
+      "monthly_mean": -3.9294,
+      "monthly_sd": 4.8288,
+      "t_monthly": -2.699
+     }
+    },
+    "Beat": {
+     "5": {
+      "n_events": 211,
+      "mean": -0.0796,
+      "median": -0.547,
+      "win_rate": 45.5,
+      "t_event": -0.218,
+      "n_months": 12,
+      "monthly_mean": -0.0325,
+      "monthly_sd": 1.9258,
+      "t_monthly": -0.059
+     },
+     "10": {
+      "n_events": 211,
+      "mean": -0.0248,
+      "median": -0.5656,
+      "win_rate": 47.87,
+      "t_event": -0.053,
+      "n_months": 12,
+      "monthly_mean": 0.1241,
+      "monthly_sd": 1.4247,
+      "t_monthly": 0.302
+     },
+     "20": {
+      "n_events": 211,
+      "mean": 1.1794,
+      "median": -0.7601,
+      "win_rate": 47.87,
+      "t_event": 1.525,
+      "n_months": 12,
+      "monthly_mean": 1.793,
+      "monthly_sd": 2.7359,
+      "t_monthly": 2.27
+     }
+    },
+    "Miss": {
+     "5": {
+      "n_events": 155,
+      "mean": -0.1647,
+      "median": -0.3937,
+      "win_rate": 45.16,
+      "t_event": -0.433,
+      "n_months": 12,
+      "monthly_mean": -0.387,
+      "monthly_sd": 1.5768,
+      "t_monthly": -0.85
+     },
+     "10": {
+      "n_events": 155,
+      "mean": -0.1613,
+      "median": -0.5951,
+      "win_rate": 46.45,
+      "t_event": -0.316,
+      "n_months": 12,
+      "monthly_mean": -0.5828,
+      "monthly_sd": 2.4264,
+      "t_monthly": -0.832
+     },
+     "20": {
+      "n_events": 155,
+      "mean": -0.7846,
+      "median": -2.329,
+      "win_rate": 40.0,
+      "t_event": -1.021,
+      "n_months": 12,
+      "monthly_mean": -1.006,
+      "monthly_sd": 2.0142,
+      "t_monthly": -1.73
+     }
+    },
+    "符合": {
+     "5": {
+      "n_events": 1285,
+      "mean": 0.0662,
+      "median": -0.5107,
+      "win_rate": 44.12,
+      "t_event": 0.454,
+      "n_months": 12,
+      "monthly_mean": 0.0695,
+      "monthly_sd": 0.3344,
+      "t_monthly": 0.72
+     },
+     "10": {
+      "n_events": 1285,
+      "mean": 0.0113,
+      "median": -0.8897,
+      "win_rate": 42.8,
+      "t_event": 0.057,
+      "n_months": 12,
+      "monthly_mean": 0.0156,
+      "monthly_sd": 0.325,
+      "t_monthly": 0.166
+     },
+     "20": {
+      "n_events": 1284,
+      "mean": -0.1694,
+      "median": -1.2098,
+      "win_rate": 42.29,
+      "t_event": -0.567,
+      "n_months": 12,
+      "monthly_mean": -0.1579,
+      "monthly_sd": 0.5812,
+      "t_monthly": -0.941
+     }
+    },
+    "Beat類合計": {
+     "5": {
+      "n_events": 258,
+      "mean": -0.2346,
+      "median": -0.4707,
+      "win_rate": 44.96,
+      "t_event": -0.675,
+      "n_months": 12,
+      "monthly_mean": 0.0693,
+      "monthly_sd": 2.1386,
+      "t_monthly": 0.112
+     },
+     "10": {
+      "n_events": 258,
+      "mean": 0.0677,
+      "median": -0.5911,
+      "win_rate": 46.51,
+      "t_event": 0.135,
+      "n_months": 12,
+      "monthly_mean": 0.4974,
+      "monthly_sd": 2.2682,
+      "t_monthly": 0.76
+     },
+     "20": {
+      "n_events": 258,
+      "mean": 1.5831,
+      "median": -0.8949,
+      "win_rate": 47.67,
+      "t_event": 2.003,
+      "n_months": 12,
+      "monthly_mean": 2.5234,
+      "monthly_sd": 3.6334,
+      "t_monthly": 2.406
+     }
+    },
+    "Miss類合計": {
+     "5": {
+      "n_events": 185,
+      "mean": -0.2918,
+      "median": -0.4431,
+      "win_rate": 44.86,
+      "t_event": -0.845,
+      "n_months": 12,
+      "monthly_mean": -0.4414,
+      "monthly_sd": 1.3753,
+      "t_monthly": -1.112
+     },
+     "10": {
+      "n_events": 185,
+      "mean": -0.2362,
+      "median": -0.5653,
+      "win_rate": 45.95,
+      "t_event": -0.495,
+      "n_months": 12,
+      "monthly_mean": -0.3216,
+      "monthly_sd": 1.4778,
+      "t_monthly": -0.754
+     },
+     "20": {
+      "n_events": 185,
+      "mean": -1.2349,
+      "median": -2.5652,
+      "win_rate": 38.92,
+      "t_event": -1.798,
+      "n_months": 12,
+      "monthly_mean": -1.1815,
+      "monthly_sd": 1.7485,
+      "t_monthly": -2.341
+     }
+    }
+   },
+   "spread": {
+    "5": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 0.5107,
+     "sd": 2.8876,
+     "t": 0.613,
+     "pos_rate": 58.33
+    },
+    "10": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 0.819,
+     "sd": 2.8609,
+     "t": 0.992,
+     "pos_rate": 50.0
+    },
+    "20": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 3.7049,
+     "sd": 3.7792,
+     "t": 3.396,
+     "pos_rate": 100.0
+    }
+   }
+  },
+  "2022": {
+   "by_class": {
+    "高預期仍Beat": {
+     "5": {
+      "n_events": 36,
+      "mean": 0.7398,
+      "median": 0.5139,
+      "win_rate": 58.33,
+      "t_event": 0.865,
+      "n_months": 11,
+      "monthly_mean": 1.7873,
+      "monthly_sd": 4.4725,
+      "t_monthly": 1.325
+     },
+     "10": {
+      "n_events": 36,
+      "mean": 1.8617,
+      "median": 1.1559,
+      "win_rate": 55.56,
+      "t_event": 1.395,
+      "n_months": 11,
+      "monthly_mean": 2.826,
+      "monthly_sd": 4.1887,
+      "t_monthly": 2.238
+     },
+     "20": {
+      "n_events": 36,
+      "mean": 4.7817,
+      "median": 3.9383,
+      "win_rate": 61.11,
+      "t_event": 2.467,
+      "n_months": 11,
+      "monthly_mean": 5.2978,
+      "monthly_sd": 8.0469,
+      "t_monthly": 2.184
+     }
+    },
+    "低預期仍Miss": {
+     "5": {
+      "n_events": 75,
+      "mean": 0.2972,
+      "median": 0.2936,
+      "win_rate": 56.0,
+      "t_event": 0.691,
+      "n_months": 12,
+      "monthly_mean": 0.3157,
+      "monthly_sd": 2.3034,
+      "t_monthly": 0.475
+     },
+     "10": {
+      "n_events": 75,
+      "mean": 0.3402,
+      "median": -0.7463,
+      "win_rate": 45.33,
+      "t_event": 0.535,
+      "n_months": 12,
+      "monthly_mean": -0.4726,
+      "monthly_sd": 3.2917,
+      "t_monthly": -0.497
+     },
+     "20": {
+      "n_events": 75,
+      "mean": 0.9376,
+      "median": 0.28,
+      "win_rate": 54.67,
+      "t_event": 1.03,
+      "n_months": 12,
+      "monthly_mean": 1.6117,
+      "monthly_sd": 4.8045,
+      "t_monthly": 1.162
+     }
+    },
+    "Beat": {
+     "5": {
+      "n_events": 167,
+      "mean": -0.0214,
+      "median": -0.3964,
+      "win_rate": 44.31,
+      "t_event": -0.048,
+      "n_months": 12,
+      "monthly_mean": -0.0465,
+      "monthly_sd": 1.518,
+      "t_monthly": -0.106
+     },
+     "10": {
+      "n_events": 167,
+      "mean": 0.9908,
+      "median": 0.807,
+      "win_rate": 55.69,
+      "t_event": 1.761,
+      "n_months": 12,
+      "monthly_mean": 0.9034,
+      "monthly_sd": 2.3309,
+      "t_monthly": 1.343
+     },
+     "20": {
+      "n_events": 166,
+      "mean": 3.3383,
+      "median": 1.9918,
+      "win_rate": 58.43,
+      "t_event": 3.888,
+      "n_months": 12,
+      "monthly_mean": 2.9543,
+      "monthly_sd": 3.943,
+      "t_monthly": 2.596
+     }
+    },
+    "Miss": {
+     "5": {
+      "n_events": 223,
+      "mean": -0.0798,
+      "median": -0.3812,
+      "win_rate": 44.84,
+      "t_event": -0.281,
+      "n_months": 12,
+      "monthly_mean": -0.3836,
+      "monthly_sd": 1.9927,
+      "t_monthly": -0.667
+     },
+     "10": {
+      "n_events": 223,
+      "mean": -0.7342,
+      "median": -1.3179,
+      "win_rate": 41.26,
+      "t_event": -1.948,
+      "n_months": 12,
+      "monthly_mean": -1.0949,
+      "monthly_sd": 2.2355,
+      "t_monthly": -1.697
+     },
+     "20": {
+      "n_events": 223,
+      "mean": -1.9611,
+      "median": -2.4968,
+      "win_rate": 34.08,
+      "t_event": -3.928,
+      "n_months": 12,
+      "monthly_mean": -2.388,
+      "monthly_sd": 2.8784,
+      "t_monthly": -2.874
+     }
+    },
+    "符合": {
+     "5": {
+      "n_events": 1239,
+      "mean": -0.0446,
+      "median": -0.2348,
+      "win_rate": 47.38,
+      "t_event": -0.373,
+      "n_months": 12,
+      "monthly_mean": -0.0531,
+      "monthly_sd": 0.3537,
+      "t_monthly": -0.52
+     },
+     "10": {
+      "n_events": 1238,
+      "mean": -0.1233,
+      "median": -0.3991,
+      "win_rate": 46.93,
+      "t_event": -0.764,
+      "n_months": 12,
+      "monthly_mean": -0.1322,
+      "monthly_sd": 0.3108,
+      "t_monthly": -1.473
+     },
+     "20": {
+      "n_events": 1236,
+      "mean": -0.3753,
+      "median": -0.8486,
+      "win_rate": 45.39,
+      "t_event": -1.67,
+      "n_months": 12,
+      "monthly_mean": -0.3797,
+      "monthly_sd": 0.3984,
+      "t_monthly": -3.301
+     }
+    },
+    "Beat類合計": {
+     "5": {
+      "n_events": 203,
+      "mean": 0.1136,
+      "median": -0.1666,
+      "win_rate": 46.8,
+      "t_event": 0.287,
+      "n_months": 12,
+      "monthly_mean": 0.1834,
+      "monthly_sd": 1.471,
+      "t_monthly": 0.432
+     },
+     "10": {
+      "n_events": 203,
+      "mean": 1.1452,
+      "median": 0.8301,
+      "win_rate": 55.67,
+      "t_event": 2.207,
+      "n_months": 12,
+      "monthly_mean": 1.3056,
+      "monthly_sd": 1.9706,
+      "t_monthly": 2.295
+     },
+     "20": {
+      "n_events": 202,
+      "mean": 3.5956,
+      "median": 2.2702,
+      "win_rate": 58.91,
+      "t_event": 4.583,
+      "n_months": 12,
+      "monthly_mean": 3.5595,
+      "monthly_sd": 2.5861,
+      "t_monthly": 4.768
+     }
+    },
+    "Miss類合計": {
+     "5": {
+      "n_events": 298,
+      "mean": 0.0151,
+      "median": -0.1528,
+      "win_rate": 47.65,
+      "t_event": 0.063,
+      "n_months": 12,
+      "monthly_mean": -0.3028,
+      "monthly_sd": 1.6258,
+      "t_monthly": -0.645
+     },
+     "10": {
+      "n_events": 298,
+      "mean": -0.4638,
+      "median": -1.2796,
+      "win_rate": 42.28,
+      "t_event": -1.428,
+      "n_months": 12,
+      "monthly_mean": -0.9122,
+      "monthly_sd": 2.2332,
+      "t_monthly": -1.415
+     },
+     "20": {
+      "n_events": 298,
+      "mean": -1.2316,
+      "median": -2.0103,
+      "win_rate": 39.26,
+      "t_event": -2.776,
+      "n_months": 12,
+      "monthly_mean": -1.6696,
+      "monthly_sd": 2.2095,
+      "t_monthly": -2.618
+     }
+    }
+   },
+   "spread": {
+    "5": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 0.4862,
+     "sd": 2.9005,
+     "t": 0.581,
+     "pos_rate": 66.67
+    },
+    "10": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 2.2178,
+     "sd": 3.965,
+     "t": 1.938,
+     "pos_rate": 75.0
+    },
+    "20": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 5.2291,
+     "sd": 4.2798,
+     "t": 4.232,
+     "pos_rate": 83.33
+    }
+   }
+  },
+  "2023": {
+   "by_class": {
+    "高預期仍Beat": {
+     "5": {
+      "n_events": 33,
+      "mean": -0.0549,
+      "median": -1.5637,
+      "win_rate": 36.36,
+      "t_event": -0.035,
+      "n_months": 11,
+      "monthly_mean": 1.2785,
+      "monthly_sd": 5.8799,
+      "t_monthly": 0.721
+     },
+     "10": {
+      "n_events": 33,
+      "mean": 1.4473,
+      "median": -1.9445,
+      "win_rate": 36.36,
+      "t_event": 0.596,
+      "n_months": 11,
+      "monthly_mean": 3.4623,
+      "monthly_sd": 10.1223,
+      "t_monthly": 1.134
+     },
+     "20": {
+      "n_events": 33,
+      "mean": 0.6973,
+      "median": -2.014,
+      "win_rate": 42.42,
+      "t_event": 0.216,
+      "n_months": 11,
+      "monthly_mean": 2.3636,
+      "monthly_sd": 10.0442,
+      "t_monthly": 0.78
+     }
+    },
+    "低預期仍Miss": {
+     "5": {
+      "n_events": 113,
+      "mean": 1.0144,
+      "median": -0.3296,
+      "win_rate": 47.79,
+      "t_event": 1.496,
+      "n_months": 12,
+      "monthly_mean": 1.6597,
+      "monthly_sd": 2.109,
+      "t_monthly": 2.726
+     },
+     "10": {
+      "n_events": 113,
+      "mean": 0.8021,
+      "median": -0.6019,
+      "win_rate": 45.13,
+      "t_event": 1.009,
+      "n_months": 12,
+      "monthly_mean": 1.1078,
+      "monthly_sd": 2.03,
+      "t_monthly": 1.89
+     },
+     "20": {
+      "n_events": 113,
+      "mean": 0.498,
+      "median": -0.1617,
+      "win_rate": 48.67,
+      "t_event": 0.435,
+      "n_months": 12,
+      "monthly_mean": 0.0828,
+      "monthly_sd": 3.4174,
+      "t_monthly": 0.084
+     }
+    },
+    "Beat": {
+     "5": {
+      "n_events": 288,
+      "mean": -0.1667,
+      "median": -0.7342,
+      "win_rate": 42.01,
+      "t_event": -0.491,
+      "n_months": 12,
+      "monthly_mean": -0.1165,
+      "monthly_sd": 1.1038,
+      "t_monthly": -0.366
+     },
+     "10": {
+      "n_events": 288,
+      "mean": 0.1777,
+      "median": -1.4337,
+      "win_rate": 40.62,
+      "t_event": 0.387,
+      "n_months": 12,
+      "monthly_mean": 0.1586,
+      "monthly_sd": 1.5813,
+      "t_monthly": 0.347
+     },
+     "20": {
+      "n_events": 288,
+      "mean": 1.4088,
+      "median": -1.4531,
+      "win_rate": 44.44,
+      "t_event": 1.811,
+      "n_months": 12,
+      "monthly_mean": 1.2158,
+      "monthly_sd": 3.7742,
+      "t_monthly": 1.116
+     }
+    },
+    "Miss": {
+     "5": {
+      "n_events": 120,
+      "mean": 0.0022,
+      "median": -1.0025,
+      "win_rate": 41.67,
+      "t_event": 0.004,
+      "n_months": 12,
+      "monthly_mean": 0.0043,
+      "monthly_sd": 2.5712,
+      "t_monthly": 0.006
+     },
+     "10": {
+      "n_events": 120,
+      "mean": 0.6073,
+      "median": -1.426,
+      "win_rate": 40.0,
+      "t_event": 0.73,
+      "n_months": 12,
+      "monthly_mean": 0.6156,
+      "monthly_sd": 4.1943,
+      "t_monthly": 0.508
+     },
+     "20": {
+      "n_events": 120,
+      "mean": -0.9184,
+      "median": -2.175,
+      "win_rate": 37.5,
+      "t_event": -0.853,
+      "n_months": 12,
+      "monthly_mean": -0.7577,
+      "monthly_sd": 4.538,
+      "t_monthly": -0.578
+     }
+    },
+    "符合": {
+     "5": {
+      "n_events": 1191,
+      "mean": -0.0433,
+      "median": -0.6073,
+      "win_rate": 43.74,
+      "t_event": -0.284,
+      "n_months": 12,
+      "monthly_mean": -0.0628,
+      "monthly_sd": 0.4174,
+      "t_monthly": -0.521
+     },
+     "10": {
+      "n_events": 1191,
+      "mean": -0.216,
+      "median": -1.0979,
+      "win_rate": 40.97,
+      "t_event": -0.976,
+      "n_months": 12,
+      "monthly_mean": -0.2628,
+      "monthly_sd": 0.6216,
+      "t_monthly": -1.464
+     },
+     "20": {
+      "n_events": 1192,
+      "mean": -0.3266,
+      "median": -2.276,
+      "win_rate": 39.51,
+      "t_event": -0.982,
+      "n_months": 12,
+      "monthly_mean": -0.3819,
+      "monthly_sd": 0.9064,
+      "t_monthly": -1.459
+     }
+    },
+    "Beat類合計": {
+     "5": {
+      "n_events": 321,
+      "mean": -0.1552,
+      "median": -0.7632,
+      "win_rate": 41.43,
+      "t_event": -0.453,
+      "n_months": 12,
+      "monthly_mean": -0.0992,
+      "monthly_sd": 1.3354,
+      "t_monthly": -0.257
+     },
+     "10": {
+      "n_events": 321,
+      "mean": 0.3083,
+      "median": -1.4627,
+      "win_rate": 40.19,
+      "t_event": 0.642,
+      "n_months": 12,
+      "monthly_mean": 0.3725,
+      "monthly_sd": 2.2246,
+      "t_monthly": 0.58
+     },
+     "20": {
+      "n_events": 321,
+      "mean": 1.3357,
+      "median": -1.5599,
+      "win_rate": 44.24,
+      "t_event": 1.733,
+      "n_months": 12,
+      "monthly_mean": 1.149,
+      "monthly_sd": 3.6051,
+      "t_monthly": 1.104
+     }
+    },
+    "Miss類合計": {
+     "5": {
+      "n_events": 233,
+      "mean": 0.4931,
+      "median": -0.5504,
+      "win_rate": 44.64,
+      "t_event": 1.17,
+      "n_months": 12,
+      "monthly_mean": 0.8314,
+      "monthly_sd": 2.0298,
+      "t_monthly": 1.419
+     },
+     "10": {
+      "n_events": 233,
+      "mean": 0.7018,
+      "median": -0.903,
+      "win_rate": 42.49,
+      "t_event": 1.22,
+      "n_months": 12,
+      "monthly_mean": 0.8878,
+      "monthly_sd": 3.0307,
+      "t_monthly": 1.015
+     },
+     "20": {
+      "n_events": 233,
+      "mean": -0.2315,
+      "median": -1.5785,
+      "win_rate": 42.92,
+      "t_event": -0.295,
+      "n_months": 12,
+      "monthly_mean": -0.3596,
+      "monthly_sd": 3.4805,
+      "t_monthly": -0.358
+     }
+    }
+   },
+   "spread": {
+    "5": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": -0.9306,
+     "sd": 2.3874,
+     "t": -1.35,
+     "pos_rate": 25.0
+    },
+    "10": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": -0.5153,
+     "sd": 4.13,
+     "t": -0.432,
+     "pos_rate": 50.0
+    },
+    "20": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 1.5085,
+     "sd": 5.6405,
+     "t": 0.926,
+     "pos_rate": 66.67
+    }
+   }
+  },
+  "2024": {
+   "by_class": {
+    "高預期仍Beat": {
+     "5": {
+      "n_events": 37,
+      "mean": 0.2859,
+      "median": -0.806,
+      "win_rate": 45.95,
+      "t_event": 0.209,
+      "n_months": 11,
+      "monthly_mean": 0.853,
+      "monthly_sd": 6.3149,
+      "t_monthly": 0.448
+     },
+     "10": {
+      "n_events": 37,
+      "mean": 1.0084,
+      "median": -1.6083,
+      "win_rate": 48.65,
+      "t_event": 0.525,
+      "n_months": 11,
+      "monthly_mean": 0.5458,
+      "monthly_sd": 5.5184,
+      "t_monthly": 0.328
+     },
+     "20": {
+      "n_events": 37,
+      "mean": -0.4361,
+      "median": -2.2623,
+      "win_rate": 43.24,
+      "t_event": -0.185,
+      "n_months": 11,
+      "monthly_mean": -1.2685,
+      "monthly_sd": 6.4917,
+      "t_monthly": -0.648
+     }
+    },
+    "低預期仍Miss": {
+     "5": {
+      "n_events": 44,
+      "mean": 0.0585,
+      "median": -0.9571,
+      "win_rate": 45.45,
+      "t_event": 0.052,
+      "n_months": 11,
+      "monthly_mean": 0.9914,
+      "monthly_sd": 5.0817,
+      "t_monthly": 0.647
+     },
+     "10": {
+      "n_events": 44,
+      "mean": 0.9261,
+      "median": -1.073,
+      "win_rate": 45.45,
+      "t_event": 0.652,
+      "n_months": 11,
+      "monthly_mean": 1.984,
+      "monthly_sd": 8.2147,
+      "t_monthly": 0.801
+     },
+     "20": {
+      "n_events": 44,
+      "mean": 0.2352,
+      "median": 0.2408,
+      "win_rate": 50.0,
+      "t_event": 0.143,
+      "n_months": 11,
+      "monthly_mean": 0.5458,
+      "monthly_sd": 6.9503,
+      "t_monthly": 0.26
+     }
+    },
+    "Beat": {
+     "5": {
+      "n_events": 182,
+      "mean": 0.3703,
+      "median": 0.3059,
+      "win_rate": 51.1,
+      "t_event": 0.749,
+      "n_months": 12,
+      "monthly_mean": 0.2618,
+      "monthly_sd": 1.2563,
+      "t_monthly": 0.722
+     },
+     "10": {
+      "n_events": 182,
+      "mean": 0.4604,
+      "median": -0.707,
+      "win_rate": 46.15,
+      "t_event": 0.741,
+      "n_months": 12,
+      "monthly_mean": 0.2924,
+      "monthly_sd": 1.4833,
+      "t_monthly": 0.683
+     },
+     "20": {
+      "n_events": 182,
+      "mean": 1.0677,
+      "median": -1.3319,
+      "win_rate": 45.05,
+      "t_event": 1.051,
+      "n_months": 12,
+      "monthly_mean": 1.6209,
+      "monthly_sd": 3.162,
+      "t_monthly": 1.776
+     }
+    },
+    "Miss": {
+     "5": {
+      "n_events": 134,
+      "mean": 0.2676,
+      "median": -0.4404,
+      "win_rate": 44.78,
+      "t_event": 0.569,
+      "n_months": 12,
+      "monthly_mean": 0.6063,
+      "monthly_sd": 2.4071,
+      "t_monthly": 0.872
+     },
+     "10": {
+      "n_events": 134,
+      "mean": 0.9966,
+      "median": 0.199,
+      "win_rate": 50.75,
+      "t_event": 1.366,
+      "n_months": 12,
+      "monthly_mean": 1.5314,
+      "monthly_sd": 3.6996,
+      "t_monthly": 1.434
+     },
+     "20": {
+      "n_events": 134,
+      "mean": 0.8005,
+      "median": -2.0609,
+      "win_rate": 44.03,
+      "t_event": 0.78,
+      "n_months": 12,
+      "monthly_mean": 1.5438,
+      "monthly_sd": 4.5466,
+      "t_monthly": 1.176
+     }
+    },
+    "符合": {
+     "5": {
+      "n_events": 1354,
+      "mean": -0.1479,
+      "median": -0.8068,
+      "win_rate": 43.06,
+      "t_event": -0.99,
+      "n_months": 12,
+      "monthly_mean": -0.1625,
+      "monthly_sd": 0.3598,
+      "t_monthly": -1.564
+     },
+     "10": {
+      "n_events": 1355,
+      "mean": -0.2543,
+      "median": -0.9176,
+      "win_rate": 44.35,
+      "t_event": -1.316,
+      "n_months": 12,
+      "monthly_mean": -0.276,
+      "monthly_sd": 0.4561,
+      "t_monthly": -2.096
+     },
+     "20": {
+      "n_events": 1355,
+      "mean": -0.2057,
+      "median": -1.6663,
+      "win_rate": 41.85,
+      "t_event": -0.68,
+      "n_months": 12,
+      "monthly_mean": -0.205,
+      "monthly_sd": 0.4332,
+      "t_monthly": -1.639
+     }
+    },
+    "Beat類合計": {
+     "5": {
+      "n_events": 219,
+      "mean": 0.3561,
+      "median": 0.1853,
+      "win_rate": 50.23,
+      "t_event": 0.757,
+      "n_months": 12,
+      "monthly_mean": 0.2409,
+      "monthly_sd": 1.6376,
+      "t_monthly": 0.51
+     },
+     "10": {
+      "n_events": 219,
+      "mean": 0.5529,
+      "median": -0.7139,
+      "win_rate": 46.58,
+      "t_event": 0.91,
+      "n_months": 12,
+      "monthly_mean": 0.2628,
+      "monthly_sd": 1.3557,
+      "t_monthly": 0.671
+     },
+     "20": {
+      "n_events": 219,
+      "mean": 0.8136,
+      "median": -1.5167,
+      "win_rate": 44.75,
+      "t_event": 0.873,
+      "n_months": 12,
+      "monthly_mean": 0.9365,
+      "monthly_sd": 2.8113,
+      "t_monthly": 1.154
+     }
+    },
+    "Miss類合計": {
+     "5": {
+      "n_events": 178,
+      "mean": 0.216,
+      "median": -0.5297,
+      "win_rate": 44.94,
+      "t_event": 0.482,
+      "n_months": 12,
+      "monthly_mean": 0.4962,
+      "monthly_sd": 2.6793,
+      "t_monthly": 0.642
+     },
+     "10": {
+      "n_events": 178,
+      "mean": 0.9791,
+      "median": -0.2211,
+      "win_rate": 49.44,
+      "t_event": 1.507,
+      "n_months": 12,
+      "monthly_mean": 1.4041,
+      "monthly_sd": 4.0099,
+      "t_monthly": 1.213
+     },
+     "20": {
+      "n_events": 178,
+      "mean": 0.6608,
+      "median": -1.3984,
+      "win_rate": 45.51,
+      "t_event": 0.759,
+      "n_months": 12,
+      "monthly_mean": 0.8108,
+      "monthly_sd": 4.125,
+      "t_monthly": 0.681
+     }
+    }
+   },
+   "spread": {
+    "5": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": -0.2553,
+     "sd": 2.8693,
+     "t": -0.308,
+     "pos_rate": 33.33
+    },
+    "10": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": -1.1414,
+     "sd": 4.0341,
+     "t": -0.98,
+     "pos_rate": 41.67
+    },
+    "20": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 0.1258,
+     "sd": 5.8243,
+     "t": 0.075,
+     "pos_rate": 50.0
+    }
+   }
+  },
+  "2025": {
+   "by_class": {
+    "高預期仍Beat": {
+     "5": {
+      "n_events": 50,
+      "mean": -0.1435,
+      "median": -1.606,
+      "win_rate": 46.0,
+      "t_event": -0.138,
+      "n_months": 12,
+      "monthly_mean": -1.3877,
+      "monthly_sd": 3.0201,
+      "t_monthly": -1.592
+     },
+     "10": {
+      "n_events": 50,
+      "mean": 0.143,
+      "median": -0.6878,
+      "win_rate": 48.0,
+      "t_event": 0.111,
+      "n_months": 12,
+      "monthly_mean": -1.3492,
+      "monthly_sd": 4.3434,
+      "t_monthly": -1.076
+     },
+     "20": {
+      "n_events": 50,
+      "mean": 2.0994,
+      "median": -0.3862,
+      "win_rate": 46.0,
+      "t_event": 0.98,
+      "n_months": 12,
+      "monthly_mean": 0.3657,
+      "monthly_sd": 7.2661,
+      "t_monthly": 0.174
+     }
+    },
+    "低預期仍Miss": {
+     "5": {
+      "n_events": 22,
+      "mean": 0.2264,
+      "median": -0.1959,
+      "win_rate": 45.45,
+      "t_event": 0.158,
+      "n_months": 10,
+      "monthly_mean": -0.3988,
+      "monthly_sd": 3.4256,
+      "t_monthly": -0.368
+     },
+     "10": {
+      "n_events": 22,
+      "mean": -2.8756,
+      "median": -3.5779,
+      "win_rate": 27.27,
+      "t_event": -1.658,
+      "n_months": 10,
+      "monthly_mean": -2.6817,
+      "monthly_sd": 4.8071,
+      "t_monthly": -1.764
+     },
+     "20": {
+      "n_events": 22,
+      "mean": 1.1295,
+      "median": -0.7471,
+      "win_rate": 50.0,
+      "t_event": 0.274,
+      "n_months": 10,
+      "monthly_mean": -0.1135,
+      "monthly_sd": 11.3016,
+      "t_monthly": -0.032
+     }
+    },
+    "Beat": {
+     "5": {
+      "n_events": 243,
+      "mean": 0.6903,
+      "median": 0.2304,
+      "win_rate": 51.44,
+      "t_event": 1.704,
+      "n_months": 12,
+      "monthly_mean": 0.5813,
+      "monthly_sd": 1.686,
+      "t_monthly": 1.194
+     },
+     "10": {
+      "n_events": 243,
+      "mean": 0.2587,
+      "median": -0.7115,
+      "win_rate": 45.68,
+      "t_event": 0.47,
+      "n_months": 12,
+      "monthly_mean": 0.6809,
+      "monthly_sd": 4.362,
+      "t_monthly": 0.541
+     },
+     "20": {
+      "n_events": 243,
+      "mean": 0.7906,
+      "median": -0.9668,
+      "win_rate": 45.68,
+      "t_event": 0.853,
+      "n_months": 12,
+      "monthly_mean": 1.9366,
+      "monthly_sd": 4.6925,
+      "t_monthly": 1.43
+     }
+    },
+    "Miss": {
+     "5": {
+      "n_events": 140,
+      "mean": -0.4028,
+      "median": -1.3196,
+      "win_rate": 37.14,
+      "t_event": -0.716,
+      "n_months": 12,
+      "monthly_mean": -0.5494,
+      "monthly_sd": 1.527,
+      "t_monthly": -1.246
+     },
+     "10": {
+      "n_events": 140,
+      "mean": -1.0456,
+      "median": -1.856,
+      "win_rate": 37.14,
+      "t_event": -1.585,
+      "n_months": 12,
+      "monthly_mean": -1.5798,
+      "monthly_sd": 2.3303,
+      "t_monthly": -2.349
+     },
+     "20": {
+      "n_events": 140,
+      "mean": -1.7882,
+      "median": -3.6079,
+      "win_rate": 37.14,
+      "t_event": -1.875,
+      "n_months": 12,
+      "monthly_mean": -2.6248,
+      "monthly_sd": 3.7124,
+      "t_monthly": -2.449
+     }
+    },
+    "符合": {
+     "5": {
+      "n_events": 1308,
+      "mean": -0.0535,
+      "median": -0.9583,
+      "win_rate": 41.74,
+      "t_event": -0.326,
+      "n_months": 12,
+      "monthly_mean": -0.0782,
+      "monthly_sd": 0.3726,
+      "t_monthly": -0.727
+     },
+     "10": {
+      "n_events": 1309,
+      "mean": 0.0748,
+      "median": -1.1651,
+      "win_rate": 42.78,
+      "t_event": 0.321,
+      "n_months": 12,
+      "monthly_mean": 0.0609,
+      "monthly_sd": 0.5994,
+      "t_monthly": 0.352
+     },
+     "20": {
+      "n_events": 1309,
+      "mean": -0.1081,
+      "median": -2.574,
+      "win_rate": 40.11,
+      "t_event": -0.304,
+      "n_months": 12,
+      "monthly_mean": -0.0943,
+      "monthly_sd": 0.7354,
+      "t_monthly": -0.444
+     }
+    },
+    "Beat類合計": {
+     "5": {
+      "n_events": 293,
+      "mean": 0.5481,
+      "median": 0.0413,
+      "win_rate": 50.51,
+      "t_event": 1.443,
+      "n_months": 12,
+      "monthly_mean": 0.28,
+      "monthly_sd": 1.6994,
+      "t_monthly": 0.571
+     },
+     "10": {
+      "n_events": 293,
+      "mean": 0.239,
+      "median": -0.7115,
+      "win_rate": 46.08,
+      "t_event": 0.473,
+      "n_months": 12,
+      "monthly_mean": 0.4939,
+      "monthly_sd": 3.9058,
+      "t_monthly": 0.438
+     },
+     "20": {
+      "n_events": 293,
+      "mean": 1.014,
+      "median": -0.8877,
+      "win_rate": 45.73,
+      "t_event": 1.193,
+      "n_months": 12,
+      "monthly_mean": 1.5599,
+      "monthly_sd": 4.0978,
+      "t_monthly": 1.319
+     }
+    },
+    "Miss類合計": {
+     "5": {
+      "n_events": 162,
+      "mean": -0.3174,
+      "median": -1.1585,
+      "win_rate": 38.27,
+      "t_event": -0.607,
+      "n_months": 12,
+      "monthly_mean": -0.5766,
+      "monthly_sd": 1.3615,
+      "t_monthly": -1.467
+     },
+     "10": {
+      "n_events": 162,
+      "mean": -1.2941,
+      "median": -2.0377,
+      "win_rate": 35.8,
+      "t_event": -2.098,
+      "n_months": 12,
+      "monthly_mean": -1.8463,
+      "monthly_sd": 2.3779,
+      "t_monthly": -2.69
+     },
+     "20": {
+      "n_events": 162,
+      "mean": -1.392,
+      "median": -3.2747,
+      "win_rate": 38.89,
+      "t_event": -1.401,
+      "n_months": 12,
+      "monthly_mean": -2.1853,
+      "monthly_sd": 2.8869,
+      "t_monthly": -2.622
+     }
+    }
+   },
+   "spread": {
+    "5": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 0.8566,
+     "sd": 2.1,
+     "t": 1.413,
+     "pos_rate": 66.67
+    },
+    "10": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 2.3402,
+     "sd": 3.7977,
+     "t": 2.135,
+     "pos_rate": 83.33
+    },
+    "20": {
+     "n_months": 12,
+     "skipped_months": 0,
+     "mean": 3.7452,
+     "sd": 5.6217,
+     "t": 2.308,
+     "pos_rate": 75.0
+    }
+   }
+  },
+  "2026": {
+   "by_class": {
+    "高預期仍Beat": {
+     "5": {
+      "n_events": 97,
+      "mean": -1.5866,
+      "median": -2.478,
+      "win_rate": 35.05,
+      "t_event": -1.827,
+      "n_months": 9,
+      "monthly_mean": -1.8373,
+      "monthly_sd": 3.5982,
+      "t_monthly": -1.532
+     },
+     "10": {
+      "n_events": 97,
+      "mean": -3.3,
+      "median": -3.0989,
+      "win_rate": 41.24,
+      "t_event": -3.491,
+      "n_months": 9,
+      "monthly_mean": -3.9201,
+      "monthly_sd": 3.8081,
+      "t_monthly": -3.088
+     },
+     "20": {
+      "n_events": 97,
+      "mean": 0.2325,
+      "median": -2.1868,
+      "win_rate": 42.27,
+      "t_event": 0.138,
+      "n_months": 9,
+      "monthly_mean": -0.6872,
+      "monthly_sd": 9.2795,
+      "t_monthly": -0.222
+     }
+    },
+    "低預期仍Miss": {
+     "5": {
+      "n_events": 23,
+      "mean": 1.1681,
+      "median": -1.5318,
+      "win_rate": 47.83,
+      "t_event": 0.481,
+      "n_months": 8,
+      "monthly_mean": 0.928,
+      "monthly_sd": 8.6933,
+      "t_monthly": 0.302
+     },
+     "10": {
+      "n_events": 23,
+      "mean": -2.1788,
+      "median": -4.4516,
+      "win_rate": 26.09,
+      "t_event": -0.89,
+      "n_months": 8,
+      "monthly_mean": -2.0266,
+      "monthly_sd": 7.86,
+      "t_monthly": -0.729
+     },
+     "20": {
+      "n_events": 23,
+      "mean": -3.282,
+      "median": -6.3224,
+      "win_rate": 30.43,
+      "t_event": -0.916,
+      "n_months": 8,
+      "monthly_mean": -2.2319,
+      "monthly_sd": 7.9805,
+      "t_monthly": -0.791
+     }
+    },
+    "Beat": {
+     "5": {
+      "n_events": 167,
+      "mean": 0.1126,
+      "median": -1.772,
+      "win_rate": 42.51,
+      "t_event": 0.153,
+      "n_months": 9,
+      "monthly_mean": -0.2093,
+      "monthly_sd": 2.6513,
+      "t_monthly": -0.237
+     },
+     "10": {
+      "n_events": 167,
+      "mean": 1.3386,
+      "median": -1.5893,
+      "win_rate": 44.31,
+      "t_event": 1.259,
+      "n_months": 9,
+      "monthly_mean": 1.4777,
+      "monthly_sd": 2.8621,
+      "t_monthly": 1.549
+     },
+     "20": {
+      "n_events": 167,
+      "mean": 2.7897,
+      "median": -2.3094,
+      "win_rate": 44.31,
+      "t_event": 1.623,
+      "n_months": 9,
+      "monthly_mean": 3.2538,
+      "monthly_sd": 4.1509,
+      "t_monthly": 2.352
+     }
+    },
+    "Miss": {
+     "5": {
+      "n_events": 97,
+      "mean": -0.2509,
+      "median": -1.1448,
+      "win_rate": 37.11,
+      "t_event": -0.342,
+      "n_months": 9,
+      "monthly_mean": -1.0681,
+      "monthly_sd": 2.4609,
+      "t_monthly": -1.302
+     },
+     "10": {
+      "n_events": 97,
+      "mean": 0.2826,
+      "median": -1.5947,
+      "win_rate": 42.27,
+      "t_event": 0.241,
+      "n_months": 9,
+      "monthly_mean": -0.1395,
+      "monthly_sd": 4.29,
+      "t_monthly": -0.098
+     },
+     "20": {
+      "n_events": 97,
+      "mean": -0.8672,
+      "median": -4.7454,
+      "win_rate": 38.14,
+      "t_event": -0.448,
+      "n_months": 9,
+      "monthly_mean": -1.8086,
+      "monthly_sd": 6.918,
+      "t_monthly": -0.784
+     }
+    },
+    "符合": {
+     "5": {
+      "n_events": 951,
+      "mean": 0.1626,
+      "median": -0.9547,
+      "win_rate": 44.58,
+      "t_event": 0.59,
+      "n_months": 9,
+      "monthly_mean": 0.1457,
+      "monthly_sd": 0.4809,
+      "t_monthly": 0.909
+     },
+     "10": {
+      "n_events": 951,
+      "mean": 0.1395,
+      "median": -2.0858,
+      "win_rate": 43.22,
+      "t_event": 0.344,
+      "n_months": 9,
+      "monthly_mean": 0.1092,
+      "monthly_sd": 1.0183,
+      "t_monthly": 0.322
+     },
+     "20": {
+      "n_events": 951,
+      "mean": -0.331,
+      "median": -3.5912,
+      "win_rate": 41.22,
+      "t_event": -0.532,
+      "n_months": 9,
+      "monthly_mean": -0.4178,
+      "monthly_sd": 1.6332,
+      "t_monthly": -0.767
+     }
+    },
+    "Beat類合計": {
+     "5": {
+      "n_events": 264,
+      "mean": -0.5117,
+      "median": -1.8922,
+      "win_rate": 39.77,
+      "t_event": -0.906,
+      "n_months": 9,
+      "monthly_mean": -0.6417,
+      "monthly_sd": 2.0471,
+      "t_monthly": -0.94
+     },
+     "10": {
+      "n_events": 264,
+      "mean": -0.3657,
+      "median": -2.2243,
+      "win_rate": 43.18,
+      "t_event": -0.476,
+      "n_months": 9,
+      "monthly_mean": -0.59,
+      "monthly_sd": 2.1677,
+      "t_monthly": -0.817
+     },
+     "20": {
+      "n_events": 264,
+      "mean": 1.8501,
+      "median": -2.282,
+      "win_rate": 43.56,
+      "t_event": 1.479,
+      "n_months": 9,
+      "monthly_mean": 1.0404,
+      "monthly_sd": 3.4815,
+      "t_monthly": 0.896
+     }
+    },
+    "Miss類合計": {
+     "5": {
+      "n_events": 120,
+      "mean": 0.0211,
+      "median": -1.2809,
+      "win_rate": 39.17,
+      "t_event": 0.028,
+      "n_months": 9,
+      "monthly_mean": -0.3807,
+      "monthly_sd": 2.7847,
+      "t_monthly": -0.41
+     },
+     "10": {
+      "n_events": 120,
+      "mean": -0.1892,
+      "median": -2.5587,
+      "win_rate": 39.17,
+      "t_event": -0.179,
+      "n_months": 9,
+      "monthly_mean": -0.2744,
+      "monthly_sd": 4.6024,
+      "t_monthly": -0.179
+     },
+     "20": {
+      "n_events": 120,
+      "mean": -1.33,
+      "median": -5.008,
+      "win_rate": 36.67,
+      "t_event": -0.78,
+      "n_months": 9,
+      "monthly_mean": -1.8411,
+      "monthly_sd": 6.8716,
+      "t_monthly": -0.804
+     }
+    }
+   },
+   "spread": {
+    "5": {
+     "n_months": 9,
+     "skipped_months": 0,
+     "mean": -0.2611,
+     "sd": 3.3899,
+     "t": -0.231,
+     "pos_rate": 44.44
+    },
+    "10": {
+     "n_months": 9,
+     "skipped_months": 0,
+     "mean": -0.3157,
+     "sd": 4.2321,
+     "t": -0.224,
+     "pos_rate": 44.44
+    },
+    "20": {
+     "n_months": 9,
+     "skipped_months": 0,
+     "mean": 2.8814,
+     "sd": 6.1224,
+     "t": 1.412,
+     "pos_rate": 66.67
+    }
+   }
+  }
+ },
+ "grid": [
+  {
+   "th_c": 10.0,
+   "th_c_lumpy": 20.0,
+   "n_beat": 3106,
+   "n_miss": 2438,
+   "horizons": {
+    "5": {
+     "full": {
+      "n_months": 90,
+      "skipped_months": 0,
+      "mean": 0.1802,
+      "sd": 2.0653,
+      "t": 0.828,
+      "pos_rate": 55.56
+     },
+     "in_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 0.4641,
+      "sd": 1.8406,
+      "t": 1.691,
+      "pos_rate": 64.44
+     },
+     "out_of_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": -0.1037,
+      "sd": 2.2528,
+      "t": -0.309,
+      "pos_rate": 46.67
+     }
+    },
+    "10": {
+     "full": {
+      "n_months": 90,
+      "skipped_months": 0,
+      "mean": 0.6922,
+      "sd": 2.8649,
+      "t": 2.292,
+      "pos_rate": 63.33
+     },
+     "in_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 1.1596,
+      "sd": 2.5872,
+      "t": 3.007,
+      "pos_rate": 71.11
+     },
+     "out_of_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 0.2248,
+      "sd": 3.076,
+      "t": 0.49,
+      "pos_rate": 55.56
+     }
+    },
+    "20": {
+     "full": {
+      "n_months": 90,
+      "skipped_months": 0,
+      "mean": 2.0316,
+      "sd": 4.4541,
+      "t": 4.327,
+      "pos_rate": 68.89
+     },
+     "in_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 2.5377,
+      "sd": 3.8034,
+      "t": 4.476,
+      "pos_rate": 71.11
+     },
+     "out_of_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 1.5254,
+      "sd": 5.0139,
+      "t": 2.041,
+      "pos_rate": 66.67
+     }
+    }
+   }
+  },
+  {
+   "th_c": 15.0,
+   "th_c_lumpy": 25.0,
+   "n_beat": 2105,
+   "n_miss": 1496,
+   "horizons": {
+    "5": {
+     "full": {
+      "n_months": 90,
+      "skipped_months": 0,
+      "mean": 0.2632,
+      "sd": 2.6841,
+      "t": 0.93,
+      "pos_rate": 53.33
+     },
+     "in_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 0.6665,
+      "sd": 2.6679,
+      "t": 1.676,
+      "pos_rate": 64.44
+     },
+     "out_of_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": -0.14,
+      "sd": 2.6689,
+      "t": -0.352,
+      "pos_rate": 42.22
+     }
+    },
+    "10": {
+     "full": {
+      "n_months": 90,
+      "skipped_months": 0,
+      "mean": 0.8118,
+      "sd": 3.8995,
+      "t": 1.975,
+      "pos_rate": 58.89
+     },
+     "in_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 1.5044,
+      "sd": 3.5574,
+      "t": 2.837,
+      "pos_rate": 62.22
+     },
+     "out_of_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 0.1192,
+      "sd": 4.1379,
+      "t": 0.193,
+      "pos_rate": 55.56
+     }
+    },
+    "20": {
+     "full": {
+      "n_months": 90,
+      "skipped_months": 0,
+      "mean": 2.508,
+      "sd": 5.2977,
+      "t": 4.491,
+      "pos_rate": 71.11
+     },
+     "in_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 3.0051,
+      "sd": 4.8062,
+      "t": 4.194,
+      "pos_rate": 77.78
+     },
+     "out_of_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 2.0108,
+      "sd": 5.7588,
+      "t": 2.342,
+      "pos_rate": 64.44
+     }
+    }
+   }
+  },
+  {
+   "th_c": 20.0,
+   "th_c_lumpy": 30.0,
+   "n_beat": 1480,
+   "n_miss": 887,
+   "horizons": {
+    "5": {
+     "full": {
+      "n_months": 90,
+      "skipped_months": 0,
+      "mean": -0.0028,
+      "sd": 3.7579,
+      "t": -0.007,
+      "pos_rate": 54.44
+     },
+     "in_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 0.7531,
+      "sd": 3.4051,
+      "t": 1.484,
+      "pos_rate": 68.89
+     },
+     "out_of_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": -0.7587,
+      "sd": 3.9752,
+      "t": -1.28,
+      "pos_rate": 40.0
+     }
+    },
+    "10": {
+     "full": {
+      "n_months": 90,
+      "skipped_months": 0,
+      "mean": 0.507,
+      "sd": 5.3373,
+      "t": 0.901,
+      "pos_rate": 55.56
+     },
+     "in_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 1.5989,
+      "sd": 4.6033,
+      "t": 2.33,
+      "pos_rate": 64.44
+     },
+     "out_of_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": -0.5848,
+      "sd": 5.8303,
+      "t": -0.673,
+      "pos_rate": 46.67
+     }
+    },
+    "20": {
+     "full": {
+      "n_months": 90,
+      "skipped_months": 0,
+      "mean": 2.4777,
+      "sd": 6.854,
+      "t": 3.43,
+      "pos_rate": 67.78
+     },
+     "in_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 3.4306,
+      "sd": 6.4332,
+      "t": 3.577,
+      "pos_rate": 71.11
+     },
+     "out_of_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 1.5249,
+      "sd": 7.1957,
+      "t": 1.422,
+      "pos_rate": 64.44
+     }
+    }
+   }
+  },
+  {
+   "th_c": 25.0,
+   "th_c_lumpy": 35.0,
+   "n_beat": 1047,
+   "n_miss": 536,
+   "horizons": {
+    "5": {
+     "full": {
+      "n_months": 90,
+      "skipped_months": 0,
+      "mean": -0.0842,
+      "sd": 4.6231,
+      "t": -0.173,
+      "pos_rate": 57.78
+     },
+     "in_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 0.7365,
+      "sd": 4.4842,
+      "t": 1.102,
+      "pos_rate": 66.67
+     },
+     "out_of_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": -0.9049,
+      "sd": 4.6632,
+      "t": -1.302,
+      "pos_rate": 48.89
+     }
+    },
+    "10": {
+     "full": {
+      "n_months": 90,
+      "skipped_months": 0,
+      "mean": 0.2919,
+      "sd": 6.44,
+      "t": 0.43,
+      "pos_rate": 52.22
+     },
+     "in_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 1.0839,
+      "sd": 6.5774,
+      "t": 1.105,
+      "pos_rate": 57.78
+     },
+     "out_of_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": -0.5001,
+      "sd": 6.2725,
+      "t": -0.535,
+      "pos_rate": 46.67
+     }
+    },
+    "20": {
+     "full": {
+      "n_months": 90,
+      "skipped_months": 0,
+      "mean": 1.6779,
+      "sd": 8.8181,
+      "t": 1.805,
+      "pos_rate": 60.0
+     },
+     "in_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 2.4575,
+      "sd": 10.0605,
+      "t": 1.639,
+      "pos_rate": 64.44
+     },
+     "out_of_sample": {
+      "n_months": 45,
+      "skipped_months": 0,
+      "mean": 0.8983,
+      "sd": 7.4047,
+      "t": 0.814,
+      "pos_rate": 55.56
+     }
+    }
+   }
+  },
+  {
+   "th_c": 30.0,
+   "th_c_lumpy": 40.0,
+   "n_beat": 746,
+   "n_miss": 320,
+   "horizons": {
+    "5": {
+     "full": {
+      "n_months": 87,
+      "skipped_months": 3,
+      "mean": -0.0116,
+      "sd": 5.3397,
+      "t": -0.02,
+      "pos_rate": 54.02
+     },
+     "in_sample": {
+      "n_months": 43,
+      "skipped_months": 2,
+      "mean": 1.5526,
+      "sd": 5.0154,
+      "t": 2.03,
+      "pos_rate": 72.09
+     },
+     "out_of_sample": {
+      "n_months": 44,
+      "skipped_months": 1,
+      "mean": -1.5402,
+      "sd": 5.2552,
+      "t": -1.944,
+      "pos_rate": 36.36
+     }
+    },
+    "10": {
+     "full": {
+      "n_months": 87,
+      "skipped_months": 3,
+      "mean": 1.014,
+      "sd": 7.131,
+      "t": 1.326,
+      "pos_rate": 55.17
+     },
+     "in_sample": {
+      "n_months": 43,
+      "skipped_months": 2,
+      "mean": 2.5624,
+      "sd": 7.3928,
+      "t": 2.273,
+      "pos_rate": 69.77
+     },
+     "out_of_sample": {
+      "n_months": 44,
+      "skipped_months": 1,
+      "mean": -0.4992,
+      "sd": 6.6015,
+      "t": -0.502,
+      "pos_rate": 40.91
+     }
+    },
+    "20": {
+     "full": {
+      "n_months": 87,
+      "skipped_months": 3,
+      "mean": 2.1996,
+      "sd": 10.1879,
+      "t": 2.014,
+      "pos_rate": 59.77
+     },
+     "in_sample": {
+      "n_months": 43,
+      "skipped_months": 2,
+      "mean": 3.5203,
+      "sd": 11.3904,
+      "t": 2.027,
+      "pos_rate": 67.44
+     },
+     "out_of_sample": {
+      "n_months": 44,
+      "skipped_months": 1,
+      "mean": 0.909,
+      "sd": 8.7984,
+      "t": 0.685,
+      "pos_rate": 52.27
+     }
+    }
+   }
+  }
+ ],
+ "grid_pick": {
+  "criterion": "前半期月群聚 t 值最大（同值取較小門檻）",
+  "horizon": 20,
+  "default_th_c": 15.0,
+  "by_t": {
+   "th_c": 10.0,
+   "in_sample": {
+    "n_months": 45,
+    "skipped_months": 0,
+    "mean": 2.5377,
+    "sd": 3.8034,
+    "t": 4.476,
+    "pos_rate": 71.11
+   },
+   "out_of_sample": {
+    "n_months": 45,
+    "skipped_months": 0,
+    "mean": 1.5254,
+    "sd": 5.0139,
+    "t": 2.041,
+    "pos_rate": 66.67
+   }
+  },
+  "by_mean": {
+   "th_c": 30.0,
+   "in_sample": {
+    "n_months": 43,
+    "skipped_months": 2,
+    "mean": 3.5203,
+    "sd": 11.3904,
+    "t": 2.027,
+    "pos_rate": 67.44
+   },
+   "out_of_sample": {
+    "n_months": 44,
+    "skipped_months": 1,
+    "mean": 0.909,
+    "sd": 8.7984,
+    "t": 0.685,
+    "pos_rate": 52.27
+   }
+  }
+ },
+ "verdict": {
+  "result": "有回測支持",
+  "main_horizon": 20,
+  "t_min": 2.0,
+  "checks": {
+   "5": {
+    "t": 0.93,
+    "t_ok": false,
+    "first_mean": 0.6665,
+    "second_mean": -0.14,
+    "halves_ok": false,
+    "both": false
+   },
+   "10": {
+    "t": 1.975,
+    "t_ok": false,
+    "first_mean": 1.5044,
+    "second_mean": 0.1192,
+    "halves_ok": true,
+    "both": false
+   },
+   "20": {
+    "t": 4.491,
+    "t_ok": true,
+    "first_mean": 3.0051,
+    "second_mean": 2.0108,
+    "halves_ok": true,
+    "both": true
+   }
+  },
+  "note": "依 docs/revenue-beatmiss.md §7.2 機械判定；高預期仍Beat／低預期仍Miss 兩子類不納入判準"
+ },
+ "monthly_spread": [
+  {
+   "month": "2019-04",
+   "t0": "2019-05-13",
+   "half": 1,
+   "spread_5": -4.0476,
+   "n_beat_5": 19,
+   "n_miss_5": 21,
+   "spread_10": -4.8921,
+   "n_beat_10": 19,
+   "n_miss_10": 21,
+   "spread_20": -5.4975,
+   "n_beat_20": 19,
+   "n_miss_20": 21
+  },
+  {
+   "month": "2019-05",
+   "t0": "2019-06-11",
+   "half": 1,
+   "spread_5": 0.7178,
+   "n_beat_5": 19,
+   "n_miss_5": 9,
+   "spread_10": 2.4236,
+   "n_beat_10": 19,
+   "n_miss_10": 9,
+   "spread_20": 6.3195,
+   "n_beat_20": 19,
+   "n_miss_20": 9
+  },
+  {
+   "month": "2019-06",
+   "t0": "2019-07-11",
+   "half": 1,
+   "spread_5": 2.7536,
+   "n_beat_5": 21,
+   "n_miss_5": 8,
+   "spread_10": 4.4362,
+   "n_beat_10": 21,
+   "n_miss_10": 8,
+   "spread_20": 3.5623,
+   "n_beat_20": 21,
+   "n_miss_20": 8
+  },
+  {
+   "month": "2019-07",
+   "t0": "2019-08-13",
+   "half": 1,
+   "spread_5": -1.7745,
+   "n_beat_5": 25,
+   "n_miss_5": 21,
+   "spread_10": -0.7872,
+   "n_beat_10": 25,
+   "n_miss_10": 21,
+   "spread_20": 0.2019,
+   "n_beat_20": 25,
+   "n_miss_20": 21
+  },
+  {
+   "month": "2019-08",
+   "t0": "2019-09-11",
+   "half": 1,
+   "spread_5": 2.8435,
+   "n_beat_5": 19,
+   "n_miss_5": 6,
+   "spread_10": 4.9249,
+   "n_beat_10": 19,
+   "n_miss_10": 6,
+   "spread_20": 6.3996,
+   "n_beat_20": 19,
+   "n_miss_20": 6
+  },
+  {
+   "month": "2019-09",
+   "t0": "2019-10-15",
+   "half": 1,
+   "spread_5": -0.5315,
+   "n_beat_5": 30,
+   "n_miss_5": 9,
+   "spread_10": 0.972,
+   "n_beat_10": 30,
+   "n_miss_10": 9,
+   "spread_20": 3.2911,
+   "n_beat_20": 30,
+   "n_miss_20": 9
+  },
+  {
+   "month": "2019-10",
+   "t0": "2019-11-12",
+   "half": 1,
+   "spread_5": 1.252,
+   "n_beat_5": 42,
+   "n_miss_5": 15,
+   "spread_10": -1.6308,
+   "n_beat_10": 42,
+   "n_miss_10": 15,
+   "spread_20": 0.5304,
+   "n_beat_20": 42,
+   "n_miss_20": 15
+  },
+  {
+   "month": "2019-11",
+   "t0": "2019-12-11",
+   "half": 1,
+   "spread_5": 1.4723,
+   "n_beat_5": 16,
+   "n_miss_5": 6,
+   "spread_10": -0.1165,
+   "n_beat_10": 16,
+   "n_miss_10": 6,
+   "spread_20": -2.4624,
+   "n_beat_20": 16,
+   "n_miss_20": 6
+  },
+  {
+   "month": "2019-12",
+   "t0": "2020-01-13",
+   "half": 1,
+   "spread_5": -0.7909,
+   "n_beat_5": 22,
+   "n_miss_5": 19,
+   "spread_10": -3.996,
+   "n_beat_10": 22,
+   "n_miss_10": 19,
+   "spread_20": -6.1447,
+   "n_beat_20": 22,
+   "n_miss_20": 19
+  },
+  {
+   "month": "2020-01",
+   "t0": "2020-02-11",
+   "half": 1,
+   "spread_5": 7.3433,
+   "n_beat_5": 7,
+   "n_miss_5": 52,
+   "spread_10": 8.7504,
+   "n_beat_10": 7,
+   "n_miss_10": 52,
+   "spread_20": 4.6565,
+   "n_beat_20": 7,
+   "n_miss_20": 52
+  },
+  {
+   "month": "2020-02",
+   "t0": "2020-03-11",
+   "half": 1,
+   "spread_5": 0.219,
+   "n_beat_5": 50,
+   "n_miss_5": 21,
+   "spread_10": -2.4962,
+   "n_beat_10": 50,
+   "n_miss_10": 21,
+   "spread_20": -1.0399,
+   "n_beat_20": 50,
+   "n_miss_20": 21
+  },
+  {
+   "month": "2020-03",
+   "t0": "2020-04-13",
+   "half": 1,
+   "spread_5": 2.2747,
+   "n_beat_5": 48,
+   "n_miss_5": 9,
+   "spread_10": 2.7022,
+   "n_beat_10": 48,
+   "n_miss_10": 9,
+   "spread_20": -7.3071,
+   "n_beat_20": 48,
+   "n_miss_20": 9
+  },
+  {
+   "month": "2020-04",
+   "t0": "2020-05-12",
+   "half": 1,
+   "spread_5": 3.494,
+   "n_beat_5": 49,
+   "n_miss_5": 10,
+   "spread_10": 4.6863,
+   "n_beat_10": 49,
+   "n_miss_10": 10,
+   "spread_20": 7.7938,
+   "n_beat_20": 49,
+   "n_miss_20": 10
+  },
+  {
+   "month": "2020-05",
+   "t0": "2020-06-11",
+   "half": 1,
+   "spread_5": 0.2814,
+   "n_beat_5": 11,
+   "n_miss_5": 18,
+   "spread_10": 2.5325,
+   "n_beat_10": 11,
+   "n_miss_10": 18,
+   "spread_20": 1.51,
+   "n_beat_20": 11,
+   "n_miss_20": 18
+  },
+  {
+   "month": "2020-06",
+   "t0": "2020-07-13",
+   "half": 1,
+   "spread_5": 1.5143,
+   "n_beat_5": 27,
+   "n_miss_5": 10,
+   "spread_10": 2.0539,
+   "n_beat_10": 27,
+   "n_miss_10": 10,
+   "spread_20": 5.1446,
+   "n_beat_20": 27,
+   "n_miss_20": 10
+  },
+  {
+   "month": "2020-07",
+   "t0": "2020-08-11",
+   "half": 1,
+   "spread_5": 1.7011,
+   "n_beat_5": 24,
+   "n_miss_5": 14,
+   "spread_10": 2.5631,
+   "n_beat_10": 24,
+   "n_miss_10": 14,
+   "spread_20": 0.8183,
+   "n_beat_20": 24,
+   "n_miss_20": 14
+  },
+  {
+   "month": "2020-08",
+   "t0": "2020-09-11",
+   "half": 1,
+   "spread_5": -3.0639,
+   "n_beat_5": 10,
+   "n_miss_5": 19,
+   "spread_10": -3.5212,
+   "n_beat_10": 10,
+   "n_miss_10": 19,
+   "spread_20": -3.9444,
+   "n_beat_20": 10,
+   "n_miss_20": 19
+  },
+  {
+   "month": "2020-09",
+   "t0": "2020-10-13",
+   "half": 1,
+   "spread_5": -1.5169,
+   "n_beat_5": 23,
+   "n_miss_5": 10,
+   "spread_10": -1.0634,
+   "n_beat_10": 23,
+   "n_miss_10": 10,
+   "spread_20": -2.3162,
+   "n_beat_20": 23,
+   "n_miss_20": 10
+  },
+  {
+   "month": "2020-10",
+   "t0": "2020-11-11",
+   "half": 1,
+   "spread_5": -0.3755,
+   "n_beat_5": 12,
+   "n_miss_5": 17,
+   "spread_10": 8.1167,
+   "n_beat_10": 12,
+   "n_miss_10": 17,
+   "spread_20": 13.1684,
+   "n_beat_20": 12,
+   "n_miss_20": 17
+  },
+  {
+   "month": "2020-11",
+   "t0": "2020-12-11",
+   "half": 1,
+   "spread_5": 3.718,
+   "n_beat_5": 25,
+   "n_miss_5": 11,
+   "spread_10": 5.0724,
+   "n_beat_10": 25,
+   "n_miss_10": 11,
+   "spread_20": 5.2978,
+   "n_beat_20": 25,
+   "n_miss_20": 11
+  },
+  {
+   "month": "2020-12",
+   "t0": "2021-01-12",
+   "half": 1,
+   "spread_5": 0.5446,
+   "n_beat_5": 44,
+   "n_miss_5": 9,
+   "spread_10": 0.5249,
+   "n_beat_10": 44,
+   "n_miss_10": 9,
+   "spread_20": -1.9589,
+   "n_beat_20": 44,
+   "n_miss_20": 9
+  },
+  {
+   "month": "2021-01",
+   "t0": "2021-02-18",
+   "half": 1,
+   "spread_5": 1.5588,
+   "n_beat_5": 43,
+   "n_miss_5": 13,
+   "spread_10": -0.3863,
+   "n_beat_10": 43,
+   "n_miss_10": 13,
+   "spread_20": 0.3371,
+   "n_beat_20": 43,
+   "n_miss_20": 13
+  },
+  {
+   "month": "2021-02",
+   "t0": "2021-03-11",
+   "half": 1,
+   "spread_5": -0.84,
+   "n_beat_5": 28,
+   "n_miss_5": 15,
+   "spread_10": 1.9514,
+   "n_beat_10": 28,
+   "n_miss_10": 15,
+   "spread_20": 3.7121,
+   "n_beat_20": 28,
+   "n_miss_20": 15
+  },
+  {
+   "month": "2021-03",
+   "t0": "2021-04-13",
+   "half": 1,
+   "spread_5": -1.1883,
+   "n_beat_5": 33,
+   "n_miss_5": 10,
+   "spread_10": -1.6133,
+   "n_beat_10": 33,
+   "n_miss_10": 10,
+   "spread_20": 1.2614,
+   "n_beat_20": 33,
+   "n_miss_20": 10
+  },
+  {
+   "month": "2021-04",
+   "t0": "2021-05-11",
+   "half": 1,
+   "spread_5": -5.9404,
+   "n_beat_5": 25,
+   "n_miss_5": 15,
+   "spread_10": -3.0036,
+   "n_beat_10": 25,
+   "n_miss_10": 15,
+   "spread_20": 3.0058,
+   "n_beat_20": 25,
+   "n_miss_20": 15
+  },
+  {
+   "month": "2021-05",
+   "t0": "2021-06-11",
+   "half": 1,
+   "spread_5": 4.993,
+   "n_beat_5": 9,
+   "n_miss_5": 15,
+   "spread_10": 6.1086,
+   "n_beat_10": 9,
+   "n_miss_10": 15,
+   "spread_20": 14.3347,
+   "n_beat_20": 9,
+   "n_miss_20": 15
+  },
+  {
+   "month": "2021-06",
+   "t0": "2021-07-13",
+   "half": 1,
+   "spread_5": 1.0699,
+   "n_beat_5": 14,
+   "n_miss_5": 20,
+   "spread_10": 4.5559,
+   "n_beat_10": 14,
+   "n_miss_10": 20,
+   "spread_20": 5.3404,
+   "n_beat_20": 14,
+   "n_miss_20": 20
+  },
+  {
+   "month": "2021-07",
+   "t0": "2021-08-11",
+   "half": 1,
+   "spread_5": -0.451,
+   "n_beat_5": 17,
+   "n_miss_5": 25,
+   "spread_10": 0.6615,
+   "n_beat_10": 17,
+   "n_miss_10": 25,
+   "spread_20": 2.0928,
+   "n_beat_20": 17,
+   "n_miss_20": 25
+  },
+  {
+   "month": "2021-08",
+   "t0": "2021-09-13",
+   "half": 1,
+   "spread_5": -1.037,
+   "n_beat_5": 11,
+   "n_miss_5": 15,
+   "spread_10": -2.0524,
+   "n_beat_10": 11,
+   "n_miss_10": 15,
+   "spread_20": 3.8286,
+   "n_beat_20": 11,
+   "n_miss_20": 15
+  },
+  {
+   "month": "2021-09",
+   "t0": "2021-10-13",
+   "half": 1,
+   "spread_5": 0.1382,
+   "n_beat_5": 14,
+   "n_miss_5": 18,
+   "spread_10": 0.9595,
+   "n_beat_10": 14,
+   "n_miss_10": 18,
+   "spread_20": 4.0676,
+   "n_beat_20": 14,
+   "n_miss_20": 18
+  },
+  {
+   "month": "2021-10",
+   "t0": "2021-11-11",
+   "half": 1,
+   "spread_5": 3.8924,
+   "n_beat_5": 18,
+   "n_miss_5": 21,
+   "spread_10": -1.4396,
+   "n_beat_10": 18,
+   "n_miss_10": 21,
+   "spread_20": 0.5729,
+   "n_beat_20": 18,
+   "n_miss_20": 21
+  },
+  {
+   "month": "2021-11",
+   "t0": "2021-12-13",
+   "half": 1,
+   "spread_5": 0.4237,
+   "n_beat_5": 19,
+   "n_miss_5": 11,
+   "spread_10": -0.011,
+   "n_beat_10": 19,
+   "n_miss_10": 11,
+   "spread_20": 5.1829,
+   "n_beat_20": 19,
+   "n_miss_20": 11
+  },
+  {
+   "month": "2021-12",
+   "t0": "2022-01-11",
+   "half": 1,
+   "spread_5": 3.5087,
+   "n_beat_5": 27,
+   "n_miss_5": 7,
+   "spread_10": 4.0967,
+   "n_beat_10": 27,
+   "n_miss_10": 7,
+   "spread_20": 0.7225,
+   "n_beat_20": 27,
+   "n_miss_20": 7
+  },
+  {
+   "month": "2022-01",
+   "t0": "2022-02-11",
+   "half": 1,
+   "spread_5": 1.0992,
+   "n_beat_5": 15,
+   "n_miss_5": 17,
+   "spread_10": 1.9734,
+   "n_beat_10": 15,
+   "n_miss_10": 17,
+   "spread_20": 6.2938,
+   "n_beat_20": 15,
+   "n_miss_20": 17
+  },
+  {
+   "month": "2022-02",
+   "t0": "2022-03-11",
+   "half": 1,
+   "spread_5": 3.2062,
+   "n_beat_5": 28,
+   "n_miss_5": 12,
+   "spread_10": 2.4327,
+   "n_beat_10": 28,
+   "n_miss_10": 12,
+   "spread_20": 5.7605,
+   "n_beat_20": 28,
+   "n_miss_20": 12
+  },
+  {
+   "month": "2022-03",
+   "t0": "2022-04-12",
+   "half": 1,
+   "spread_5": 3.456,
+   "n_beat_5": 21,
+   "n_miss_5": 16,
+   "spread_10": 7.8416,
+   "n_beat_10": 21,
+   "n_miss_10": 16,
+   "spread_20": 8.2244,
+   "n_beat_20": 21,
+   "n_miss_20": 16
+  },
+  {
+   "month": "2022-04",
+   "t0": "2022-05-11",
+   "half": 1,
+   "spread_5": 2.6854,
+   "n_beat_5": 8,
+   "n_miss_5": 41,
+   "spread_10": 4.6246,
+   "n_beat_10": 8,
+   "n_miss_10": 41,
+   "spread_20": 4.9591,
+   "n_beat_20": 8,
+   "n_miss_20": 41
+  },
+  {
+   "month": "2022-05",
+   "t0": "2022-06-13",
+   "half": 1,
+   "spread_5": 3.4024,
+   "n_beat_5": 18,
+   "n_miss_5": 14,
+   "spread_10": 8.8859,
+   "n_beat_10": 18,
+   "n_miss_10": 14,
+   "spread_20": 7.9613,
+   "n_beat_20": 18,
+   "n_miss_20": 14
+  },
+  {
+   "month": "2022-06",
+   "t0": "2022-07-12",
+   "half": 1,
+   "spread_5": -0.6416,
+   "n_beat_5": 23,
+   "n_miss_5": 20,
+   "spread_10": 1.2326,
+   "n_beat_10": 23,
+   "n_miss_10": 20,
+   "spread_20": 12.1487,
+   "n_beat_20": 23,
+   "n_miss_20": 20
+  },
+  {
+   "month": "2022-07",
+   "t0": "2022-08-11",
+   "half": 1,
+   "spread_5": -4.0373,
+   "n_beat_5": 17,
+   "n_miss_5": 39,
+   "spread_10": -0.9489,
+   "n_beat_10": 17,
+   "n_miss_10": 39,
+   "spread_20": 7.7774,
+   "n_beat_20": 16,
+   "n_miss_20": 39
+  },
+  {
+   "month": "2022-08",
+   "t0": "2022-09-13",
+   "half": 1,
+   "spread_5": 1.8271,
+   "n_beat_5": 13,
+   "n_miss_5": 27,
+   "spread_10": 4.4689,
+   "n_beat_10": 13,
+   "n_miss_10": 27,
+   "spread_20": 3.4768,
+   "n_beat_20": 13,
+   "n_miss_20": 27
+  },
+  {
+   "month": "2022-09",
+   "t0": "2022-10-12",
+   "half": 1,
+   "spread_5": -4.1898,
+   "n_beat_5": 24,
+   "n_miss_5": 32,
+   "spread_10": -5.3551,
+   "n_beat_10": 24,
+   "n_miss_10": 32,
+   "spread_20": -3.1127,
+   "n_beat_20": 24,
+   "n_miss_20": 32
+  },
+  {
+   "month": "2022-10",
+   "t0": "2022-11-11",
+   "half": 1,
+   "spread_5": -3.2636,
+   "n_beat_5": 11,
+   "n_miss_5": 22,
+   "spread_10": -1.4238,
+   "n_beat_10": 11,
+   "n_miss_10": 22,
+   "spread_20": 1.2834,
+   "n_beat_20": 11,
+   "n_miss_20": 22
+  },
+  {
+   "month": "2022-11",
+   "t0": "2022-12-13",
+   "half": 1,
+   "spread_5": 0.0767,
+   "n_beat_5": 11,
+   "n_miss_5": 28,
+   "spread_10": 0.2046,
+   "n_beat_10": 11,
+   "n_miss_10": 28,
+   "spread_20": -0.3639,
+   "n_beat_20": 11,
+   "n_miss_20": 28
+  },
+  {
+   "month": "2022-12",
+   "t0": "2023-01-11",
+   "half": 1,
+   "spread_5": 2.2134,
+   "n_beat_5": 14,
+   "n_miss_5": 30,
+   "spread_10": 2.6772,
+   "n_beat_10": 14,
+   "n_miss_10": 30,
+   "spread_20": 8.3401,
+   "n_beat_20": 14,
+   "n_miss_20": 30
+  },
+  {
+   "month": "2023-01",
+   "t0": "2023-02-13",
+   "half": 2,
+   "spread_5": -0.7178,
+   "n_beat_5": 6,
+   "n_miss_5": 75,
+   "spread_10": -1.9981,
+   "n_beat_10": 6,
+   "n_miss_10": 75,
+   "spread_20": -3.7708,
+   "n_beat_20": 6,
+   "n_miss_20": 75
+  },
+  {
+   "month": "2023-02",
+   "t0": "2023-03-13",
+   "half": 2,
+   "spread_5": -1.1543,
+   "n_beat_5": 61,
+   "n_miss_5": 12,
+   "spread_10": 0.7147,
+   "n_beat_10": 61,
+   "n_miss_10": 12,
+   "spread_20": 5.9694,
+   "n_beat_20": 61,
+   "n_miss_20": 12
+  },
+  {
+   "month": "2023-03",
+   "t0": "2023-04-11",
+   "half": 2,
+   "spread_5": 2.2026,
+   "n_beat_5": 26,
+   "n_miss_5": 22,
+   "spread_10": 3.3617,
+   "n_beat_10": 26,
+   "n_miss_10": 22,
+   "spread_20": 6.2011,
+   "n_beat_20": 26,
+   "n_miss_20": 22
+  },
+  {
+   "month": "2023-04",
+   "t0": "2023-05-11",
+   "half": 2,
+   "spread_5": -2.3115,
+   "n_beat_5": 25,
+   "n_miss_5": 21,
+   "spread_10": -2.8039,
+   "n_beat_10": 25,
+   "n_miss_10": 21,
+   "spread_20": -5.2765,
+   "n_beat_20": 25,
+   "n_miss_20": 21
+  },
+  {
+   "month": "2023-05",
+   "t0": "2023-06-13",
+   "half": 2,
+   "spread_5": -3.5694,
+   "n_beat_5": 24,
+   "n_miss_5": 10,
+   "spread_10": -3.2053,
+   "n_beat_10": 24,
+   "n_miss_10": 10,
+   "spread_20": 1.729,
+   "n_beat_20": 24,
+   "n_miss_20": 10
+  },
+  {
+   "month": "2023-06",
+   "t0": "2023-07-11",
+   "half": 2,
+   "spread_5": 2.8341,
+   "n_beat_5": 15,
+   "n_miss_5": 19,
+   "spread_10": 8.06,
+   "n_beat_10": 15,
+   "n_miss_10": 19,
+   "spread_20": 6.8852,
+   "n_beat_20": 15,
+   "n_miss_20": 19
+  },
+  {
+   "month": "2023-07",
+   "t0": "2023-08-11",
+   "half": 2,
+   "spread_5": -2.1225,
+   "n_beat_5": 27,
+   "n_miss_5": 14,
+   "spread_10": -3.6636,
+   "n_beat_10": 27,
+   "n_miss_10": 14,
+   "spread_20": 0.2541,
+   "n_beat_20": 27,
+   "n_miss_20": 14
+  },
+  {
+   "month": "2023-08",
+   "t0": "2023-09-12",
+   "half": 2,
+   "spread_5": -2.4289,
+   "n_beat_5": 25,
+   "n_miss_5": 5,
+   "spread_10": -0.6596,
+   "n_beat_10": 25,
+   "n_miss_10": 5,
+   "spread_20": 0.1911,
+   "n_beat_20": 25,
+   "n_miss_20": 5
+  },
+  {
+   "month": "2023-09",
+   "t0": "2023-10-12",
+   "half": 2,
+   "spread_5": -0.5702,
+   "n_beat_5": 28,
+   "n_miss_5": 11,
+   "spread_10": 0.853,
+   "n_beat_10": 28,
+   "n_miss_10": 11,
+   "spread_20": 5.6618,
+   "n_beat_20": 28,
+   "n_miss_20": 11
+  },
+  {
+   "month": "2023-10",
+   "t0": "2023-11-13",
+   "half": 2,
+   "spread_5": -5.0068,
+   "n_beat_5": 41,
+   "n_miss_5": 10,
+   "spread_10": -8.6583,
+   "n_beat_10": 41,
+   "n_miss_10": 10,
+   "spread_20": -7.1702,
+   "n_beat_20": 41,
+   "n_miss_20": 10
+  },
+  {
+   "month": "2023-11",
+   "t0": "2023-12-12",
+   "half": 2,
+   "spread_5": -0.4003,
+   "n_beat_5": 22,
+   "n_miss_5": 12,
+   "spread_10": 0.3112,
+   "n_beat_10": 22,
+   "n_miss_10": 12,
+   "spread_20": -3.3417,
+   "n_beat_20": 22,
+   "n_miss_20": 12
+  },
+  {
+   "month": "2023-12",
+   "t0": "2024-01-11",
+   "half": 2,
+   "spread_5": 2.0777,
+   "n_beat_5": 21,
+   "n_miss_5": 22,
+   "spread_10": 1.5045,
+   "n_beat_10": 21,
+   "n_miss_10": 22,
+   "spread_20": 10.7701,
+   "n_beat_20": 21,
+   "n_miss_20": 22
+  },
+  {
+   "month": "2024-01",
+   "t0": "2024-02-16",
+   "half": 2,
+   "spread_5": -0.0671,
+   "n_beat_5": 46,
+   "n_miss_5": 9,
+   "spread_10": -2.5602,
+   "n_beat_10": 46,
+   "n_miss_10": 9,
+   "spread_20": -0.6145,
+   "n_beat_20": 46,
+   "n_miss_20": 9
+  },
+  {
+   "month": "2024-02",
+   "t0": "2024-03-12",
+   "half": 2,
+   "spread_5": -0.9169,
+   "n_beat_5": 12,
+   "n_miss_5": 26,
+   "spread_10": -0.9029,
+   "n_beat_10": 12,
+   "n_miss_10": 26,
+   "spread_20": -2.6225,
+   "n_beat_20": 12,
+   "n_miss_20": 26
+  },
+  {
+   "month": "2024-03",
+   "t0": "2024-04-11",
+   "half": 2,
+   "spread_5": -0.3001,
+   "n_beat_5": 12,
+   "n_miss_5": 15,
+   "spread_10": -0.9311,
+   "n_beat_10": 12,
+   "n_miss_10": 15,
+   "spread_20": 0.0221,
+   "n_beat_20": 12,
+   "n_miss_20": 15
+  },
+  {
+   "month": "2024-04",
+   "t0": "2024-05-13",
+   "half": 2,
+   "spread_5": 2.4227,
+   "n_beat_5": 35,
+   "n_miss_5": 9,
+   "spread_10": 2.4022,
+   "n_beat_10": 35,
+   "n_miss_10": 9,
+   "spread_20": 7.4339,
+   "n_beat_20": 35,
+   "n_miss_20": 9
+  },
+  {
+   "month": "2024-05",
+   "t0": "2024-06-12",
+   "half": 2,
+   "spread_5": -6.7372,
+   "n_beat_5": 13,
+   "n_miss_5": 9,
+   "spread_10": -12.8515,
+   "n_beat_10": 13,
+   "n_miss_10": 9,
+   "spread_20": -12.2995,
+   "n_beat_20": 13,
+   "n_miss_20": 9
+  },
+  {
+   "month": "2024-06",
+   "t0": "2024-07-11",
+   "half": 2,
+   "spread_5": -0.3778,
+   "n_beat_5": 15,
+   "n_miss_5": 13,
+   "spread_10": -2.2212,
+   "n_beat_10": 15,
+   "n_miss_10": 13,
+   "spread_20": -6.1773,
+   "n_beat_20": 15,
+   "n_miss_20": 13
+  },
+  {
+   "month": "2024-07",
+   "t0": "2024-08-13",
+   "half": 2,
+   "spread_5": -2.3612,
+   "n_beat_5": 22,
+   "n_miss_5": 15,
+   "spread_10": -0.0415,
+   "n_beat_10": 22,
+   "n_miss_10": 15,
+   "spread_20": 5.4272,
+   "n_beat_20": 22,
+   "n_miss_20": 15
+  },
+  {
+   "month": "2024-08",
+   "t0": "2024-09-11",
+   "half": 2,
+   "spread_5": 0.3893,
+   "n_beat_5": 10,
+   "n_miss_5": 13,
+   "spread_10": 1.4429,
+   "n_beat_10": 10,
+   "n_miss_10": 13,
+   "spread_20": -3.298,
+   "n_beat_20": 10,
+   "n_miss_20": 13
+  },
+  {
+   "month": "2024-09",
+   "t0": "2024-10-14",
+   "half": 2,
+   "spread_5": 2.7992,
+   "n_beat_5": 10,
+   "n_miss_5": 15,
+   "spread_10": 2.3375,
+   "n_beat_10": 10,
+   "n_miss_10": 15,
+   "spread_20": 6.6848,
+   "n_beat_20": 10,
+   "n_miss_20": 15
+  },
+  {
+   "month": "2024-10",
+   "t0": "2024-11-12",
+   "half": 2,
+   "spread_5": -0.2275,
+   "n_beat_5": 16,
+   "n_miss_5": 22,
+   "spread_10": 0.5902,
+   "n_beat_10": 16,
+   "n_miss_10": 22,
+   "spread_20": 4.969,
+   "n_beat_20": 16,
+   "n_miss_20": 22
+  },
+  {
+   "month": "2024-11",
+   "t0": "2024-12-11",
+   "half": 2,
+   "spread_5": 4.5266,
+   "n_beat_5": 6,
+   "n_miss_5": 19,
+   "spread_10": 0.5651,
+   "n_beat_10": 6,
+   "n_miss_10": 19,
+   "spread_20": 3.1953,
+   "n_beat_20": 6,
+   "n_miss_20": 19
+  },
+  {
+   "month": "2024-12",
+   "t0": "2025-01-13",
+   "half": 2,
+   "spread_5": -2.2136,
+   "n_beat_5": 22,
+   "n_miss_5": 13,
+   "spread_10": -1.5259,
+   "n_beat_10": 22,
+   "n_miss_10": 13,
+   "spread_20": -1.2114,
+   "n_beat_20": 22,
+   "n_miss_20": 13
+  },
+  {
+   "month": "2025-01",
+   "t0": "2025-02-11",
+   "half": 2,
+   "spread_5": -2.9869,
+   "n_beat_5": 23,
+   "n_miss_5": 20,
+   "spread_10": -5.6984,
+   "n_beat_10": 23,
+   "n_miss_10": 20,
+   "spread_20": -8.5047,
+   "n_beat_20": 23,
+   "n_miss_20": 20
+  },
+  {
+   "month": "2025-02",
+   "t0": "2025-03-11",
+   "half": 2,
+   "spread_5": 1.9241,
+   "n_beat_5": 63,
+   "n_miss_5": 7,
+   "spread_10": 3.309,
+   "n_beat_10": 63,
+   "n_miss_10": 7,
+   "spread_20": 3.8998,
+   "n_beat_20": 63,
+   "n_miss_20": 7
+  },
+  {
+   "month": "2025-03",
+   "t0": "2025-04-11",
+   "half": 2,
+   "spread_5": 1.3819,
+   "n_beat_5": 24,
+   "n_miss_5": 9,
+   "spread_10": 1.5163,
+   "n_beat_10": 24,
+   "n_miss_10": 9,
+   "spread_20": 2.3472,
+   "n_beat_20": 24,
+   "n_miss_20": 9
+  },
+  {
+   "month": "2025-04",
+   "t0": "2025-05-13",
+   "half": 2,
+   "spread_5": 2.0527,
+   "n_beat_5": 30,
+   "n_miss_5": 12,
+   "spread_10": 3.3234,
+   "n_beat_10": 30,
+   "n_miss_10": 12,
+   "spread_20": 10.1461,
+   "n_beat_20": 30,
+   "n_miss_20": 12
+  },
+  {
+   "month": "2025-05",
+   "t0": "2025-06-11",
+   "half": 2,
+   "spread_5": 2.2767,
+   "n_beat_5": 7,
+   "n_miss_5": 24,
+   "spread_10": 9.4929,
+   "n_beat_10": 7,
+   "n_miss_10": 24,
+   "spread_20": 4.1842,
+   "n_beat_20": 7,
+   "n_miss_20": 24
+  },
+  {
+   "month": "2025-06",
+   "t0": "2025-07-11",
+   "half": 2,
+   "spread_5": -0.5991,
+   "n_beat_5": 9,
+   "n_miss_5": 19,
+   "spread_10": -0.1331,
+   "n_beat_10": 9,
+   "n_miss_10": 19,
+   "spread_20": 3.7662,
+   "n_beat_20": 9,
+   "n_miss_20": 19
+  },
+  {
+   "month": "2025-07",
+   "t0": "2025-08-12",
+   "half": 2,
+   "spread_5": -1.2777,
+   "n_beat_5": 11,
+   "n_miss_5": 19,
+   "spread_10": 0.0059,
+   "n_beat_10": 11,
+   "n_miss_10": 19,
+   "spread_20": -0.3876,
+   "n_beat_20": 11,
+   "n_miss_20": 19
+  },
+  {
+   "month": "2025-08",
+   "t0": "2025-09-11",
+   "half": 2,
+   "spread_5": 0.8203,
+   "n_beat_5": 9,
+   "n_miss_5": 17,
+   "spread_10": 1.9364,
+   "n_beat_10": 9,
+   "n_miss_10": 17,
+   "spread_20": 4.8331,
+   "n_beat_20": 9,
+   "n_miss_20": 17
+  },
+  {
+   "month": "2025-09",
+   "t0": "2025-10-14",
+   "half": 2,
+   "spread_5": -1.3096,
+   "n_beat_5": 25,
+   "n_miss_5": 7,
+   "spread_10": 3.1907,
+   "n_beat_10": 25,
+   "n_miss_10": 7,
+   "spread_20": 7.5904,
+   "n_beat_20": 25,
+   "n_miss_20": 7
+  },
+  {
+   "month": "2025-10",
+   "t0": "2025-11-11",
+   "half": 2,
+   "spread_5": 2.1245,
+   "n_beat_5": 26,
+   "n_miss_5": 13,
+   "spread_10": 0.1572,
+   "n_beat_10": 26,
+   "n_miss_10": 13,
+   "spread_20": -1.4417,
+   "n_beat_20": 26,
+   "n_miss_20": 13
+  },
+  {
+   "month": "2025-11",
+   "t0": "2025-12-11",
+   "half": 2,
+   "spread_5": 1.0317,
+   "n_beat_5": 16,
+   "n_miss_5": 8,
+   "spread_10": 4.2248,
+   "n_beat_10": 16,
+   "n_miss_10": 8,
+   "spread_20": 13.364,
+   "n_beat_20": 16,
+   "n_miss_20": 8
+  },
+  {
+   "month": "2025-12",
+   "t0": "2026-01-13",
+   "half": 2,
+   "spread_5": 4.8401,
+   "n_beat_5": 50,
+   "n_miss_5": 7,
+   "spread_10": 6.7578,
+   "n_beat_10": 50,
+   "n_miss_10": 7,
+   "spread_20": 5.1454,
+   "n_beat_20": 50,
+   "n_miss_20": 7
+  },
+  {
+   "month": "2026-01",
+   "t0": "2026-02-11",
+   "half": 2,
+   "spread_5": -1.7119,
+   "n_beat_5": 50,
+   "n_miss_5": 6,
+   "spread_10": -3.6641,
+   "n_beat_10": 50,
+   "n_miss_10": 6,
+   "spread_20": -3.5304,
+   "n_beat_20": 50,
+   "n_miss_20": 6
+  },
+  {
+   "month": "2026-02",
+   "t0": "2026-03-11",
+   "half": 2,
+   "spread_5": 0.9467,
+   "n_beat_5": 18,
+   "n_miss_5": 27,
+   "spread_10": -3.6759,
+   "n_beat_10": 18,
+   "n_miss_10": 27,
+   "spread_20": -5.9129,
+   "n_beat_20": 18,
+   "n_miss_20": 27
+  },
+  {
+   "month": "2026-03",
+   "t0": "2026-04-13",
+   "half": 2,
+   "spread_5": -6.378,
+   "n_beat_5": 29,
+   "n_miss_5": 9,
+   "spread_10": -5.402,
+   "n_beat_10": 29,
+   "n_miss_10": 9,
+   "spread_20": 1.0774,
+   "n_beat_20": 29,
+   "n_miss_20": 9
+  },
+  {
+   "month": "2026-04",
+   "t0": "2026-05-12",
+   "half": 2,
+   "spread_5": 3.1371,
+   "n_beat_5": 38,
+   "n_miss_5": 15,
+   "spread_10": 5.2428,
+   "n_beat_10": 38,
+   "n_miss_10": 15,
+   "spread_20": 5.9883,
+   "n_beat_20": 38,
+   "n_miss_20": 15
+  },
+  {
+   "month": "2026-05",
+   "t0": "2026-06-11",
+   "half": 2,
+   "spread_5": -0.3673,
+   "n_beat_5": 15,
+   "n_miss_5": 12,
+   "spread_10": 6.6776,
+   "n_beat_10": 15,
+   "n_miss_10": 12,
+   "spread_20": 9.968,
+   "n_beat_20": 15,
+   "n_miss_20": 12
+  },
+  {
+   "month": "2026-06",
+   "t0": "2026-07-14",
+   "half": 2,
+   "spread_5": -1.399,
+   "n_beat_5": 34,
+   "n_miss_5": 17,
+   "spread_10": -3.3004,
+   "n_beat_10": 34,
+   "n_miss_10": 17,
+   "spread_20": -0.8428,
+   "n_beat_20": 34,
+   "n_miss_20": 17
+  },
+  {
+   "month": "2026-07",
+   "t0": "2026-08-11",
+   "half": 2,
+   "spread_5": 5.4876,
+   "n_beat_5": 40,
+   "n_miss_5": 5,
+   "spread_10": 0.6605,
+   "n_beat_10": 40,
+   "n_miss_10": 5,
+   "spread_20": 12.8413,
+   "n_beat_20": 40,
+   "n_miss_20": 5
+  },
+  {
+   "month": "2026-08",
+   "t0": "2026-09-11",
+   "half": 2,
+   "spread_5": -2.422,
+   "n_beat_5": 17,
+   "n_miss_5": 16,
+   "spread_10": -1.1836,
+   "n_beat_10": 17,
+   "n_miss_10": 16,
+   "spread_20": 4.7617,
+   "n_beat_20": 17,
+   "n_miss_20": 16
+  },
+  {
+   "month": "2026-09",
+   "t0": "2026-10-13",
+   "half": 2,
+   "spread_5": 0.357,
+   "n_beat_5": 23,
+   "n_miss_5": 13,
+   "spread_10": 1.8042,
+   "n_beat_10": 23,
+   "n_miss_10": 13,
+   "spread_20": 1.5822,
+   "n_beat_20": 23,
+   "n_miss_20": 13
+  }
+ ],
+ "generated_at": "2026-11-13T01:19:14+08:00"
+}
