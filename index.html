@@ -406,6 +406,37 @@
   .sent-sw-ma{border-top:2px dashed var(--muted);margin-left:8px}
   .sent-empty{color:var(--muted);font-size:.84rem;margin:12px 2px}
   .sent-disc{margin-top:14px;color:var(--muted);font-size:.72rem;border-top:1px solid var(--line);padding-top:8px}
+  /* 市場總覽 tab（2026-11-12，規格 docs/market-overview.md）：盤勢七項為描述性卡片、交集表的出現清單數為中性色、不加燈號；
+     漲跌著色只沿用既有 .up/.down；全部 .ov-* 前綴避免撞名。 */
+  .ov-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:10px}
+  .ov-grid>*{min-width:0}
+  .ov-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 14px;font-size:.82rem;line-height:1.6;overflow-wrap:anywhere}
+  .ov-ttl{font-weight:700;font-size:.92rem;color:var(--txt);margin-bottom:4px;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
+  .ov-date{color:var(--muted);font-weight:400;font-size:.72rem}
+  .ov-ai{font-size:.68rem;font-weight:600;color:var(--txt);border:1px solid var(--txt);border-radius:6px;padding:0 5px}
+  .ov-kv{display:grid;grid-template-columns:auto 1fr;gap:1px 12px;font-size:.8rem}
+  .ov-kv span{color:var(--muted)}
+  .ov-kv b{color:var(--txt);font-weight:600}
+  .ov-row{margin-top:4px}
+  .ov-lbl{color:var(--muted);font-size:.76rem;margin-top:4px}
+  .ov-list{display:flex;flex-wrap:wrap;gap:2px 14px}
+  .ov-sub{color:var(--muted);font-size:.74rem;font-weight:400}
+  .ov-na{color:var(--muted);font-size:.78rem}
+  .ov-pad{margin:10px 2px}
+  .ov-note{color:var(--muted);font-size:.72rem;line-height:1.7;margin:6px 2px}
+  .ov-card .ov-note{margin:6px 0 0;border-top:1px solid var(--line);padding-top:6px}
+  .ov-ol,.ov-ul{margin:2px 0 6px;padding-left:20px}
+  .ov-ol li,.ov-ul li{margin:3px 0}
+  .ov-md{font-size:.82rem}
+  .ov-label{display:inline-block;font-size:.86rem;font-weight:700;color:var(--txt);border:1px solid var(--txt);border-radius:8px;padding:3px 10px;margin:4px 0 2px}
+  .ov-badges{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+  .ov-badge{display:inline-block;font-size:.7rem;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin-left:6px}
+  .ov-badges .ov-badge{margin-left:0}
+  .ov-st{color:var(--txt)}
+  .ov-src{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:6px 0;font-size:.78rem;line-height:1.7;overflow-wrap:anywhere}
+  .ov-srow{color:var(--txt)}
+  .ov-srow .ov-sub{display:block;padding-left:14px}
+  .ov-cnt{color:var(--txt);font-weight:700}
   /* 月營收 tab（2026-11-12 階段二，規格 docs/revenue-beatmiss.md §5）：分類一律中性色文字標籤、不新增燈號；
      漲跌著色只沿用既有 .up/.down（月增%／年增%／驚喜%）；全部 .rev-* 前綴避免撞名。 */
   .rev-label{display:inline-block;font-size:.86rem;font-weight:700;color:var(--txt);border:1px solid var(--txt);border-radius:8px;padding:3px 10px;margin:8px 0 2px}
@@ -510,6 +541,7 @@
 <script>
 "use strict";
 const TABS = [
+  ["overview","市場總覽"],
   ["insight","摘要分析"],
   ["summary","彙總分析"],
   ["aetf","主動ETF"],["lending","融借券"],["daytrade","當沖"],
@@ -518,6 +550,7 @@ const TABS = [
   ["chipradar","籌碼雷達"],["social","社群聲量"],["sentiment","市場情緒"],["revenue","月營收"],["dates","日期"],
 ];
 const SUBS = {
+  overview:"市場總覽：市場中心的每日一頁。上半「盤勢七項」為既有資料的描述性彙整（當日總結／三大法人／外資台指期／市場情緒／大盤餘額，另附 AI 文字的盤勢綜合研判與晨報重點），每項自帶資料日；下半「類股交集」「個股交集」列出同時出現在多個資金流入清單的產業與個股，依出現清單數排序——此排序無回測依據，AI 研判，未經回測，非保證。只做偏多（資金流入）側。",
   insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、存在瀏覽器密碼管理器，載入後只在本分頁記憶體。非投資建議、非預測，僅描述歷史統計傾向。",
   summary:"AI 彙總分析：一鍵 3+1 次 Claude 呼叫——3 個頁面（盤後分析／即時類股動態／新聞晨報）× Sonnet 5 各 1 次分析共 3 份摘要，再由 Opus 4.8 融會貫通彙總出跨份共振的精華 alpha。費用約每次 NT$10-12（摘要用 Sonnet 5、彙總用 Opus），token 由你自備、存在瀏覽器密碼管理器，載入後只在本分頁記憶體。另可閱讀 GitHub Actions 早晚場自動產出。非投資建議。",
   aetf:"主動式ETF每日投組快照＋主動加減碼（資料源：taiwan-flow-live-v2 via FinMind，每日揭露）。加減碼兩欄並列：主動純額（排除申贖）｜含申贖（原始總變動）。",
@@ -1940,7 +1973,7 @@ function renderStats(){
     const dg = state.diag;
     el.innerHTML = dg ? `<div class="stat">素材庫資料日 <b>${esc(dg.date||"—")}</b></div>`
       + `<div class="stat"><b>${dg.n||0}</b> 檔</div>` : "";
-  } else if (state.tab === "dates" || state.tab === "chipradar" || state.tab === "social" || state.tab === "sentiment" || state.tab === "pick2" || state.tab === "revenue"){
+  } else if (state.tab === "overview" || state.tab === "dates" || state.tab === "chipradar" || state.tab === "social" || state.tab === "sentiment" || state.tab === "pick2" || state.tab === "revenue"){
     // dates：本身就是各源日期總覽；籌碼雷達／社群聲量：頁內每段自帶自己的資料日徽章，不借用 postmkt 的資料日
     el.innerHTML = "";  // 本 tab 本身就是各源日期總覽，不重複顯示單一資料日
   } else {
@@ -1978,6 +2011,8 @@ function render(){
   else if (state.tab === "sentiment") sentRender();
   // 月營收（2026-11-12）：data/revenue/index.json 與月份檔只在切到本 tab 時才抓（revRender 內 revEnsure），首屏零新增請求
   else if (state.tab === "revenue") revRender();
+  // 市場總覽（2026-11-12）：盤勢七項的各來源檔與 data/overview/latest.json 只在切到本 tab 時才抓（ovRender 內 ovEnsure），首屏零新增請求
+  else if (state.tab === "overview") ovRender();
   // insight 的標題資料日與五個盤後 tab 都吃 state.pm；summary／diag 不需要（各自的一鍵流程再 await ensure*）
   else {
     if (state.tab === "diag") ensureDiag();
@@ -1992,6 +2027,296 @@ function renderTabs(){
   document.getElementById("tabs").innerHTML = TABS.map(([k,label])=>
     `<div class="tab ${state.tab===k?"active":""}" data-tab="${k}">${label}</div>`).join("");
   document.querySelectorAll(".tab").forEach(t=>t.onclick = ()=>{ state.tab = t.dataset.tab; pmUserRender(); });
+}
+
+// ================= 市場總覽 tab（overview，2026-11-12 新增；第 20 個 tab，排在最前；規格與驗收條件 docs/market-overview.md）=================
+// 三段：①盤勢七項（描述性；前端直接讀既有同源檔顯示，每項自帶資料日，缺哪項只灰掉那項）
+//       ②類股交集表 ③個股交集表（後端 src/build_overview.py → data/overview/latest.json，前端只渲染、不重算）。
+// **鐵律 8（使用者 2026-11-12 裁定：無回測依據、標示後先上線）**：交集表依「出現在幾個來源清單」排序，屬新的候選排序；
+// 畫面三種狀態（正常／部分來源缺／讀取失敗）都逐字顯示 OV_LABEL，事後驗證結論出來前不得拿掉。本批只做偏多（資金流入）側。
+// 盤勢 1–5 為純描述：除來源檔自帶文字（原樣顯示並標來源）外不寫任何多空判斷字樣；著色只用在漲跌與買賣超正負（sgn()）。
+// 盤勢 6、7 為 AI 文字，標「AI 研判」；6 走三站同步碼 mdToHtml（**只呼叫、不修改**）。
+// 資料全部同源相對路徑（CSP 未改）、**只在切到本 tab 時才抓**（首屏零新增請求）；每支檔 in-flight 去重、失敗記錯不重試。
+// 外來字串一律 esc()；數值一律 ovNum()（typeof number＋isFinite）後格式化，否則「—」；日期先過 OV_DATE_RE。CSS 一律 .ov-* 前綴；不加新 hash key。
+const OV_URLS = {
+  ov: "data/overview/latest.json",
+  day: "../taiwan-flow-live-v2/data/daysummary/latest.json",
+  totals: "../taiwan-flows/data/totals.json",
+  sent: "../taiwan-flows/data/sentiment.json",
+  mktbal: "data/market_balance_history.json",
+  sumidx: "data/summary/index.json",
+  brief: "../taiwan-stock-news/daily-brief-card.json",
+};
+const OV_FUT_BASE = "../taiwan-flows/data/futures/";   // 外資台指期：逐日小檔（約 5KB），日期取 totals.json 的最末兩個交易日
+const OV_SUM_BASE = "data/summary/";
+const OV = { d: {}, err: {}, loading: {} };
+// ---- ov-pure:begin（純函式，tests/test_overview_frontend.mjs 以 node 抽出來測，勿依賴 DOM）----
+const OV_LABEL = "AI 研判，未經回測，非保證";
+const OV_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const OV_SUMFILE_RE = /^\d{8}-(am|pm)\.json$/;
+const OV_STATUS = { valid: "有效", stale: "過期不計", fail: "讀取失敗", listed: "另列、不計入", excluded: "不納入" };
+function ovNum(v){ return (typeof v === "number" && isFinite(v)) ? v : null; }
+function ovDate(v){ return (typeof v === "string" && OV_DATE_RE.test(v)) ? v : ""; }
+// 數字格式：dp 位小數（千分位）；非數值「—」。帶號版另加 +／-
+function ovFmt(v, dp){
+  const x = ovNum(v);
+  return x === null ? "—" : x.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+function ovSigned(v, dp){
+  const x = ovNum(v);
+  if (x === null) return "—";
+  const r = Number(x.toFixed(dp)) || 0;
+  return (r > 0 ? "+" : r < 0 ? "-" : "") + ovFmt(Math.abs(r), dp);
+}
+// 標示句：資料檔 label 含該句才用資料檔的，否則退回常數（三種畫面狀態都要有）
+function ovLabel(j){
+  return (j && typeof j.label === "string" && j.label.includes(OV_LABEL)) ? j.label : OV_LABEL;
+}
+// data/overview/latest.json 形狀檢查
+function ovShapeOk(j){
+  const lay = x => !!x && typeof x === "object" && Array.isArray(x.sources) && Array.isArray(x.rows);
+  return !!j && typeof j === "object" && j.schema === 1 && lay(j.sectors) && lay(j.stocks);
+}
+// 來源狀態列：只收形狀合的來源；status 不在白名單一律當「讀取失敗」
+function ovSources(layer){
+  const out = [];
+  for (const s of (layer && Array.isArray(layer.sources)) ? layer.sources : []){
+    if (!s || typeof s !== "object" || typeof s.id !== "string") continue;
+    const status = Object.prototype.hasOwnProperty.call(OV_STATUS, s.status) ? s.status : "fail";
+    out.push({ id: s.id, name: typeof s.name === "string" ? s.name : "", status, text: OV_STATUS[status],
+      date: typeof s.date === "string" ? s.date : "", n: ovNum(s.n), counted: s.counted === true && status === "valid",
+      note: typeof s.note === "string" ? s.note : "",
+      items: Array.isArray(s.items) ? s.items.filter(x => x && typeof x.key === "string") : [],
+      unmapped: Array.isArray(s.unmapped) ? s.unmapped.filter(x => typeof x === "string") : [] });
+  }
+  return out;
+}
+// 交集列：只收 key 為字串、count 為數字、hits 為字串陣列的列；順序＝資料檔順序（後端已排：count 遞減、同數依 key 遞增）
+function ovRows(layer){
+  const out = [];
+  for (const r of (layer && Array.isArray(layer.rows)) ? layer.rows : []){
+    if (!r || typeof r !== "object" || typeof r.key !== "string" || ovNum(r.count) === null || !Array.isArray(r.hits)) continue;
+    const via = [];
+    if (r.via && typeof r.via === "object" && !Array.isArray(r.via))
+      for (const k of Object.keys(r.via))
+        if (Array.isArray(r.via[k])) via.push(k + "：" + r.via[k].filter(x => typeof x === "string").join("、"));
+    out.push({ key: r.key, name: typeof r.name === "string" ? r.name : "", count: r.count,
+      hits: r.hits.filter(x => typeof x === "string"), via: via.join("；") });
+  }
+  return out;
+}
+// 彙總分析全文中抽「## 盤勢綜合研判」一節（到下一個 ## 標題或 --- 分隔線為止）；找不到回 ""
+function ovSynthSection(text){
+  if (typeof text !== "string") return "";
+  const lines = text.split("\n");
+  let i = lines.findIndex(l => /^##\s+盤勢綜合研判/.test(l));
+  if (i < 0) return "";
+  const out = [];
+  for (i++; i < lines.length; i++){
+    if (/^##\s/.test(lines[i]) || /^---+\s*$/.test(lines[i])) break;
+    out.push(lines[i]);
+  }
+  return out.join("\n").trim();
+}
+// 三大法人：totals.json 最末一個交易日，上市＋上櫃合計淨額（億）與外資佔成交比（%）。形狀不合回 null
+function ovTotals(j){
+  if (!j || typeof j !== "object" || !Array.isArray(j.dates) || !j.rows || typeof j.rows !== "object") return null;
+  const ds = j.dates.filter(d => ovDate(d) && j.rows[d] && typeof j.rows[d] === "object");
+  if (!ds.length) return null;
+  const date = ds[ds.length - 1], r = j.rows[date];
+  const sum = k => { let t = 0; for (const m of ["tse", "otc"]){ const v = ovNum(r[m] && r[m][k]); if (v === null) return null; t += v; } return t; };
+  const yi = k => { const v = sum(k); return v === null ? null : v / 1e5; };
+  const fb = sum("f_buy_k"), fs = sum("f_sell_k"), tv = sum("turnover_k");
+  return { date, prev: ds.length > 1 ? ds[ds.length - 2] : "", f: yi("f_net_k"), t: yi("t_net_k"), d: yi("d_net_k"),
+    fShare: (fb === null || fs === null || !tv) ? null : (fb + fs) / (2 * tv) * 100 };
+}
+// 外資台指期未平倉淨口數＝futures/<日>.json 中 TX／外資 的多方未平倉口數 − 空方未平倉口數。找不到回 null
+function ovFutOi(doc){
+  if (!doc || typeof doc !== "object" || !Array.isArray(doc.cols) || !Array.isArray(doc.rows)) return null;
+  const ix = k => doc.cols.indexOf(k);
+  const iId = ix("futures_id"), iInv = ix("institutional_investors"),
+    iL = ix("long_open_interest_balance_volume"), iS = ix("short_open_interest_balance_volume");
+  if (iId < 0 || iInv < 0 || iL < 0 || iS < 0) return null;
+  for (const r of doc.rows){
+    if (!Array.isArray(r) || r[iId] !== "TX" || r[iInv] !== "外資") continue;
+    const l = ovNum(r[iL]), s = ovNum(r[iS]);
+    return (l === null || s === null) ? null : { date: ovDate(doc.date), net: l - s };
+  }
+  return null;
+}
+// 大盤餘額：daily 最末一列與前一列的融資金額／借券賣出金額（億）與異動
+function ovMktbal(j){
+  const d = (j && Array.isArray(j.daily)) ? j.daily.filter(r => r && typeof r === "object" && ovDate(r.date)) : [];
+  if (!d.length) return null;
+  const a = d[d.length - 1], b = d.length > 1 ? d[d.length - 2] : null;
+  const yi = (r, k) => { const v = r ? ovNum(r[k]) : null; return v === null ? null : v / 1e8; };
+  const diff = k => { const x = yi(a, k), y = yi(b, k); return (x === null || y === null) ? null : x - y; };
+  return { date: a.date, prev: b ? b.date : "", margin: yi(a, "margin_money"), marginD: diff("margin_money"),
+    sbl: yi(a, "sbl_short_value"), sblD: diff("sbl_short_value") };
+}
+// yyyymmdd（futures 檔名）；日期不合回 ""
+function ovYmd(d){ return ovDate(d) ? d.replace(/-/g, "") : ""; }
+// ---- ov-pure:end ----
+
+function ovLoad(key, url, okFn){
+  if (OV.d[key] !== undefined || OV.err[key] || OV.loading[key]) return;
+  OV.loading[key] = true;
+  loadJSON(url)
+    .then(j => { if (!okFn || okFn(j)) OV.d[key] = j; else OV.err[key] = "shape"; })
+    .catch(e => { OV.err[key] = e || "error"; })
+    .finally(() => { OV.loading[key] = false; if (state.tab === "overview") render(); });
+}
+function ovEnsure(){
+  const obj = j => !!j && typeof j === "object";
+  ovLoad("ov", OV_URLS.ov, ovShapeOk);
+  ovLoad("day", OV_URLS.day, obj);
+  ovLoad("totals", OV_URLS.totals, j => !!ovTotals(j));
+  ovLoad("sent", OV_URLS.sent, j => { const r = sentRows(j); return !!(r && r.length); });
+  ovLoad("mktbal", OV_URLS.mktbal, j => !!ovMktbal(j));
+  ovLoad("sumidx", OV_URLS.sumidx, j => obj(j) && Array.isArray(j.runs));
+  ovLoad("brief", OV_URLS.brief, obj);
+  // 接續請求：外資台指期兩個逐日小檔（日期取 totals 的最末兩個交易日）、最新一場自動彙總檔（檔名過白名單）
+  const tt = OV.d.totals ? ovTotals(OV.d.totals) : null;
+  if (tt){
+    if (ovYmd(tt.date)) ovLoad("fut0", OV_FUT_BASE + ovYmd(tt.date) + ".json", j => !!ovFutOi(j));
+    if (ovYmd(tt.prev)) ovLoad("fut1", OV_FUT_BASE + ovYmd(tt.prev) + ".json", j => !!ovFutOi(j));
+  }
+  const run = OV.d.sumidx ? OV.d.sumidx.runs.find(r => r && typeof r.file === "string" && OV_SUMFILE_RE.test(r.file)) : null;
+  if (run) ovLoad("sum", OV_SUM_BASE + run.file, obj);
+}
+// 單張卡：標題＋資料日徽章＋內容；key 的檔還沒到＝「載入中…」、失敗＝灰字一句（只灰掉這一項）
+function ovCard(title, key, dateText, body, opt){
+  const ai = opt && opt.ai ? `<span class="ov-ai">AI 研判</span>` : "";
+  let inner;
+  if (OV.d[key] === undefined) inner = `<div class="ov-na">${OV.err[key] ? "資料尚未產生或讀取失敗" : "載入中…"}</div>`;
+  else inner = body();
+  return `<div class="ov-card"><div class="ov-ttl">${esc(title)}${ai}`
+    + (OV.d[key] !== undefined && dateText ? `<span class="ov-date">${esc(dateText)}</span>` : "") + `</div>${inner}</div>`;
+}
+const ovKv = pairs => `<div class="ov-kv">` + pairs.map(([k, v]) => `<span>${esc(k)}</span><b>${v}</b>`).join("") + `</div>`;
+const ovSg = (v, dp, unit) => ovNum(v) === null ? "—" : sgn(Number(v.toFixed(dp)) || 0, ovSigned(v, dp) + unit);
+function ovDayHtml(){
+  const j = OV.d.day, ix = (j.index && typeof j.index === "object") ? j.index : {}, br = (j.breadth && typeof j.breadth === "object") ? j.breadth : {};
+  const idx = (nm, o) => { o = (o && typeof o === "object") ? o : {};
+    return [nm, `${ovFmt(o.val, 2)}　${ovSg(o.chgP, 2, " 點")}（${ovSg(o.chg, 2, "%")}）　成交 ${ovFmt(o.amt_yi, 1)} 億`]; };
+  const bd = (nm, o) => { o = (o && typeof o === "object") ? o : {};
+    return [nm, `漲 ${ovFmt(o.up, 0)}／跌 ${ovFmt(o.down, 0)}` + (ovNum(o.flat) === null ? "" : `／平 ${ovFmt(o.flat, 0)}`)]; };
+  const subs = a => (Array.isArray(a) ? a : []).filter(x => x && typeof x === "object").slice(0, 5)
+    .map(x => `<span class="ov-it">${esc(x.n)} ${ovSg(x.pts, 1, " 點")}</span>`).join("") || `<span class="ov-na">—</span>`;
+  let h = ovKv([idx("加權指數", ix.tse), idx("櫃買指數", ix.otc), bd("漲跌家數（合計）", br), bd("上市", br.tse), bd("上櫃", br.otc)]);
+  h += `<div class="ov-row"><span class="ov-lbl">次產業拉抬（對加權指數貢獻點數）</span><div class="ov-list">${subs(j.subs_top5)}</div></div>`;
+  h += `<div class="ov-row"><span class="ov-lbl">次產業拖累</span><div class="ov-list">${subs(j.subs_bot3)}</div></div>`;
+  if (typeof j.tone === "string" && j.tone) h += `<div class="ov-note">來源檔原文（daysummary 的 tone 欄，原樣顯示）：${esc(j.tone)}</div>`;
+  return h;
+}
+function ovTotalsHtml(){
+  const t = ovTotals(OV.d.totals);
+  return ovKv([["外資", ovSg(t.f, 1, " 億")], ["投信", ovSg(t.t, 1, " 億")], ["自營", ovSg(t.d, 1, " 億")],
+    ["外資佔成交比", t.fShare === null ? "—" : ovFmt(t.fShare, 1) + "%"]])
+    + `<div class="ov-note">上市＋上櫃合計淨額（證交所／櫃買口徑，taiwan-flows totals.json）；外資佔成交比＝（外資買＋賣）÷（2×市場成交金額）。</div>`;
+}
+function ovFutHtml(){
+  const a = OV.d.fut0 ? ovFutOi(OV.d.fut0) : null, b = OV.d.fut1 ? ovFutOi(OV.d.fut1) : null;
+  if (!a) return `<div class="ov-na">${OV.err.fut0 ? "資料尚未產生或讀取失敗" : "載入中…"}</div>`;
+  return ovKv([[`未平倉淨口數（${a.date || "—"}）`, ovSg(a.net, 0, " 口")],
+    [b ? `較前一交易日（${b.date || "—"}，${ovSigned(b.net, 0)} 口）` : "較前一交易日", b ? ovSg(a.net - b.net, 0, " 口") : (OV.err.fut1 ? "前一日讀取失敗" : "—")]])
+    + `<div class="ov-note">外資台指期（TX）多方未平倉口數 − 空方未平倉口數（taiwan-flows data/futures 逐日檔）。</div>`;
+}
+function ovSentHtml(){
+  const rows = sentRows(OV.d.sent);
+  const one = (label, key, unit) => {
+    const s = sentSeries(rows, key);
+    if (!s.length) return [label, `<span class="ov-na">目前無資料</span>`];
+    const last = s[s.length - 1], st = sentStats(s, SENT_WIN);
+    return [`${label}（${last.date}）`, `${sentFmt(last.v, 2)}${unit}　<span class="ov-sub">近 ${st.n} 筆有值資料第 ${st.pct} 百分位</span>`];
+  };
+  return ovKv([one("臺指 VIX", "vix", ""), one("Put/Call 未平倉比", "pc_oi", "%"), one("小台散戶多空比", "retail_ratio", "%")])
+    + `<div class="ov-note">${esc(SENT_DISCLAIMER)}口徑與折線見「市場情緒」tab。</div>`;
+}
+function ovMktbalHtml(){
+  const m = ovMktbal(OV.d.mktbal);
+  const dl = v => m.prev ? `　<span class="ov-sub">較 ${esc(m.prev)}</span> ${ovSg(v, 1, " 億")}` : "";
+  return ovKv([["融資餘額", ovFmt(m.margin, 1) + " 億" + dl(m.marginD)], ["借券賣出餘額", ovFmt(m.sbl, 1) + " 億" + dl(m.sblD)]])
+    + `<div class="ov-note">全市場合計金額（融資源自 FinMind、借券賣出源自 TWSE）；逐日與月底值見「大盤餘額」tab。</div>`;
+}
+function ovSumHtml(){
+  const c = OV.d.sum;
+  if (c === undefined) return `<div class="ov-na">${(OV.err.sum || !OV.d.sumidx.runs.length) ? "尚無自動彙總或讀取失敗" : "載入中…"}</div>`;
+  const sec = ovSynthSection(c.synthesis && c.synthesis.text);
+  if (!sec) return `<div class="ov-na">最新一場彙總沒有「盤勢綜合研判」一節</div>`;
+  return `<div class="ov-md insight-md">${mdToHtml(sec)}</div>`
+    + `<div class="ov-note">AI 研判：取自「彙總分析」自動場的「盤勢綜合研判」一節（多模型彙總之即時研判、未經歷史回測、非保證）；全文見「彙總分析」tab。</div>`;
+}
+function ovSumDate(){
+  const c = OV.d.sum;
+  if (!c) return "";
+  return `${ovDate(c.date) || "—"} ${c.slot === "am" ? "早場" : c.slot === "pm" ? "晚場" : ""}`.trim();
+}
+function ovBriefHtml(){
+  const j = OV.d.brief, t3 = Array.isArray(j.top3) ? j.top3.filter(x => x && typeof x === "object").slice(0, 3) : [],
+    pos = Array.isArray(j.positioning) ? j.positioning.filter(x => x && typeof x === "object") : [];
+  if (!t3.length && !pos.length) return `<div class="ov-na">晨報卡無今日三件事／開盤前定位</div>`;
+  let h = "";
+  if (t3.length) h += `<div class="ov-lbl">今日三件事</div><ol class="ov-ol">` + t3.map(x =>
+    `<li><b>${esc(x.title)}</b><div class="ov-sub">${esc(x.why)}</div></li>`).join("") + `</ol>`;
+  if (pos.length) h += `<div class="ov-lbl">開盤前定位</div><ul class="ov-ul">` + pos.map(x =>
+    `<li><b>${esc(x.market)}</b>：${esc(x.fact)}` + (x.view ? `<div class="ov-sub">${esc(x.view)}</div>` : "") + `</li>`).join("") + `</ul>`;
+  return h + `<div class="ov-note">AI 研判：取自 taiwan-stock-news 每日晨報卡（當日 07:30 前後產製，講的是開盤前的狀態）。</div>`;
+}
+function ovSrcHtml(srcs, base){
+  return `<div class="ov-src">` + `<div class="ov-sub">基準日 ${esc(ovDate(base) || "—")}（日頻來源的資料日須等於基準日才計入）</div>`
+    + srcs.map(s => `<div class="ov-srow"><b>${esc(s.id)}</b> ${esc(s.name)}`
+      + `<span class="ov-badge">資料日 ${esc(s.date || "—")}</span><span class="ov-badge ov-st">${esc(s.text)}</span>`
+      + (s.n !== null && s.status !== "fail" && s.status !== "excluded" ? `<span class="ov-badge">${ovFmt(s.n, 0)} 項</span>` : "")
+      + (s.note ? `<span class="ov-sub">${esc(s.note)}</span>` : "")
+      + (s.unmapped.length ? `<span class="ov-sub">未上卷（一個次產業名對到多個產業或查無對映）：${esc(s.unmapped.join("、"))}</span>` : "")
+      + (!s.counted && s.items.length ? `<span class="ov-sub">另列（不計入交集）：${esc(s.items.map(x => x.key + (typeof x.name === "string" && x.name ? " " + x.name : "")).join("、"))}</span>` : "")
+      + `</div>`).join("") + `</div>`;
+}
+function ovTableHtml(layer, isStock){
+  const srcs = ovSources(layer), rows = ovRows(layer), cs = srcs.filter(s => s.counted);
+  let h = ovSrcHtml(srcs, layer.base_date);
+  if (!rows.length){
+    return h + `<div class="ov-na ov-pad">${esc(typeof layer.note === "string" && layer.note ? layer.note : "本日沒有出現在 2 個以上有效來源的項目")}</div>`;
+  }
+  const mark = id => r => r.hits.includes(id) ? "●" : `<span class="mut">·</span>`;
+  const cols = [
+    isStock ? { h: "個股", cls: "l", f: r => nameCell({ c: r.key, n: r.name }) } : { h: "產業", cls: "l", f: r => esc(r.key) },
+    { h: "出現清單數", f: r => `<span class="ov-cnt">${ovFmt(r.count, 0)}</span>` },
+    ...cs.map(s => ({ h: esc(s.id), f: mark(s.id) })),
+  ];
+  if (!isStock) cols.push({ h: "依據（上卷前的次產業／象限）", cls: "l", f: r => r.via ? esc(r.via) : `<span class="mut">—</span>` });
+  return h + tbl(cols, rows, { sortI: 1, sortD: -1 });
+}
+function ovRender(){
+  ovEnsure();
+  const main = document.getElementById("main"), j = OV.d.ov;
+  const day = OV.d.day, tt = OV.d.totals ? ovTotals(OV.d.totals) : null, mb = OV.d.mktbal ? ovMktbal(OV.d.mktbal) : null;
+  const sr = OV.d.sent ? sentRows(OV.d.sent) : null, br = OV.d.brief;
+  let h = `<div class="ov"><div class="msection">盤勢七項<span class="n">描述性顯示 · 每項自帶資料日 · 缺哪項只灰掉那項</span></div><div class="ov-grid">`;
+  h += ovCard("1 當日總結", "day", day ? "資料日 " + (ovDate(day.date) || "—") : "", ovDayHtml);
+  h += ovCard("2 三大法人買賣淨額", "totals", tt ? "資料日 " + tt.date : "", ovTotalsHtml);
+  h += ovCard("3 外資台指期未平倉", "totals", "", ovFutHtml);
+  h += ovCard("4 市場情緒", "sent", sr ? "最新列 " + sr[sr.length - 1].date : "", ovSentHtml);
+  h += ovCard("5 大盤餘額", "mktbal", mb ? "資料日 " + mb.date : "", ovMktbalHtml);
+  h += ovCard("6 盤勢綜合研判", "sumidx", ovSumDate(), ovSumHtml, { ai: true });
+  h += ovCard("7 晨報今日三件事＋開盤前定位", "brief", br ? "晨報日 " + (ovDate(br.date) || "—") : "", ovBriefHtml, { ai: true });
+  h += `</div>`;
+  // 交集兩段：三種狀態（載入中／讀取失敗／正常含部分來源缺）都逐字顯示標示句
+  h += `<div class="msection">交集表<span class="n">後端每日產出 · 前端只渲染</span></div>`
+    + `<div class="ov-label">${esc(ovLabel(j))}</div>`
+    + `<div class="ov-note">依「出現在幾個來源清單」由多到少排列——這個排序<b>沒有回測依據</b>（使用者 2026-11-12 裁定標示後先上線，每日快照留存供事後驗證）。`
+    + `本頁只做偏多（資金流入）側，偏空側未做。各來源的資料日與是否計入列在每張表上方；日級輪動雷達來源（E）另註：其回測 12 格中信賴區間不跨 0 的為 0 格（0/12 顯著）。</div>`;
+  if (!j){
+    h += `<div class="ov-na ov-pad">${OV.err.ov ? "交集表資料尚未產生或讀取失敗（data/overview/latest.json）；上方盤勢七項不受影響" : "載入中…"}</div>`;
+  } else {
+    const gen = sentGenOk(j.generated_at) ? fmtGenTaipei(j.generated_at) : "";
+    h += `<div class="ov-badges"><span class="ov-badge">交集表日期 ${esc(ovDate(j.date) || "—")}</span>`
+      + `<span class="ov-badge">產出 ${gen ? esc(gen) + "（台灣）" : "—"}</span></div>`;
+    h += `<div class="msection">類股交集<span class="n">主鍵＝產業鏈「產業」（47 條，多對多、非市佔）</span></div>` + ovTableHtml(j.sectors, false);
+    h += `<div class="msection">個股交集<span class="n">主鍵＝股票代號</span></div>` + ovTableHtml(j.stocks, true);
+  }
+  main.innerHTML = h + `</div>`;
 }
 
 // ================= 籌碼雷達 tab（2026-09-28 由 taiwan-flows `radar` tab 搬來；規格正本 taiwan-flows/docs/radar-tab.md）=================

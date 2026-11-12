@@ -51,7 +51,7 @@
 
 ## 佈局
 
-- `index.html`：19 個 tab 全部前端（CSS/JS 內嵌；2026-09-28 由 14 加到 16，見下方「籌碼雷達／社群聲量」；2026-09-29 加第 17 個「市場情緒」、2026-10-14 加第 18 個「選股二」、2026-11-12 加第 19 個「月營收」，見下方同名節）。`render()` 分派各 tab；共用表格框架 `tbl()`
+- `index.html`：20 個 tab 全部前端（CSS/JS 內嵌；2026-11-12 加第 20 個「市場總覽」（排在最前、預設 tab 仍是 `insight`），見下方同名節；2026-09-28 由 14 加到 16，見下方「籌碼雷達／社群聲量」；2026-09-29 加第 17 個「市場情緒」、2026-10-14 加第 18 個「選股二」、2026-11-12 加第 19 個「月營收」，見下方同名節）。`render()` 分派各 tab；共用表格框架 `tbl()`
   （排序/分組表頭/凍結欄/虛擬捲動，sticky 的坑記在 `<style>` 註解）。
   - **hash 路由（2026-09-07）**：`#tab=&code=&sub=`（2026-09-28 另加 `rcls`／`rinv`／`sd`，僅限各自 tab，見下方籌碼雷達／社群聲量；2026-11-12 另加 `rm`，僅限 `tab=revenue`，見下方月營收），只放非預設值。`parseHash()`／`applyHash()`
     （grep `function parseHash`／`function applyHash`）於 `load()` 套用，`syncHash()`
@@ -128,8 +128,8 @@
     `d_oddi`／`d_odda`；原寫「各段 date 取 max」是過寬的，2026-09-13 更正）。
     **頂列與本區塊是兩個不同的軸，刻意不統一**（2026-09-13 使用者裁決：`pmStatus` 維持用
     `pm.date`、不改程式）：頂列答的是「**這份檔整體走到哪一天**」，本區塊答的是「**這張表是哪一天**」。
-    要頂列跟隨單一區塊就得挑一個區塊當代表，而本檔有 19 個 tab、各自吃不同的 dataset，
-    綁 `market_daily.date` 會讓其餘 18 個 tab 的頂列變得不準（例：借券 tab 走 `lend_date`，
+    要頂列跟隨單一區塊就得挑一個區塊當代表，而本檔有 20 個 tab、各自吃不同的 dataset，
+    綁 `market_daily.date` 會讓其餘 19 個 tab 的頂列變得不準（例：借券 tab 走 `lend_date`，
     法人日領先短賣日那天頂列就會比借券 tab 自己的資料日新）。所以正解是**每段自帶自己的資料日**
     （同個股摘要側欄的立場），並在兩者不同時明講，而不是把頂列改成某一段的日期。**2026-09-09 起本區塊基準日改綁法人日 `d_inst`、與借券 tab 的 `lend_date`
     脫鉤**（`build_postmkt.py` grep `md_date = d_inst or lend_date`）：原本共用 `lend_date`
@@ -256,6 +256,26 @@
     原始碼抽出、配假 `loadJSON`／`render` 實跑；pytest 由 `tests/test_revenue_frontend.py` 代跑；樣本
     `tests/fixtures/revenue_sample.json`＝`data/revenue/2026-10.json` 的 12 檔子集）＋`tests/test_frontend_moved.py` 的 `rm` 白名單。
     本 tab 只讀本站資料，本機驗證 http.server 起在 repo 根目錄或上一層皆可。
+  - **市場總覽 `overview`（2026-11-12 新增，第 20 個 tab，`TABS` 第一個、**預設 tab 不變**；規格、定案口徑與驗收條件正本
+    `docs/market-overview.md`）**：`index.html` grep `// ================= 市場總覽 tab`（接在 `renderTabs()` 之後、籌碼雷達之前）；
+    渲染 `function ovRender`、載入 `function ovEnsure`／`function ovLoad`、純函式 `ov-pure:begin`～`end`。三段：
+    ①**盤勢七項**（描述性，前端直接讀既有同源檔、每項自帶資料日、缺哪項只灰掉那項）：當日總結（`../taiwan-flow-live-v2/data/daysummary/latest.json`）、
+    三大法人（`../taiwan-flows/data/totals.json`）、外資台指期（`../taiwan-flows/data/futures/<YYYYMMDD>.json` 兩檔，日期取 totals 最末兩個交易日）、
+    市場情緒（`sentiment.json`，沿用 `sent-pure`）、大盤餘額（`data/market_balance_history.json`）、盤勢綜合研判（`data/summary/index.json` 最新一場的
+    `synthesis.text` 抽「## 盤勢綜合研判」一節，經 `mdToHtml` 顯示——**三站同步碼只呼叫不修改**）、晨報三件事＋開盤前定位（`../taiwan-stock-news/daily-brief-card.json`）；
+    6、7 標「AI 研判」。②**類股交集**③**個股交集**：後端 `src/build_overview.py` → `data/overview/latest.json`，**前端只渲染、不重算**。
+    **鐵律 8（使用者 2026-11-12 裁定：無回測依據、標示後先上線）**：交集表依「出現在幾個來源清單」排序是新的候選排序；載入中／讀取失敗／正常三種狀態
+    都逐字顯示「AI 研判，未經回測，非保證」（`OV_LABEL`／`ovLabel()`），每日快照 `data/overview/daily/<date>.json` 留存供事後驗證，結論出來前不得拿掉標示；
+    **只做偏多（資金流入）側**。**硬約束**：盤勢 1–5 的渲染函式不得出現偏多／偏空／建議等字樣（來源檔自帶文字原樣顯示並標來源；測試讀碼守門）；
+    著色只經 `sgn()` 用在漲跌與買賣超正負；出現清單數中性色、不加燈號；外來字串一律 `esc()`、數值一律 `ovNum()`；彙總檔名過 `OV_SUMFILE_RE`。
+    全部同源相對路徑、CSP 未改、**只在切到本 tab 時才抓**（每支檔以 `OV.loading[key]` 去重、失敗記 `OV.err[key]` 不重試），首屏請求清單不變；
+    CSS 一律 `.ov-*`；不加新 hash key；頂列 stats 清空。**未動 `tbl()`**。
+    **本站因此新增為下列檔案的消費者（改名或改語意＝跨站變更）**：前端讀 taiwan-flow-live-v2 `data/daysummary/latest.json`（`index`／`breadth`／`subs_top5`／`subs_bot3`／`tone`／`date`）、
+    taiwan-flows `data/totals.json`（`dates`／`rows[d].tse|otc.*_k`）與 `data/futures/<日>.json`（`cols`／`rows`）、taiwan-stock-news `daily-brief-card.json`（`top3`／`positioning`／`date`）；
+    後端讀 taiwan-flows `sector_ranges_lite.json`（r5／r20 chain total）與 `latest.json`（`pages.sync.sync_buy`）、taiwan-flow-live-v2 `aetf/diff.json`（`stocks[].by`／`subs`／`primary_date`）、
+    `morning.json`（`signals`／`recap.baseline_date`）、`chain_daily/series.json`、`classify.json`（`map[].p`）。
+    測試 `tests/test_overview_frontend.mjs`（21 項，pytest 由 `tests/test_overview_frontend.py` 代跑）＋`tests/test_overview_build.py`（21 項）。
+    本機驗證同籌碼雷達（http.server 起在上一層）。
   - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
     `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／
     `prevTradingDay`／`holLoad`）。`load()` 末尾 `holLoad()` 以**同源相對路徑** `../taiwan-flow-live-v2/data/twse_holidays.json`
@@ -306,6 +326,11 @@
   門檻格點以 `th_override()` 暫時覆寫 `build_revenue.TH_C`／`TH_C_LUMPY` 後還原，**不改 `build_revenue.py`**。`revenue-backtest.yml` 只有 `workflow_dispatch`。
   **沒有任何 tab 讀這份產出**；**2026-11-13 已實跑（run 43267484432）：依預先登錄判準機械判定為「有回測支持」，但只限 20 日的 Beat 類合計對 Miss 類合計；高預期／低預期兩子類各自未達顯著。報告 `docs/revenue-backtest.md`。**（實跑確認取得到 `TaiwanStockPriceAdj` 與報酬指數）；
   **使用者 2026-11-13 裁定：畫面標示維持「AI 研判，未經回測，非保證」不動、門檻維持 15／25**——要改須使用者另行裁定。本機驗證用 `--cache-dir <目錄> --out-dir <暫存目錄> [--offline]`，不要把合成結果寫進 repo）
+- `src/build_overview.py` → `data/overview/latest.json`＋`data/overview/daily/<date>.json`（市場總覽的類股／個股交集表，2026-11-12；口徑與各來源
+  納入／降級／不納入的定案見 `docs/market-overview.md` §3。掛在 `diag.yml`（pick2 之後）與 `mktbal.yml`（最後一棒）各一次，`continue-on-error`、
+  commit 後才轉紅；跨 repo 檔走 raw main（免 token），本機用 `--src-root /home/user`。**B／E／e／b 是前端口徑的 Python 移植**
+  （`radarPoints`／RRGD 純函式／`radarHolders`／`nBuyers`）：改前端這幾支要同步改本檔，`tests/test_overview_build.py` 以 node 對跑逐位守門。
+  `generated_at` 以外內容沒變就不重寫檔）
 - `src/build_pick2.py` → `data/pick2/`（選股二追蹤名單；掛在 diag workflow 的 screen 之後，`continue-on-error`；見上方「選股二」節）
 - `src/build_screen.py` → `data/screen/screen.json`（選股：TradingView 初篩＋鉅亨 FactSet 預估
   EPS/目標價/評等＋diag 合併；掛在 diag workflow 後段，`continue-on-error` 失敗不擋 diag）
@@ -401,11 +426,11 @@
 ```bash
 python -m pytest tests/ -q        # 離線單元測試（免 token/網路）
 python src/build_diag.py --sample # diag 管線本地驗證（免 token）
-python -m http.server 8000        # 前端本機驗證；慣例＝19 個 tab 逐一點擊 console 零 error
+python -m http.server 8000        # 前端本機驗證；慣例＝20 個 tab 逐一點擊 console 零 error
 ruff check .                      # lint（設定在 pyproject.toml）
 ```
 
-改前端後務必實測 19 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
+改前端後務必實測 20 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
 
 **手機驗收條件（2026-09-09 更正，舊寫法已被實測推翻）**：375／390／1280 三寬度下
 ①**整頁 `document.documentElement.scrollWidth == window.innerWidth`**（無**頁面級**水平捲軸）、

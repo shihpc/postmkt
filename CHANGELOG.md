@@ -3,6 +3,29 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-11-12 市場總覽 tab（`overview`；使用者裁定：標示後先上線）
+
+`index.html` 新增第 20 個 tab「市場總覽」（`TABS` 第一個，預設 tab 仍是 `insight`）＋後端 `src/build_overview.py`。
+規格、各來源定案與驗收條件正本 `docs/market-overview.md`。
+
+- **鐵律 8 裁定登錄**：使用者 2026-11-12「標示『AI 研判，未經回測，非保證』後上線」。交集表依「出現在幾個來源清單」排序、無回測依據；
+  三種畫面狀態都逐字顯示標示句；每日快照 `data/overview/daily/<date>.json` 留存，列入事後驗證。只做偏多（資金流入）側。
+- **盤勢七項**（描述性、每項自帶資料日）：當日總結／三大法人／外資台指期／市場情緒／大盤餘額，另附 AI 文字的盤勢綜合研判與晨報重點（標「AI 研判」）。
+  全部同源相對路徑、切到本 tab 才抓，首屏請求清單不變、CSP 未改。
+- **交集表來源定案**：類股 A 產業鏈資金流前 10（基準）、B 籌碼雷達加速流入、C 主動 ETF 次產業加碼前 10（上卷到產業）、E 日級輪動雷達改善／領先；
+  D 連湧／新湧的資料日是前一交易日，晚間建置時判過期、另列不計入。個股 a 同步買超 Top30（基準）、b 主動 ETF ≥2 檔同買、c 選股二追蹤、
+  d 月營收 Beat（月頻容許窗）、e 千張大戶週增前 20（週頻容許窗）；**f 彙總分析精華標的不納入**（八場標題七種寫法，方向無法可靠解析）。
+- 分類體系實查：flows chain、classify、chain_daily 三者 47 個產業名完全相同；次產業 484 個中 19 個同名掛多個產業，這些不上卷。
+- 首份快照（2026-11-12，本機 checkout 實跑）：類股交集 5 列、個股交集 18 列。
+- 排程：`diag.yml`（pick2 之後）與 `mktbal.yml` 各加一步，`continue-on-error`、commit 之後才轉紅；內容沒變不重寫檔。
+- 測試：`tests/test_overview_build.py`（21 項，含 node 對跑前端口徑逐位比對）、`tests/test_overview_frontend.mjs`（21 項）；
+  既有測試中寫死的 tab 數同步（19→20；只收純小寫 id 的 regex 為 18→19）。未動 `tbl()` 與三站同步碼。
+- 驗證（Playwright，http.server 起在上一層、外網請求擋掉）：20 個 tab 逐一點擊無非網路類 console error／pageerror；首屏請求清單與改動前相同；
+  375／390／1280 整頁 `scrollWidth == innerWidth`、兩張表 175 格逐格 `scrollWidth − clientWidth == 0`；`latest.json` 404 與載入中都看得到標示句；
+  注入 `<img onerror>` 到來源名稱／日期／AI 文字共 85 處皆以字面顯示、未執行。
+- 未驗證：CI 上讀 raw main 的實際連通（只以本機 checkout 實跑）；線上頁面要等合併後才能看。
+- 範圍外發現（未處理）：`tests/test_pick2.mjs` 在同層有 taiwan-backtest checkout 時失敗（universe 現為 121 檔、測試寫死 117），與本批無關。
+
 ## 2026-11-12 月營收 Beat／Miss：階段一（資料管線）
 
 使用者需求：每月 11 日比較上月營收與預期，聚焦 beat／miss 公司（參考陸行之的月營收分析框架）。規格、口徑與驗收條件正本

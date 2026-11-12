@@ -165,6 +165,14 @@
 
 > `date`/`generated_at`（產出日）與 `dates`（三頁資料日）語意不同：前者是何時跑，後者是分析的是哪一交易日的資料。
 
+### data/overview/latest.json、data/overview/daily/<date>.json（市場總覽交集表，2026-11-12；規格 `docs/market-overview.md` §3）
+| 欄位 | 語意 | 時區 | 粒度 |
+|------|------|------|------|
+| `generated_at` | 產出時刻（內容沒變時不重寫，所以可能早於當晚最後一次執行） | 台北 +08:00 | 時刻 |
+| `date` | 交集表日期＝個股層基準日（taiwan-flows `latest.date`），缺則類股層基準日 | — | 交易日 |
+| `sectors.base_date`／`stocks.base_date` | 各層基準來源（A／a）的資料日；日頻來源須與它相同才計入 | — | 交易日 |
+| `sources[].date` | 該來源自己的資料日；`d` 是營收月份 `YYYY-MM`、`e` 是集保資料日（週頻）、`D` 是 `morning.json` 的 `recap.baseline_date`（前一交易日） | — | 依來源 |
+
 ### data/analyses/*.json（前端手動分析雲端存檔）
 | 欄位 | 語意 | 時區 | 粒度 |
 |------|------|------|------|
