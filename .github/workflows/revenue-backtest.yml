@@ -1,0 +1,50 @@
+name: backtest revenue beat/miss
+
+# 月營收 Beat／Miss 回測（階段三；規格與預先登錄判準 docs/revenue-beatmiss.md §7）。
+# 一次性研究工作：只有手動觸發，沒有排程、沒有 push 觸發、沒有 Worker 觸發。
+# 產出 data/revenue/backtest/summary.json＋events.csv；不碰 data/revenue/index.json 與各月份檔。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write   # 失敗通知開 issue 用
+
+concurrency:
+  group: backtest-revenue
+  cancel-in-progress: false
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    # 約 302 次 FinMind 請求（150 檔 × 營收＋日線，另加 2330 探測與報酬指數）。
+    # 正常估 10–20 分鐘（每次請求含 0.2 秒間隔與回應時間，未實測）；
+    # 最壞情況是限流：每次失敗要等 65 秒重試，累積失敗超過一成（16 檔）才中止，約需 35–70 分鐘。
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run backtest
+        env:
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: python src/backtest_revenue.py
+
+      - name: Commit and push
+        uses: ./.github/actions/commit-data
+        with:
+          paths: data/revenue/backtest
+          message: "data: revenue backtest"
+
+      - name: Notify failure
+        # cancelled 也要告警：跑一半被取消同樣代表沒產出，而 failure() 在 cancelled 時不成立
+        if: failure() || cancelled()
+        uses: ./.github/actions/notify-failure
+        with:
+          pipeline: revenue-backtest

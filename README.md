@@ -112,6 +112,14 @@
   或模型（C）。`.github/workflows/revenue.yml`：每月 11–16 日 07:30 台北（只有 GitHub cron、無 Worker 觸發），內容相同不重寫檔。
   前端「月營收」tab（2026-11-12 階段二）讀這兩種檔：`rows[]`／`sectors[]`／`missing[]`／`thresholds`／`label`／`tsmc_yoy`／`reported_n`／`universe_n`／`generated_at`
   與 `index.json` 的 `months`／`latest` 改名或改語意＝要同步改 `index.html` 的「月營收 tab」區段。
+- `src/backtest_revenue.py`：月營收 Beat／Miss 回測（2026-11-13 階段三；設計、預先登錄判準與驗收條件 `docs/revenue-beatmiss.md` §7）。
+  逐檔抓 `TaiwanStockMonthRevenue`（自 2018-01）與日線（優先還原價 `TaiwanStockPriceAdj`，以 2330 探測一次、取不到整批退回 `TaiwanStockPrice`
+  並標 `price_adjusted: false`），另抓加權報酬指數（取不到只標示缺）。分類直接呼叫 `build_revenue` 的純函式、只回測模型（C）層、不讀 `expect.json`。
+  事件日＝公布月 10 日起第一個交易日（期限日），次一交易日開盤進場，持有 5／10／20 個交易日收盤出場；超額＝個股報酬 − 同月同持有期股票池等權平均。
+  輸出 `data/revenue/backtest/summary.json`（各類 × 持有期統計、Beat−Miss 每月價差與月群聚 t 值、對半切、逐年、門檻格點樣本內外、§7.2 判準的機械判定 `verdict`）
+  與 `events.csv`（逐筆事件；含只當基準成員的「未分類」列，可由它重算 summary 的每月價差）。`.github/workflows/revenue-backtest.yml`：只有手動觸發。
+  **沒有任何 tab 讀這份產出；截至 2026-11-13 尚未實跑、尚無結果**，FinMind 價格與報酬指數的欄位名為假設、待實跑確認。
+  本機：`python src/backtest_revenue.py --cache-dir <快取> --out-dir <暫存目錄> [--offline]`（快取結構 `<快取>/<資料集名>/<代號>.json`）。
   分類無回測依據（資料檔自帶「AI 研判，未經回測，非保證」）；使用者 2026-11-12 裁定標示「未經回測」先上線，階段三回測結論出來前不得拿掉標示。
   **彭博數值不得進本 repo**（公開 repo／Pages）。
 - `src/build_mktbal.py`：大盤層級四項餘額（融資/融券/借券賣出/不限用途借貸）管線，輸出

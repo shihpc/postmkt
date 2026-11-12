@@ -70,6 +70,34 @@
   頁內延遲 fetch 讓 9 月晚於 8 月回來，畫面停在 8 月、`#main` 的 MutationObserver 次數不變、橫捲位置保留；請求在途時切到別的 tab 不因月營收請求而重繪該 tab（`dates` 等 tab 自己的既有重繪不在此列，見 docs「階段二之二結果」疑點結案）；
   第一次載入與正常切月（含延遲）仍會畫出。同一支腳本對 `8fbcc9a` 跑，上述新行為各項皆為 FAIL（檢查有鑑別力）。
 
+## 2026-11-13 月營收：階段三（回測腳本）
+
+**本批只有腳本、workflow、測試與文件；尚未實跑、尚無任何回測結果，`data/revenue/backtest/` 尚不存在。** 畫面「AI 研判，未經回測，非保證」標示不變。
+設計、預先登錄判準與驗收條件正本 `docs/revenue-beatmiss.md` §7（`ba27fbb` 已定案，本批未改 §7.1–7.3）。
+**未動 `index.html`、`src/build_revenue.py`、`data/revenue/` 既有檔、既有測試與其他 workflow。**
+
+- `src/backtest_revenue.py`：分類只呼叫 `build_revenue.parse_series`／`analyze`（不帶 override）／`classify`，只回測 C 層、不讀 `expect.json`。
+  事件日（期限日＝公布月 10 日起第一個交易日，t0＝次一交易日開盤，持有 5／10／20 個交易日收盤出場；日曆取 2330）、等權基準超額、
+  對加權報酬指數超額（參考）、各類 × 持有期統計、Beat 類合計 − Miss 類合計每月價差與月群聚 t 值、對半切、逐年、
+  門檻格點（`TH_C` 10／15／20／25／30，lumpy＋10；前半選、後半驗，樣本內外並列）、§7.2 機械判定 `verdict`。
+  產出 `data/revenue/backtest/summary.json`＋`events.csv`；參數 `--cache-dir`／`--out-dir`／`--offline`。
+- 門檻格點實作：`th_override()` 暫時覆寫 `build_revenue.TH_C`／`TH_C_LUMPY`、`finally` 還原，仍由 `classify()` 本身分類（不寫第二份分類規則）；
+  測試證明預設門檻下逐筆相同、例外時也會還原。
+- `.github/workflows/revenue-backtest.yml`：只有 `workflow_dispatch`；`commit-data` 的 `paths: data/revenue/backtest`；timeout 90 分
+  （約 302 次 FinMind 請求，正常估 10–20 分鐘、**未實測**；限流最壞約 35–70 分鐘後因失敗超過一成中止）。
+- `tests/test_revenue_backtest.py`（28 項，離線）：事件日（10 日為交易日／週末／春節連假／跨年／日曆邊界）、N 日報酬、等權基準與超額、
+  月群聚統計手算例、對半切、門檻格點、§7.2 判定、防偷看（合成序列截斷 vs 不截斷逐欄相同；有 `/tmp/revcache` 時另跑真實營收快取，沒有則 skip）、
+  合成資料端到端（含由 `events.csv` 重算每月價差與 t 值、退回未還原價、報酬指數缺、失敗超過一成中止）。`pytest` 290 項全過、`ruff check .` 無違規。
+- 本機端到端（真實營收快取 150 檔自 2021-01 起＋**合成價格**，產出寫到暫存目錄、未進 repo）流程走通；其數字無意義、不記錄。
+- **規格未明定、由實作者補的細節（實跑前請確認，皆已寫進腳本註解）**：①等權基準成員＝同月同持有期股票池內所有算得出報酬的個股，**含無法建立預期的「未分類」個股**
+  （這些列寫進 `events.csv` 供重算，但不算事件）；②進場日或出場日該檔無價（停牌／未上市／開收盤 ≤0）＝該持有期無報酬，不以鄰近日代替；
+  ③加權報酬指數只有收盤值，指數報酬以「期限日收盤 → 出場日收盤」近似；④對半切＝評估月份前 `len//2` 個為前半；逐年依**營收月份**的年度；
+  ⑤格點「最佳門檻」以前半期 20 日價差的月群聚 t 值最大者為準（同值取較小門檻），並另列以平均價差選的結果；
+  ⑥§7.2「只有 5／10 日成立」解讀為主口徑兩項皆不成立、但 5 日或 10 日**兩項條件皆成立**；⑦報酬與超額先四捨五入到 4 位小數（%）再做統計，讓 `events.csv` 可重算出相同數字。
+- **假設、待實跑確認**：`TaiwanStockPriceAdj`／`TaiwanStockPrice` 有 `date`／`open`／`close` 欄；`TaiwanStockTotalReturnIndex` 以 `data_id=TAIEX` 查、值在 `price` 欄（退而試 `close`）。
+  欄位不符時該檔零筆可用價格 → 列入 `fetch_failed.price`，超過一成中止；2330 兩個價格資料集都不可用＝無交易日曆、直接中止；報酬指數不可用只標 `taiex_available: false`。
+- 待辦：push 後手動觸發 workflow 實跑（§7.4 第 5 條）、獨立驗收重算（第 6 條）、報告 `docs/revenue-backtest.md`（第 7 條）。
+
 ## 2026-10-23 盤後輪動雷達「相對強度領先（領先象限）」：使用者追認現名（裁定 A2′-b）
 
 `rrgd` tab 領先象限候補清單的標籤「相對強度領先（領先象限）」（`index.html` grep `sec("相對強度領先（領先象限）"`，

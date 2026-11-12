@@ -301,11 +301,16 @@
 - `src/build_revenue.py` → `data/revenue/`（月營收 Beat／Miss；2026-11-12 階段一產資料、階段二起由「月營收」tab 讀取（見上方同名節）；規格 `docs/revenue-beatmiss.md`。
   輸入 `data/revenue/universe.json`（次產業股票池）與 `expect.json`（A／B 層預期，人工維護、須附來源；**不得填彭博數值**）。
   分類無回測依據，使用者 2026-11-12 裁定標示「未經回測」先上線、階段三回測前不得拿掉標示；`revenue.yml` 每月 11–16 日 07:30 台北，只有 GitHub cron）
+- `src/backtest_revenue.py` → `data/revenue/backtest/`（`summary.json`＋`events.csv`；月營收 Beat／Miss 回測，2026-11-13 階段三；規格與**預先登錄判準**
+  `docs/revenue-beatmiss.md` §7——設計與判準已定案，跑出結果後不得回頭改。分類只呼叫 `build_revenue` 的純函式、只回測 C 層、**不讀 `expect.json`**；
+  門檻格點以 `th_override()` 暫時覆寫 `build_revenue.TH_C`／`TH_C_LUMPY` 後還原，**不改 `build_revenue.py`**。`revenue-backtest.yml` 只有 `workflow_dispatch`。
+  **沒有任何 tab 讀這份產出**；FinMind 價格／報酬指數欄位名是假設、未實測；**截至 2026-11-13 尚未實跑、`data/revenue/backtest/` 尚不存在**，
+  結論出來前畫面「未經回測」標示不得拿掉。本機驗證用 `--cache-dir <目錄> --out-dir <暫存目錄> [--offline]`，不要把合成結果寫進 repo）
 - `src/build_pick2.py` → `data/pick2/`（選股二追蹤名單；掛在 diag workflow 的 screen 之後，`continue-on-error`；見上方「選股二」節）
 - `src/build_screen.py` → `data/screen/screen.json`（選股：TradingView 初篩＋鉅亨 FactSet 預估
   EPS/目標價/評等＋diag 合併；掛在 diag workflow 後段，`continue-on-error` 失敗不擋 diag）
 - 共用模組：`src/fmclient.py`（FinMind client＋token/台北時區）、`src/twseclient.py`（TWSE 節流）
-- workflows：build/diag/mktbal/summary（各自 cron＋v2 Worker 哨兵 dispatch）＋ revenue（月營收，只有 GitHub cron）＋ test.yml；
+- workflows：build/diag/mktbal/summary（各自 cron＋v2 Worker 哨兵 dispatch）＋ revenue（月營收，只有 GitHub cron）＋ revenue-backtest（月營收回測，只有手動 `workflow_dispatch`）＋ test.yml；
   commit/push 與失敗告警在 `.github/actions/` composite
 
 ## 不可破壞的約定（踩過坑的）
