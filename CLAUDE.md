@@ -51,9 +51,9 @@
 
 ## 佈局
 
-- `index.html`：18 個 tab 全部前端（CSS/JS 內嵌；2026-09-28 由 14 加到 16，見下方「籌碼雷達／社群聲量」；2026-09-29 加第 17 個「市場情緒」、2026-10-14 加第 18 個「選股二」，見下方同名節）。`render()` 分派各 tab；共用表格框架 `tbl()`
+- `index.html`：19 個 tab 全部前端（CSS/JS 內嵌；2026-09-28 由 14 加到 16，見下方「籌碼雷達／社群聲量」；2026-09-29 加第 17 個「市場情緒」、2026-10-14 加第 18 個「選股二」、2026-11-12 加第 19 個「月營收」，見下方同名節）。`render()` 分派各 tab；共用表格框架 `tbl()`
   （排序/分組表頭/凍結欄/虛擬捲動，sticky 的坑記在 `<style>` 註解）。
-  - **hash 路由（2026-09-07）**：`#tab=&code=&sub=`（2026-09-28 另加 `rcls`／`rinv`／`sd`，僅限各自 tab，見下方籌碼雷達／社群聲量），只放非預設值。`parseHash()`／`applyHash()`
+  - **hash 路由（2026-09-07）**：`#tab=&code=&sub=`（2026-09-28 另加 `rcls`／`rinv`／`sd`，僅限各自 tab，見下方籌碼雷達／社群聲量；2026-11-12 另加 `rm`，僅限 `tab=revenue`，見下方月營收），只放非預設值。`parseHash()`／`applyHash()`
     （grep `function parseHash`／`function applyHash`）於 `load()` 套用，`syncHash()`
     （grep `function syncHash`）掛在 `render()` 結尾以 `history.replaceState` 寫回
     （**不塞歷史、不觸發 hashchange**），外部改網址走 `hashchange`
@@ -128,8 +128,8 @@
     `d_oddi`／`d_odda`；原寫「各段 date 取 max」是過寬的，2026-09-13 更正）。
     **頂列與本區塊是兩個不同的軸，刻意不統一**（2026-09-13 使用者裁決：`pmStatus` 維持用
     `pm.date`、不改程式）：頂列答的是「**這份檔整體走到哪一天**」，本區塊答的是「**這張表是哪一天**」。
-    要頂列跟隨單一區塊就得挑一個區塊當代表，而本檔有 18 個 tab、各自吃不同的 dataset，
-    綁 `market_daily.date` 會讓其餘 17 個 tab 的頂列變得不準（例：借券 tab 走 `lend_date`，
+    要頂列跟隨單一區塊就得挑一個區塊當代表，而本檔有 19 個 tab、各自吃不同的 dataset，
+    綁 `market_daily.date` 會讓其餘 18 個 tab 的頂列變得不準（例：借券 tab 走 `lend_date`，
     法人日領先短賣日那天頂列就會比借券 tab 自己的資料日新）。所以正解是**每段自帶自己的資料日**
     （同個股摘要側欄的立場），並在兩者不同時明講，而不是把頂列改成某一段的日期。**2026-09-09 起本區塊基準日改綁法人日 `d_inst`、與借券 tab 的 `lend_date`
     脫鉤**（`build_postmkt.py` grep `md_date = d_inst or lend_date`）：原本共用 `lend_date`
@@ -226,6 +226,27 @@
     讀 raw main `data/pick2/track.json` 推 LINE——`track.json`／`user.json`／`daily/*.json` 欄位改名或改語意＝跨站變更。
     測試 `tests/test_pick2.mjs`（40 項；pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest／taiwan-stock-iching checkout 另驗真實 universe 117 檔、latest.csv 與易經 latest.json）＋`tests/test_pick2_build.py`（20 項）。
     本機驗證同籌碼雷達（http.server 起在上一層，`../taiwan-backtest/` 才可達）。
+  - **月營收 `revenue`（2026-11-12 階段二新增，第 19 個 tab，排在 `sentiment` 之後、`dates` 之前；規格與驗收條件正本
+    `docs/revenue-beatmiss.md` §5）**：`index.html` grep `// ================= 月營收 tab`（接在市場情緒之後、「日期 tab」之前）；
+    渲染 `function revRender`、載入 `function revEnsure`／`function revLoadMonth`、純函式 `rev-pure:begin`～`end`
+    （`revLabel`／`revIndex`／`revPickMonth`／`revMonthOk`／`revRows`／`revFilter`／`revFmt`／`revPct`／`revDir`／`revGenOk`／`revThText`）。
+    資料＝`REV_BASE`＝`data/revenue/`（**本站同源相對路徑、CSP 未改**）：先 `index.json`（`months`／`latest`）再選定月份檔，
+    **只在切到本 tab 時才抓**，首屏請求清單不變；index 以 `REV.idxLoading`、月份檔以 `REV.loading[m]` 去重，失敗記
+    `REV.idxErr`／`REV.err[m]` 不重試、畫面一句話、不拋錯；`months` 空或 `latest` 不在 `months` 內＝「尚無資料」；
+    月份檔的 `month` 與要求月份不符視為讀取失敗。**鐵律 8（使用者 2026-11-12 裁定：無回測依據、先上線）**：三種畫面狀態
+    都逐字顯示「AI 研判，未經回測，非保證」（`revLabel()`：取資料檔 `label`，缺值或不含該句時退回常數 `REV_LABEL`），
+    階段三回測結論出來前不得拿掉。畫面三區：四類摘要（高預期仍Beat／低預期仍Miss 置前，「符合」只列檔數）、
+    次產業表（`tbl()`，並列 `tsmc_yoy`）、個股表（`tbl()` 15 欄、**未動 `tbl()`**，預設順序＝資料檔順序，分類／次產業兩個下拉篩選
+    ——篩選狀態不進 hash）。**hash 新 key `rm`**（`HASH_RM_RE`＝`^\d{4}-\d{2}$`，只在 `tab=revenue` 讀寫；清單到手後由
+    `revEnsure()` 以 `revPickMonth()` 比對 `months` 白名單，非法值靜默退回最新月；最新月不寫入 hash；清單未到前保留網址原值，同 `sd`）。
+    **硬約束**：分類與加速／減速一律中性色文字（`.rev-cls`），不新增燈號；漲跌著色只經 `revSgn()`→`sgn()`，只用在月增%／年增%／驚喜%
+    （含摘要的驚喜%與台積電年增基準；上月年增%／變化／預期季增%／預期年增%為中性色）；外來字串一律 `esc()`／`revTxt()`，
+    數值一律 `revNum()`（typeof number＋isFinite）後格式化、否則「—」；**來源欄網址為純文字、不轉連結**。CSS 一律 `.rev-*`；
+    頂列 stats 比照籌碼雷達清空（頁內自帶營收月份與產出時刻）。手機：個股表 15 欄與次產業表 6 欄都在 `.tblbox` 內橫捲、未藏欄
+    （375／390／1280 實測整頁無水平捲軸、逐格零裁切、無換行，2026-11-12 Playwright）。**個股表第一欄（凍結欄）是「分類」**——照規格欄序。
+    測試 `tests/test_revenue_frontend.mjs`（18 項，pytest 由 `tests/test_revenue_frontend.py` 代跑；樣本
+    `tests/fixtures/revenue_sample.json`＝`data/revenue/2026-10.json` 的 12 檔子集）＋`tests/test_frontend_moved.py` 的 `rm` 白名單。
+    本 tab 只讀本站資料，本機驗證 http.server 起在 repo 根目錄或上一層皆可。
   - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
     `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／
     `prevTradingDay`／`holLoad`）。`load()` 末尾 `holLoad()` 以**同源相對路徑** `../taiwan-flow-live-v2/data/twse_holidays.json`
@@ -268,9 +289,9 @@
   測試／補跑用）
 - `src/build_diag.py` → `data/diag/diag.json`（持股診斷素材庫；cache.json 走 actions/cache 不進 git）
 - `src/build_mktbal.py` → `data/market_balance_history.json`（大盤餘額）
-- `src/build_revenue.py` → `data/revenue/`（月營收 Beat／Miss；2026-11-12 階段一，**只產資料、尚無 tab 讀它**；規格 `docs/revenue-beatmiss.md`。
+- `src/build_revenue.py` → `data/revenue/`（月營收 Beat／Miss；2026-11-12 階段一產資料、階段二起由「月營收」tab 讀取（見上方同名節）；規格 `docs/revenue-beatmiss.md`。
   輸入 `data/revenue/universe.json`（次產業股票池）與 `expect.json`（A／B 層預期，人工維護、須附來源；**不得填彭博數值**）。
-  分類無回測依據，上畫面前須依鐵律 8 取得裁定；`revenue.yml` 每月 11–16 日 07:30 台北，只有 GitHub cron）
+  分類無回測依據，使用者 2026-11-12 裁定標示「未經回測」先上線、階段三回測前不得拿掉標示；`revenue.yml` 每月 11–16 日 07:30 台北，只有 GitHub cron）
 - `src/build_pick2.py` → `data/pick2/`（選股二追蹤名單；掛在 diag workflow 的 screen 之後，`continue-on-error`；見上方「選股二」節）
 - `src/build_screen.py` → `data/screen/screen.json`（選股：TradingView 初篩＋鉅亨 FactSet 預估
   EPS/目標價/評等＋diag 合併；掛在 diag workflow 後段，`continue-on-error` 失敗不擋 diag）
@@ -366,11 +387,11 @@
 ```bash
 python -m pytest tests/ -q        # 離線單元測試（免 token/網路）
 python src/build_diag.py --sample # diag 管線本地驗證（免 token）
-python -m http.server 8000        # 前端本機驗證；慣例＝18 個 tab 逐一點擊 console 零 error
+python -m http.server 8000        # 前端本機驗證；慣例＝19 個 tab 逐一點擊 console 零 error
 ruff check .                      # lint（設定在 pyproject.toml）
 ```
 
-改前端後務必實測 18 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
+改前端後務必實測 19 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
 
 **手機驗收條件（2026-09-09 更正，舊寫法已被實測推翻）**：375／390／1280 三寬度下
 ①**整頁 `document.documentElement.scrollWidth == window.innerWidth`**（無**頁面級**水平捲軸）、

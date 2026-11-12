@@ -406,6 +406,29 @@
   .sent-sw-ma{border-top:2px dashed var(--muted);margin-left:8px}
   .sent-empty{color:var(--muted);font-size:.84rem;margin:12px 2px}
   .sent-disc{margin-top:14px;color:var(--muted);font-size:.72rem;border-top:1px solid var(--line);padding-top:8px}
+  /* 月營收 tab（2026-11-12 階段二，規格 docs/revenue-beatmiss.md §5）：分類一律中性色文字標籤、不新增燈號；
+     漲跌著色只沿用既有 .up/.down（月增%／年增%／驚喜%）；全部 .rev-* 前綴避免撞名。 */
+  .rev-label{display:inline-block;font-size:.86rem;font-weight:700;color:var(--txt);border:1px solid var(--txt);border-radius:8px;padding:3px 10px;margin:8px 0 2px}
+  .rev-badges{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+  .rev-badge{display:inline-block;font-size:.7rem;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  .rev-bar{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:8px 0 2px}
+  .rev-lbl{color:var(--muted);font-size:.76rem}
+  .rev-sel{background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:5px 8px;font-size:.84rem;max-width:100%}
+  .rev-note{color:var(--muted);font-size:.74rem;line-height:1.7;margin:6px 2px}
+  .rev-miss{color:var(--muted);font-size:.76rem;line-height:1.7;margin:6px 2px;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+  .rev-miss b{color:var(--txt);font-weight:600}
+  .rev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:10px}
+  .rev-grid>*{min-width:0}
+  .rev-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 14px;font-size:.82rem;line-height:1.6}
+  .rev-ttl{font-weight:700;font-size:.92rem;color:var(--txt);margin-bottom:4px}
+  .rev-ttl .rev-n{color:var(--muted);font-weight:400;font-size:.76rem;margin-left:6px}
+  .rev-list{display:flex;flex-wrap:wrap;gap:2px 14px}
+  .rev-it{white-space:nowrap}
+  .rev-it .rev-nm{color:var(--txt);margin:0 4px}
+  .rev-cls{color:var(--txt)}
+  .rev-na{color:var(--muted);font-size:.78rem}
+  .rev-empty{color:var(--muted);font-size:.84rem;margin:12px 2px}
+  .rev-cnt{color:var(--muted);font-size:.74rem;margin:2px 2px 0}
   /* 選股二 tab（2026-10-14）：純描述，除漲跌三欄沿用 .up/.down 外一律中性色；全部 .pk2-* 前綴 */
   .pk2-srcs{display:flex;flex-wrap:wrap;gap:4px 12px;margin:8px 2px;font-size:.74rem;color:var(--muted)}
   .pk2-k{color:var(--txt)}
@@ -492,7 +515,7 @@ const TABS = [
   ["aetf","主動ETF"],["lending","融借券"],["daytrade","當沖"],
   ["block","鉅額"],["oddlot","零股"],["broker","分點"],["mktbal","大盤餘額"],
   ["rrgd","輪動雷達"],["screen","選股"],["pick2","選股二"],["mychg","持股異動"],["diag","持股診斷"],
-  ["chipradar","籌碼雷達"],["social","社群聲量"],["sentiment","市場情緒"],["dates","日期"],
+  ["chipradar","籌碼雷達"],["social","社群聲量"],["sentiment","市場情緒"],["revenue","月營收"],["dates","日期"],
 ];
 const SUBS = {
   insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、存在瀏覽器密碼管理器，載入後只在本分頁記憶體。非投資建議、非預測，僅描述歷史統計傾向。",
@@ -512,6 +535,7 @@ const SUBS = {
   chipradar:"籌碼雷達：上半為類股資金四象限（固定比較近 5 日與近 20 日三大法人／外資／投信／自營日均淨額，資料源 taiwan-flows 類股資金流）；下半為千張大戶持股週變化（本站持股診斷素材庫，約 1,200 檔、非全市場）。類股象限與大戶變化為現況描述，非買賣訊號；無回測依據。",
   social:"社群聲量：PTT Stock 板每日提及各股的篇數、推噓數與作者態度（AI 判讀），並依情緒＋千張大戶雙確認給規則式建議。AI 研判，未經回測，非保證。",
   sentiment:"市場情緒：臺指 VIX、臺指選擇權 Put/Call 比（未平倉／成交量）、小台散戶多空比三項交易行為類指標（資料源 taiwan-flows，FinMind 每交易日盤後）。各卡列最新值與資料日、與前一筆差、近 60 筆有值資料（缺值日跳過，跨度可能多於 60 個交易日）的百分位與均值、全部歷史折線。純現況描述，非買賣訊號；無回測依據。",
+  revenue:"月營收：科技／半導體股票池（約 150 檔、非全市場）上月營收與預期的比較——預期分 A 公司財測、B 出處明確的外資預估、C 模型推估三層，依驚喜%分為高預期仍Beat／低預期仍Miss／Beat／Miss／符合，並列次產業年增率變化。每月 11–16 日更新。AI 研判，未經回測，非保證。",
   diag:"持股診斷：輸入持股後逐檔彙整籌碼／價量／題材／基本面／系統五面向事實與紅黃綠風險燈號，附近3日新聞命中與可選的 AI 解讀（按了才呼叫、token 自備）。證據彙整工具、非投資建議，不輸出買賣指令；持股資料僅存於本機瀏覽器（localStorage），不上傳任何伺服器。素材庫每交易日約 22:10 更新（全市場通用資料）。",
 };
 const V2_BASE = "https://raw.githubusercontent.com/shihpc/taiwan-flow-live-v2/main/data/aetf";
@@ -572,6 +596,9 @@ const HASH_CODE_RE = /^[0-9A-Z]{4,6}$/;
 // HASH_SD_RE，日期清單（index.json）到手後再由 loadSocial() 比對白名單，不在清單內靜默退回最新一天。
 const HASH_CR = { rcls:["exchange","chain"], rinv:["total","foreign","trust","dealer"] };
 const HASH_SD_RE = /^\d{4}-\d{2}-\d{2}$/;
+// 月營收（2026-11-12）：rm 只在 tab=revenue 時讀寫，格式先過 HASH_RM_RE，月份清單（data/revenue/index.json）到手後
+// 再由 revEnsure() 比對白名單，不在清單內靜默退回最新月；最新月＝預設，不寫入 hash。
+const HASH_RM_RE = /^\d{4}-\d{2}$/;
 function parseHash(){
   let q;
   try{ q = new URLSearchParams(String(location.hash || "").replace(/^#/, "")); }catch(e){ return {}; }
@@ -586,6 +613,7 @@ function parseHash(){
   if (HASH_CODE_RE.test(stock)) out.stock = stock;
   if (out.tab === "chipradar") for (const k of ["rcls","rinv"]){ const v = q.get(k); if (v && HASH_CR[k].includes(v)) out[k] = v; }
   if (out.tab === "social"){ const sd = String(q.get("sd") || "").trim(); if (HASH_SD_RE.test(sd)) out.sd = sd; }
+  if (out.tab === "revenue"){ const rm = String(q.get("rm") || "").trim(); if (HASH_RM_RE.test(rm)) out.rm = rm; }
   return out;
 }
 // 把 hash 套進 state（載入時與 hashchange 時呼叫；之後由 render() 接手）
@@ -603,6 +631,8 @@ function applyHash(){
   if (state.tab === "chipradar"){ CR.rcls = h.rcls || "exchange"; CR.rinv = h.rinv || "total"; }
   // sd：暫存到 SOCIAL.hashSd，由 loadSocial() 在拿到 index.json 後比對白名單（原站同一套延後套用）
   if (state.tab === "social") SOCIAL.hashSd = h.sd || "";
+  // rm：暫存到 REV.hashRm，由 revEnsure() 在拿到 index.json 後比對白名單（同 sd 的延後套用）
+  if (state.tab === "revenue") REV.hashRm = h.rm || "";
   if (state.tab === "diag"){
     state.diagPrefill = "";
     if (h.code){
@@ -633,6 +663,11 @@ function currentHash(){
     if (SOCIAL.days){
       if (SOCIAL.date && SOCIAL.days.length && SOCIAL.date !== SOCIAL.days[0]) p.push("sd=" + SOCIAL.date);
     } else if (SOCIAL.hashSd && HASH_SD_RE.test(SOCIAL.hashSd)) p.push("sd=" + SOCIAL.hashSd);  // 清單未到前保留網址原值
+  }
+  if (state.tab === "revenue"){
+    if (REV.idx){
+      if (REV.month && HASH_RM_RE.test(REV.month) && REV.month !== REV.idx.latest) p.push("rm=" + REV.month);
+    } else if (REV.hashRm && HASH_RM_RE.test(REV.hashRm)) p.push("rm=" + REV.hashRm);  // 清單未到前保留網址原值
   }
   if (state.stkOpen && HASH_CODE_RE.test(state.stkOpen)) p.push("stock=" + state.stkOpen);
   return p.length ? "#" + p.join("&") : "";
@@ -1905,7 +1940,7 @@ function renderStats(){
     const dg = state.diag;
     el.innerHTML = dg ? `<div class="stat">素材庫資料日 <b>${esc(dg.date||"—")}</b></div>`
       + `<div class="stat"><b>${dg.n||0}</b> 檔</div>` : "";
-  } else if (state.tab === "dates" || state.tab === "chipradar" || state.tab === "social" || state.tab === "sentiment" || state.tab === "pick2"){
+  } else if (state.tab === "dates" || state.tab === "chipradar" || state.tab === "social" || state.tab === "sentiment" || state.tab === "pick2" || state.tab === "revenue"){
     // dates：本身就是各源日期總覽；籌碼雷達／社群聲量：頁內每段自帶自己的資料日徽章，不借用 postmkt 的資料日
     el.innerHTML = "";  // 本 tab 本身就是各源日期總覽，不重複顯示單一資料日
   } else {
@@ -1941,6 +1976,8 @@ function render(){
   else if (state.tab === "social") loadSocial();
   // 市場情緒（2026-09-29）：sentiment.json 只在切到本 tab 時才抓（sentRender 內 sentEnsure），首屏零新增請求
   else if (state.tab === "sentiment") sentRender();
+  // 月營收（2026-11-12）：data/revenue/index.json 與月份檔只在切到本 tab 時才抓（revRender 內 revEnsure），首屏零新增請求
+  else if (state.tab === "revenue") revRender();
   // insight 的標題資料日與五個盤後 tab 都吃 state.pm；summary／diag 不需要（各自的一鍵流程再 await ensure*）
   else {
     if (state.tab === "diag") ensureDiag();
@@ -2710,6 +2747,227 @@ function sentRender(){
   h += `</div>` + disc + `</div>`;
   main.innerHTML = h;
 }
+
+// ================= 月營收 tab（revenue，2026-11-12 階段二；第 19 個 tab，排在「市場情緒」之後；規格 docs/revenue-beatmiss.md §5）=================
+// 資料：本站 data/revenue/index.json（months 升序＋latest）與 data/revenue/<YYYY-MM>.json（src/build_revenue.py 產出），
+// 同源相對路徑、CSP 未改。**只在切到本 tab 時才抓**（首屏零新增請求）：先 index 再選定月份檔；in-flight 去重、
+// 失敗記錯不重試、畫面一句話說明、不拋錯。
+// **鐵律 8**：分類（Beat／Miss／高預期仍Beat／低預期仍Miss）無回測依據，使用者 2026-11-12 裁定先上線；
+// 畫面逐字標「AI 研判，未經回測，非保證」（取資料檔 label，缺值用 REV_LABEL），階段三回測結論出來前不得拿掉。
+// 分類一律中性色文字標籤、不新增燈號；漲跌著色只用在月增%／年增%／驚喜%（sgn()）。
+// 外來字串插 innerHTML 一律 esc()；數值一律 typeof number＋isFinite 後 toFixed，否則「—」；來源欄網址不轉連結。
+// 每段自帶資料月份與產出時刻（頂列 stats 清空）；不接休市行事曆、不做「今天」判斷。CSS 一律 .rev-* 前綴。
+const REV_BASE = "data/revenue/";
+const REV = { idx: null, idxErr: null, idxLoading: false, month: null, hashRm: null,
+  cache: {}, err: {}, loading: {}, fCls: "all", fSec: "all" };
+// ---- rev-pure:begin（純函式，tests/test_revenue_frontend.mjs 以 node 抽出來測，勿依賴 DOM）----
+const REV_LABEL = "AI 研判，未經回測，非保證";
+const REV_MONTH_RE = /^\d{4}-\d{2}$/;
+const REV_GEN_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+// 分類固定順序（同 build_revenue.py build_month 的 order）；摘要區列前四類，「符合」只列檔數
+const REV_CLS = ["高預期仍Beat", "低預期仍Miss", "Beat", "Miss", "符合"];
+const REV_CLS_SUMMARY = REV_CLS.slice(0, 4);
+// 標示句：取資料檔 label；缺值或不含規定句（鐵律 8，須逐字出現）時一律退回常數
+function revLabel(v){ return typeof v === "string" && v.includes(REV_LABEL) ? v : REV_LABEL; }
+function revNum(v){ return typeof v === "number" && isFinite(v) ? v : null; }
+function revGenOk(v){ return typeof v === "string" && REV_GEN_RE.test(v); }
+// index.json → { months: 新到舊（只收合白名單的字串、去重）, latest: 在 months 內才採用，否則 null }；整檔形狀不對回 null
+function revIndex(j){
+  if (!j || typeof j !== "object" || !Array.isArray(j.months)) return null;
+  const months = [...new Set(j.months.filter(m => typeof m === "string" && REV_MONTH_RE.test(m)))].sort().reverse();
+  const latest = typeof j.latest === "string" && months.includes(j.latest) ? j.latest : null;
+  return { months, latest };
+}
+// 月份白名單：格式合 REV_MONTH_RE 且在清單內才回傳，否則 null（呼叫端退回最新月）
+function revPickMonth(v, months){
+  return typeof v === "string" && REV_MONTH_RE.test(v) && Array.isArray(months) && months.includes(v) ? v : null;
+}
+// 月份檔形狀：物件、rows 為陣列、month 與要求的月份一致
+function revMonthOk(j, month){
+  return !!j && typeof j === "object" && Array.isArray(j.rows) && j.month === month;
+}
+// rows：只收 code 為非空字串的物件列，順序＝資料檔順序
+function revRows(j){
+  return j && Array.isArray(j.rows) ? j.rows.filter(r => r && typeof r === "object" && !Array.isArray(r) && typeof r.code === "string" && r.code) : [];
+}
+function revList(a){ return Array.isArray(a) ? a.filter(x => x && typeof x === "object" && !Array.isArray(x)) : []; }
+// 次產業清單（篩選下拉用）：依 rows 首次出現順序、去重、只收非空字串
+function revSectorNames(rows){
+  const out = [];
+  for (const r of rows) if (typeof r.sector === "string" && r.sector && !out.includes(r.sector)) out.push(r.sector);
+  return out;
+}
+// 篩選：cls／sector 為 "all"（或非字串）＝不篩；維持原順序
+function revFilter(rows, cls, sector){
+  return rows.filter(r => (typeof cls !== "string" || cls === "all" || r.cls === cls)
+    && (typeof sector !== "string" || sector === "all" || r.sector === sector));
+}
+// 數字格式：dp 位小數（千分位）；非數值一律「—」
+function revFmt(v, dp){
+  const x = revNum(v);
+  return x === null ? "—" : x.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+// 帶號百分比（+12.3%／-4.0%／0.0%）；非數值「—」。正負號依「顯示捨入後」的值判定
+function revPct(v, dp){
+  const x = revNum(v);
+  if (x === null) return "—";
+  const r = Number(x.toFixed(dp)) || 0;
+  return (r > 0 ? "+" : r < 0 ? "-" : "") + revFmt(Math.abs(r), dp) + "%";
+}
+// 著色用的方向（-1／0／1）：同樣依捨入後的值；非數值回 null
+function revDir(v, dp){
+  const x = revNum(v);
+  if (x === null) return null;
+  const r = Number(x.toFixed(dp)) || 0;
+  return r > 0 ? 1 : r < 0 ? -1 : 0;
+}
+// 口徑說明一行：門檻取資料檔 thresholds，缺值顯示「—」
+function revThText(th){
+  const t = th && typeof th === "object" ? th : {};
+  const f = k => revFmt(t[k], 0), a = k => revFmt(revNum(t[k]) === null ? null : Math.abs(t[k]), 0);
+  return `口徑：預期基準分三層——A 公司法說財測、B 媒體引用且出處明確的外資預估、C 模型推估（歷史季節性與趨勢）。`
+    + `驚喜%＝季累計營收 ÷（預期季營收 × 正常進度）− 1（C 層在季內第 2、3 個月改算當月增量）。`
+    + `Beat／Miss 門檻：A／B 層 ±${f("ab")}%、C 層 ±${f("c")}%、C 層且屬認列不穩的次產業 ±${f("c_lumpy")}%。`
+    + `高預期＝預期年增 ≥${f("hi_yoy")}% 或預期季增 ≥${f("hi_qoq")}%；低預期＝預期年增或預期季增 ≤−${a("lo")}%。`
+    + `次產業年增率與上月相差達 ${f("sector_delta")} 個百分點標「加速／減速」。C 層的預期高低是模型推估，不等於分析師實際預期。`;
+}
+// ---- rev-pure:end ----
+
+function revLoadMonth(m){
+  if (!m || (m in REV.cache) || (m in REV.err) || REV.loading[m]) return;
+  REV.loading[m] = true;
+  loadJSON(REV_BASE + m + ".json")     // m 已過 revPickMonth 白名單（^\d{4}-\d{2}$ 且在 index.months 內）
+    .then(j => { if (revMonthOk(j, m)) REV.cache[m] = j; else REV.err[m] = "shape"; })
+    .catch(e => { REV.err[m] = e; })
+    .finally(() => { REV.loading[m] = false; if (state.tab === "revenue") render(); });
+}
+function revEnsure(){
+  if (!REV.idx){
+    if (REV.idxErr || REV.idxLoading) return;
+    REV.idxLoading = true;
+    loadJSON(REV_BASE + "index.json")
+      .then(j => { const x = revIndex(j); if (x) REV.idx = x; else REV.idxErr = "shape"; })
+      .catch(e => { REV.idxErr = e; })
+      .finally(() => { REV.idxLoading = false; if (state.tab === "revenue") render(); });
+    return;
+  }
+  if (!REV.idx.months.length || !REV.idx.latest) return;     // 尚無資料
+  if (REV.hashRm !== null || !REV.month){
+    // 網址帶入的 rm（或尚未選月）：不在白名單內靜默退回最新月；hashRm===null 表示已套用過
+    REV.month = revPickMonth(REV.hashRm !== null ? REV.hashRm : REV.month, REV.idx.months) || REV.idx.latest;
+    REV.hashRm = null;
+  }
+  revLoadMonth(REV.month);
+}
+const revSgn = (v, dp) => { const d = revDir(v, dp); return d === null ? `<span class="mut">—</span>` : sgn(d, revPct(v, dp)); };
+const revTxt = v => typeof v === "string" && v ? esc(v) : "—";
+// (a) 四類摘要：高預期仍Beat／低預期仍Miss 置前；各列檔數與個股（代號、名稱、驚喜%）
+function revSummaryHtml(rows){
+  let h = `<div class="rev-grid">`;
+  for (const c of REV_CLS_SUMMARY){
+    const rs = rows.filter(r => r.cls === c);
+    h += `<div class="rev-card"><div class="rev-ttl"><span class="rev-cls">${esc(c)}</span><span class="rev-n">${rs.length} 檔</span></div>`
+      + (rs.length ? `<div class="rev-list">` + rs.map(r =>
+          `<span class="rev-it"><span class="code">${esc(r.code)}</span><span class="rev-nm">${revTxt(r.name)}</span>${revSgn(r.sur, 1)}</span>`).join("") + `</div>`
+        : `<div class="rev-na">本月無</div>`) + `</div>`;
+  }
+  return h + `</div><div class="rev-cnt">其餘「${esc(REV_CLS[4])}」${rows.filter(r => r.cls === REV_CLS[4]).length} 檔（驚喜%在門檻內），見下方個股表。各檔名稱後的數字為驚喜%。</div>`;
+}
+// (b) 次產業表：年增%／上月年增%／變化（百分點）／加速減速；台積電當月年增作基準
+function revSectorHtml(j){
+  const secs = revList(j.sectors);
+  const pp = v => { const x = revNum(v); return x === null ? "—" : (x > 0 ? "+" : x < 0 ? "-" : "") + revFmt(Math.abs(x), 1); };
+  return `<div class="rev-note">基準：台積電（2330）當月營收年增 ${revSgn(j.tsmc_yoy, 1)}。次產業年增率＝成分股當月營收加總 ÷ 去年同月加總 − 1`
+    + `（只計本月、上月與兩者去年同月都有值的成分股）；「變化」為與上月年增率相差的百分點。</div>`
+    + tbl([
+      { h:"次產業", f:r => revTxt(r.name) },
+      { h:"檔數", f:r => revFmt(r.n, 0) },
+      { h:"年增%", f:r => revSgn(r.yoy, 1) },
+      { h:"上月年增%", f:r => revPct(r.prev_yoy, 1) },
+      { h:"變化", f:r => pp(r.delta) },
+      { h:"加速／減速", f:r => typeof r.signal === "string" && r.signal ? `<span class="rev-cls">${esc(r.signal)}</span>` : `<span class="mut">—</span>` },
+    ], secs);
+}
+// (c) 個股表：沿用共用 tbl()；預設排序＝資料檔順序（不帶 sortI）
+function revStockHtml(rows){
+  const secNames = revSectorNames(rows);
+  if (REV.fCls !== "all" && !REV_CLS.includes(REV.fCls)) REV.fCls = "all";
+  if (REV.fSec !== "all" && !secNames.includes(REV.fSec)) REV.fSec = "all";   // 換月後該次產業不存在 → 退回全部
+  const list = revFilter(rows, REV.fCls, REV.fSec);
+  const opt = (v, t, cur) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(t)}</option>`;
+  let h = `<div class="rev-bar"><span class="rev-lbl">分類</span><select id="revCls" class="rev-sel" aria-label="分類篩選">`
+    + opt("all", "全部", REV.fCls) + REV_CLS.map(c => opt(c, c, REV.fCls)).join("") + `</select>`
+    + `<span class="rev-lbl">次產業</span><select id="revSec" class="rev-sel" aria-label="次產業篩選">`
+    + opt("all", "全部", REV.fSec) + secNames.map(c => opt(c, c, REV.fSec)).join("") + `</select>`
+    + `<span class="rev-lbl">${list.length}／${rows.length} 檔</span></div>`;
+  if (!list.length) return h + `<div class="rev-empty">此篩選條件下沒有個股</div>`;
+  return h + tbl([
+    { h:"分類", f:r => `<span class="rev-cls">${revTxt(r.cls)}</span>` },
+    { h:"代號", f:r => `<span class="code">${esc(r.code)}</span>` },
+    { h:"名稱", f:r => revTxt(r.name) },
+    { h:"次產業", f:r => revTxt(r.sector) },
+    { h:"當月營收(億)", f:r => revFmt(r.rev, 2) },
+    { h:"月增%", f:r => revSgn(r.mom, 1) },
+    { h:"年增%", f:r => revSgn(r.yoy, 1) },
+    { h:"預期季營收(億)", f:r => revFmt(r.exp_q, 2) },
+    { h:"預期季增%", f:r => revPct(r.exp_qoq, 1) },
+    { h:"預期年增%", f:r => revPct(r.exp_yoy, 1) },
+    { h:"達成率%", f:r => revFmt(r.ach, 1) },
+    { h:"正常進度%", f:r => revFmt(r.norm, 1) },
+    { h:"驚喜%", f:r => revSgn(r.sur, 1) },
+    { h:"基準層", f:r => revTxt(r.layer) },
+    { h:"來源", f:r => revTxt(r.src) },     // 純文字：網址不轉連結（規格 §5.7）
+  ], list);
+}
+function revRender(){
+  revEnsure();
+  const main = document.getElementById("main");
+  const label = `<div class="rev-label">${esc(REV_LABEL)}</div>`;
+  if (!REV.idx){
+    main.innerHTML = `<div class="rev">${label}<div class="rev-empty">${REV.idxErr ? "月營收資料尚未產生或讀取失敗" : "載入中…"}</div></div>`;
+    return;
+  }
+  if (!REV.idx.months.length || !REV.idx.latest){
+    main.innerHTML = `<div class="rev">${label}<div class="rev-empty">尚無資料</div></div>`;
+    return;
+  }
+  const m = REV.month, j = REV.cache[m];
+  const sel = `<div class="rev-bar"><span class="rev-lbl">營收月份</span><select id="revMonth" class="rev-sel" aria-label="營收月份">`
+    + REV.idx.months.map(x => `<option value="${esc(x)}"${x === m ? " selected" : ""}>${esc(x)}${x === REV.idx.latest ? "（最新）" : ""}</option>`).join("")
+    + `</select></div>`;
+  if (!j){
+    main.innerHTML = `<div class="rev">${label}${sel}<div class="rev-empty">`
+      + ((m in REV.err) ? `${esc(m)} 月份資料讀取失敗` : "載入中…") + `</div></div>`;
+    return;
+  }
+  const rows = revRows(j), miss = revList(j.missing);
+  const lbl = revLabel(j.label);
+  const gen = revGenOk(j.generated_at) ? fmtGenTaipei(j.generated_at) : "";
+  let h = `<div class="rev"><div class="rev-label">${esc(lbl)}</div>${sel}`
+    + `<div class="rev-badges"><span class="rev-badge">營收月份 ${esc(m)}</span>`
+    + (typeof j.quarter === "string" && j.quarter ? `<span class="rev-badge">${esc(j.quarter)} 季內第 ${revFmt(j.k, 0)} 個月</span>` : "")
+    + `<span class="rev-badge">已分析 ${revFmt(j.reported_n, 0)}／${revFmt(j.universe_n, 0)} 檔</span>`
+    + (gen ? `<span class="rev-badge">產出 ${esc(gen)}（台灣）</span>` : `<span class="rev-badge">產出 —</span>`) + `</div>`
+    + `<div class="rev-note">${esc(revThText(j.thresholds))}</div>`;
+  h += `<div class="rev-miss"><b>未納入分析 ${miss.length} 檔</b>` + (miss.length
+    ? "：" + miss.map(x => `<span class="rev-it"><span class="code">${revTxt(x.code)}</span> ${revTxt(x.name)}（${revTxt(x.why)}）</span>`).join("、")
+    : "（股票池內各檔皆已公布且可建立預期）") + `</div>`;
+  h += `<div class="msection">分類摘要<span class="n">${esc(m)}</span></div>` + revSummaryHtml(rows);
+  h += `<div class="msection">次產業年增率<span class="n">${esc(m)}</span></div>` + revSectorHtml(j);
+  h += `<div class="msection">個股明細<span class="n">${esc(m)}</span></div>` + revStockHtml(rows);
+  h += `</div>`;
+  main.innerHTML = h;
+}
+document.addEventListener("change", e => {
+  const t = e.target;
+  if (!t || state.tab !== "revenue") return;
+  if (t.id === "revMonth"){
+    const m = revPickMonth(t.value, REV.idx ? REV.idx.months : []);
+    if (!m) return;
+    REV.month = m; render();
+  } else if (t.id === "revCls"){ REV.fCls = t.value; render(); }
+  else if (t.id === "revSec"){ REV.fSec = t.value; render(); }
+});
 
 // ---------- 日期 tab（即時彙整各資料源的資料日與產出時間） ----------
 // 日期正規化：斜線→連字號、取前10碼，非 YYYY-MM-DD 一律回空字串（比較前統一格式，見 date-semantics.md）

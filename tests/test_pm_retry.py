@@ -325,7 +325,7 @@ def _tabs() -> list[str]:
 
 def test_e2e_d_all_tabs_normal(browser):
     tabs = _tabs()
-    assert len(tabs) == 17, tabs
+    assert len(tabs) == 18, tabs   # 2026-11-12 加月營收 revenue；_tabs() 的 regex 只收純小寫 id（pick2 不計入），故 18 而非 19
     page, log = _open(browser, lambda n: False)
     page.goto(ORIGIN + "/postmkt/")
     page.wait_for_function("() => !!state.pmHead")

@@ -3,7 +3,7 @@
 台股盤後資料的靜態儀表板（單一 `index.html`，無 build 工具），
 是[股市雷達 Hub](https://shihpc.github.io/) 的子站之一。
 
-## 十八個 Tab（2026-09-28 加「籌碼雷達」「社群聲量」、2026-09-29 加「市場情緒」、2026-10-14 加「選股二」後）
+## 十九個 Tab（2026-09-28 加「籌碼雷達」「社群聲量」、2026-09-29 加「市場情緒」、2026-10-14 加「選股二」、2026-11-12 加「月營收」後）
 
 | Tab | 資料源 | 內容 |
 |---|---|---|
@@ -24,6 +24,7 @@
 | 持股診斷 | `data/diag/diag.json`（`src/build_diag.py` 夜間管線）＋ v2 `/live` 現價＋ taiwan-stock-news 新聞 | 輸入持股（僅存 localStorage）→ 逐檔五面向（籌碼/價量/題材/基本面/系統）紅黃綠燈號＋事實清單＋組合層檢查＋近3日新聞命中＋可選 AI 解讀 |
 | 籌碼雷達 | 上半：taiwan-flows `data/sector_ranges_lite.json` 的 r5／r20 窗（跨 repo 同源相對路徑 `../taiwan-flows/…`，切到本 tab 才載）；下半：本站 `data/diag/diag.json`（沿用 `ensureDiag()`，與「持股診斷」共用） | 類股資金四象限（固定比近 5 日 vs 近 20 日日均淨額，產業別／產業鏈 × 三大法人／外資／投信／自營，signed-sqrt 散佈圖＋旁表）＋千張大戶持股週變化增減各前 20 檔（產業篩選）。純描述性、非買賣訊號、無回測依據。**2026-09-28 由 taiwan-flows `radar` tab 搬來**，規格正本仍是 `taiwan-flows/docs/radar-tab.md`，搬遷驗收見 `docs/move-radar-social.md` |
 | 社群聲量 | taiwan-stock-news `data/social/index.json`＋`<YYYY-MM-DD>.json`（跨 repo 同源相對路徑 `../taiwan-stock-news/…`，管線與 Hetzner 排程仍在該 repo）；籌碼／參考價位讀本站 `data/diag/diag.json` | PTT Stock 板每日個股提及篇數、推噓、作者態度分布（AI 判讀），紅綠標籤、偏多／偏空排行、情緒＋千張大戶雙確認的規則式買賣建議與參考價位（**使用者 2026-09-28 裁決、未經回測**，畫面標「AI 研判，未經回測，非保證」）。**2026-09-28 由 taiwan-stock-news `social` tab 搬來**，規格正本仍是 `taiwan-stock-news/docs/social-display.md`（含 §1b） |
+| 月營收 | 本站 `data/revenue/index.json`＋`data/revenue/<YYYY-MM>.json`（同源相對路徑，切到本 tab 才載；後端 `src/build_revenue.py`，每月 11–16 日更新） | 科技／半導體股票池（約 150 檔、非全市場）上月營收 vs 預期：四類摘要（高預期仍Beat／低預期仍Miss／Beat／Miss，另列「符合」檔數）、次產業年增率與上月變化（並列台積電年增作基準）、個股表（15 欄，可依分類與次產業篩選）。月份下拉＋hash `rm`。分類無回測依據，畫面標「AI 研判，未經回測，非保證」（使用者 2026-11-12 裁定先上線）；規格 `docs/revenue-beatmiss.md` |
 | 市場情緒 | taiwan-flows `data/sentiment.json`（跨 repo 同源相對路徑 `../taiwan-flows/…`，切到本 tab 才載；後端 `src/sentiment.py` 由該 repo `run_daily` 產出，資料源 FinMind `TaiwanOptionVix`／`TaiwanOptionDaily`(TXO)／`TaiwanFuturesDaily`＋`TaiwanFuturesInstitutionalInvestors`(MTX)） | 三張卡：臺指 VIX、Put/Call 比（未平倉比為主、成交量比為輔）、小台散戶多空比（另列法人多／空、散戶淨部位、全市場未平倉兩種口徑，主值＝全部契約、僅月契約並列僅供參考（2026-10-18 使用者裁定））。每卡：最新值＋自帶資料日、與前一筆差、近 N 筆有值資料（N＝min(60,實有筆數)；缺值日跳過，跨度可能多於 N 個交易日）的百分位與均值、全部歷史折線＋60 筆有值資料均線（中性色）。**純描述、非買賣訊號、無回測依據**；免責句後半「VIX 歷史自 YYYY-MM-DD 起」取資料中第一個有 VIX 值的列日期（不寫死，無值時省略）；規格正本 `taiwan-flows/docs/sentiment-tab.md` §3 |
 
 原「融資」「融券借券賣出餘額」兩 tab 於 2026-07-11 併入「融資券借券」整合排行（該 tab 為個股層級排行）；
@@ -109,7 +110,9 @@
   逐檔抓 FinMind `TaiwanStockMonthRevenue`，對 `data/revenue/universe.json` 的科技／半導體股算「季累計達成率 vs 預期」，
   輸出 `data/revenue/<YYYY-MM>.json`＋`index.json`。預期基準＝`data/revenue/expect.json`（A 公司財測／B 媒體引用預估，人工維護）
   或模型（C）。`.github/workflows/revenue.yml`：每月 11–16 日 07:30 台北（只有 GitHub cron、無 Worker 觸發），內容相同不重寫檔。
-  **目前只產資料、沒有任何 tab 讀它**；分類無回測依據（資料檔自帶「AI 研判，未經回測，非保證」），上畫面前須依鐵律 8 取得裁定。
+  前端「月營收」tab（2026-11-12 階段二）讀這兩種檔：`rows[]`／`sectors[]`／`missing[]`／`thresholds`／`label`／`tsmc_yoy`／`reported_n`／`universe_n`／`generated_at`
+  與 `index.json` 的 `months`／`latest` 改名或改語意＝要同步改 `index.html` 的「月營收 tab」區段。
+  分類無回測依據（資料檔自帶「AI 研判，未經回測，非保證」）；使用者 2026-11-12 裁定標示「未經回測」先上線，階段三回測結論出來前不得拿掉標示。
   **彭博數值不得進本 repo**（公開 repo／Pages）。
 - `src/build_mktbal.py`：大盤層級四項餘額（融資/融券/借券賣出/不限用途借貸）管線，輸出
   `data/market_balance_history.json`（daily 近30交易日＋monthly 近36月底，皆升序陣列）。
@@ -260,9 +263,9 @@
   - **頂列不會改成跟隨本區塊——這是刻意的，不是還沒做**（2026-09-13 使用者裁決：`pmStatus()`
     維持讀 `pm.date`，**不改程式**）。兩者是**不同的軸**，不是同一個數字的兩種寫法：
     頂列答的是「**這份資料檔整體走到哪一天**」（給的是全檔新鮮度，`pmStatus()` 據此判「正常／延遲／
-    休市定格」），本區塊答的是「**這張表本身是哪一天的**」。要讓頂列跟隨單一區塊，就得從 18 個 tab
+    休市定格」），本區塊答的是「**這張表本身是哪一天的**」。要讓頂列跟隨單一區塊，就得從 19 個 tab
     裡挑一個當代表——而各 tab 吃的 dataset 不同、資料日本來就會不一樣（借券 tab 走 `lend_date`、
-    當沖走 `d_dt`、本區塊走 `d_inst`…），綁死其中一個會讓**其餘 17 個 tab 的頂列變得不準**：
+    當沖走 `d_dt`、本區塊走 `d_inst`…），綁死其中一個會讓**其餘 18 個 tab 的頂列變得不準**：
     例如法人日領先短賣日的那天，頂列若改顯示 `market_daily.date`，借券 tab 的使用者看到的頂列
     就比該 tab 自己的資料日還新。正解是**每段自帶自己的資料日**＋兩者不同時明講（本軸的規範），
     而不是把頂列改成某一段的日期。

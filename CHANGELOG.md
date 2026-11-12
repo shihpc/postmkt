@@ -24,6 +24,29 @@
 - 上線結果：`revenue` workflow 實跑成功（2026-10 與回補 2026-08／09，皆 149/150），CI 產出與本機重建內容相同；線上網址未能由雲端 session 直接讀取（網路白名單），待使用者確認。
 - 已知限制：FinMind 全市場單次查詢（不帶 `data_id`）未實測，管線逐檔查 150 次；鴻勁（7769）上市未滿兩年、歷史不足，列在 `missing`。
 
+## 2026-11-12 月營收 Beat／Miss：階段二（前端「月營收」tab）
+
+`index.html` 新增第 19 個 tab `revenue`（標籤「月營收」，排在「市場情緒」之後、「日期」之前）；驗收條件正本 `docs/revenue-beatmiss.md` §5。
+**本條為實作者自測結果，尚待 fresh-context 獨立驗收與 push／部署（§5.12 未做）。**
+
+- 資料只在切到本 tab 時才抓：`data/revenue/index.json` → 選定月份檔（同源相對路徑、CSP 未改）；in-flight 去重、失敗不重試、不拋錯；
+  `months` 空或 `latest` 無效顯示「尚無資料」。首屏請求清單與改動前相同（Playwright 比對 HEAD 版）。
+- **鐵律 8**：依使用者 2026-11-12 裁定先上線，畫面三種狀態都逐字標「AI 研判，未經回測，非保證」；資料檔 `label` 缺值或不含該句時退回常數。
+  列入事後驗證（階段三回測），結論出來前不得拿掉標示。
+- 內容：營收月份／季內第幾個月／已分析檔數／產出時刻徽章、口徑說明（門檻取資料檔 `thresholds`）、`missing` 逐檔明細；
+  四類摘要、次產業表（並列台積電年增）、個股表 15 欄（分類與次產業下拉篩選，預設資料檔順序）。月份下拉＋hash `rm`
+  （只在 `tab=revenue` 讀寫、白名單、最新月不寫入）。
+- 分類為中性色文字、不新增燈號；漲跌著色只用在月增%／年增%／驚喜%。來源欄網址為純文字。CSS 一律 `.rev-*`；`tbl()` 未改。
+- 未動三站／四站同步碼、CSP、既有 tab 行為、`src/build_revenue.py` 與 `data/revenue/*`。
+- 測試：新增 `tests/test_revenue_frontend.mjs`（18 項）＋`tests/test_revenue_frontend.py`＋`tests/fixtures/revenue_sample.json`；
+  既有測試因 tab 數與區段邊界調整四處：`test_frontend_moved.py`（tab 數 18→19、末段順序、另加 `rm` 白名單案例）、
+  `test_social_display.py` 與 `test_pm_retry.py`（純小寫 id 的 tab 數 17→18、末段順序）、`test_sentiment_frontend.mjs`
+  （市場情緒區段的結尾錨點由「日期 tab」改為「月營收 tab」，因為新區段插在兩者之間）。`pytest` 262 項全過、`ruff check .` 無違規。
+- 實測（Playwright，375／390／1280）：19 個 tab 逐一切換，console error 與 HEAD 版相比無新增（本機沒有姊妹 repo 與外網，兩版同樣的 404／連線失敗）；
+  整頁無水平捲軸、兩張表逐格零裁切；月份切換、`rm` 深連結、非法 `rm` 退回最新月、篩選、index 404／`months: []`／壞 JSON／月份檔 404 降級、
+  惡意字串不執行皆通過。
+- 取捨：個股表凍結欄是「分類」（照規格欄序）；篩選狀態不進 hash；手機未藏欄（表格內橫捲）。
+
 ## 2026-10-23 盤後輪動雷達「相對強度領先（領先象限）」：使用者追認現名（裁定 A2′-b）
 
 `rrgd` tab 領先象限候補清單的標籤「相對強度領先（領先象限）」（`index.html` grep `sec("相對強度領先（領先象限）"`，

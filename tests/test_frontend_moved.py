@@ -88,6 +88,11 @@ R.oldRadar = parse("#tab=radar&rcls=chain");
 R.mychg = parse("#tab=mychg");
 R.stock = parse("#tab=social&stock=2330&sd=2026-09-27");
 R.tabs = [...HASH_TABS];
+// 月營收 rm（2026-11-12）：只在 tab=revenue 讀寫；格式不合靜默丟棄
+R.rmOk = parse("#tab=revenue&rm=2026-09");
+R.rmBad = [parse("#tab=revenue&rm=2026-9"), parse("#tab=revenue&rm=%3Cimg%3E"), parse("#tab=revenue&rm=2026-09-01"), parse("#tab=revenue&rm=2026-09x")];
+R.rmOtherTab = parse("#tab=social&rm=2026-09");
+R.rmNoCross = parse("#tab=revenue&sd=2026-09-27&rcls=chain");
 // currentHash：只放非預設值、只在各自的 tab 寫出
 const cur = (tab, cr, soc) => { state.tab = tab; Object.assign(CR, cr || {}); Object.assign(SOCIAL, soc || {}); return currentHash(); };
 R.curCrDef = cur("chipradar", {rcls:"exchange", rinv:"total"});
@@ -97,6 +102,12 @@ R.curSocLatest = cur("social", {rcls:"exchange", rinv:"total"}, {days:["2026-09-
 R.curSocOld = cur("social", {}, {date:"2026-09-27"});
 R.curSocPending = cur("social", {}, {days:null, date:null, hashSd:"2026-09-20"});
 R.curSocPendingBad = cur("social", {}, {days:null, date:null, hashSd:"<x>"});
+const curRev = rev => { state.tab = "revenue"; Object.assign(REV, rev); return currentHash(); };
+R.curRevLatest = curRev({idx:{months:["2026-10","2026-09"], latest:"2026-10"}, month:"2026-10", hashRm:null});
+R.curRevOld = curRev({month:"2026-09"});
+R.curRevPending = curRev({idx:null, month:null, hashRm:"2026-08"});
+R.curRevPendingBad = curRev({idx:null, month:null, hashRm:"<x>"});
+state.tab = "screen"; R.curRevOnOther = currentHash();
 process.stdout.write(JSON.stringify(R));
 """
 
@@ -107,12 +118,13 @@ def H():
     src = "\n".join([
         _pick_const(s, "TABS"), "const HASH_TABS = new Set(TABS.map(t => t[0]));",
         _pick_const(s, "HASH_SUBS"), _pick_const(s, "HASH_CODE_RE"),
-        _pick_const(s, "HASH_CR"), _pick_const(s, "HASH_SD_RE"),
+        _pick_const(s, "HASH_CR"), _pick_const(s, "HASH_SD_RE"), _pick_const(s, "HASH_RM_RE"),
         _pick_func(s, "parseHash"), _pick_func(s, "currentHash"),
     ])
     stub = ("const location = {hash:''}; const BK_RES = {};"
             "const state = {tab:'insight', oddSub:'intraday', bkSub:'branch', openLend:null, diagOpen:null, stkOpen:null};"
-            "const CR = {rcls:'exchange', rinv:'total'}; const SOCIAL = {days:null, date:null, hashSd:null};")
+            "const CR = {rcls:'exchange', rinv:'total'}; const SOCIAL = {days:null, date:null, hashSd:null};"
+            "const REV = {idx:null, month:null, hashRm:null};")
     out = subprocess.run([_node(), "-e", stub + "\n" + src + "\n" + HASH_HARNESS],
                          capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stderr
@@ -120,9 +132,11 @@ def H():
 
 
 def test_hash_tabs_include_moved(H):
-    assert len(H["tabs"]) == 18   # 2026-09-29 加市場情緒 sentiment（排在 social 之後、dates 之前）；2026-10-14 加選股二 pick2
+    # 2026-09-29 加市場情緒 sentiment（排在 social 之後、dates 之前）；2026-10-14 加選股二 pick2；
+    # 2026-11-12 加月營收 revenue（排在 sentiment 之後、dates 之前）
+    assert len(H["tabs"]) == 19
     assert H["tabs"][H["tabs"].index("screen") + 1] == "pick2"   # 選股二排在選股之後
-    assert H["tabs"][-4:] == ["chipradar", "social", "sentiment", "dates"]
+    assert H["tabs"][-5:] == ["chipradar", "social", "sentiment", "revenue", "dates"]
     assert "mychg" in H["tabs"] and "radar" not in H["tabs"]
 
 
@@ -137,6 +151,18 @@ def test_hash_social_sd(H):
     assert H["sdOk"] == {"tab": "social", "sd": "2026-09-27"}
     assert H["sdBad"] == [{"tab": "social"}] * 3
     assert H["stock"] == {"tab": "social", "stock": "2330", "sd": "2026-09-27"}
+
+
+def test_hash_revenue_rm(H):
+    assert H["rmOk"] == {"tab": "revenue", "rm": "2026-09"}
+    assert H["rmBad"] == [{"tab": "revenue"}] * 4          # 非法值靜默丟棄
+    assert H["rmOtherTab"] == {"tab": "social"}            # rm 只屬於 tab=revenue
+    assert H["rmNoCross"] == {"tab": "revenue"}            # 別的 tab 的 key 不會漏進來
+    assert H["curRevLatest"] == "#tab=revenue"             # 最新月＝預設，不寫 rm
+    assert H["curRevOld"] == "#tab=revenue&rm=2026-09"
+    assert H["curRevPending"] == "#tab=revenue&rm=2026-08"   # 清單未到前保留網址原值
+    assert H["curRevPendingBad"] == "#tab=revenue"
+    assert H["curRevOnOther"] == "#tab=screen"             # 離開本 tab 不帶 rm
 
 
 def test_hash_existing_unchanged(H):

@@ -147,7 +147,7 @@ ok("index.html 內嵌 script 整段可編譯（語法錯誤會讓全站 17 個 t
   new vm.Script(m[1], { filename: "index.html<script>" });   // 只編譯、不執行
 });
 const secStart = html.indexOf("// ================= 市場情緒 tab");
-const secEnd = html.indexOf("// ---------- 日期 tab");
+const secEnd = html.indexOf("// ================= 月營收 tab");
 assert.ok(secStart > 0 && secEnd > secStart, "找不到市場情緒 tab 區段");
 const sec = html.slice(secStart, secEnd);
 ok("M6：區段內（去註解、去免責句常數）無判斷字樣；無紅綠色票", () => {
@@ -170,12 +170,12 @@ ok("sentGenOk：generated_at 須以 ISO 8601 YYYY-MM-DDTHH:MM 開頭才顯示，
   for (const v of [null, undefined, "", 1759152605, "2026-09-29", "2026-09-29 21:30:05", "<img src=x>2026-09-29T21:30",
                    " 2026-09-29T21:30", "2026/09/29T21:30", "garbage", {}, ["2026-09-29T21:30"]])
     assert.equal(S.sentGenOk(v), false, String(v));
-  const rend = html.slice(html.indexOf("function sentRender("), html.indexOf("// ---------- 日期 tab"));
+  const rend = html.slice(html.indexOf("function sentRender("), html.indexOf("// ================= 月營收 tab"));
   assert.ok(rend.includes("sentGenOk(SENT.j.generated_at) ? fmtGenTaipei(SENT.j.generated_at)"), "sentRender 須先過形狀檢查");
   assert.ok(rend.includes("產出 —"), "形狀不合時顯示「產出 —」");
 });
 ok("措辭：百分位／均值／均線寫「筆有值資料」而非「日」（序列跳過 null，跨度可能多於 N 個交易日）", () => {
-  const rend = html.slice(html.indexOf(B), html.indexOf("// ---------- 日期 tab"));
+  const rend = html.slice(html.indexOf(B), html.indexOf("// ================= 月營收 tab"));
   assert.ok(rend.includes("筆有值資料第 ${st.pct} 百分位"));
   assert.ok(!/近 \$\{st\.n\} 日/.test(rend) && !rend.includes("60 日均線"));
 });
