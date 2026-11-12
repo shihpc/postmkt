@@ -36,6 +36,8 @@ REQ_SLEEP = 0.2                # 逐檔查詢間隔（秒）
 # ---- 口徑常數（改動＝改 docs/revenue-beatmiss.md §2＋CHANGELOG）----
 HIST_YEARS = 4                 # 季節性回看年數
 MIN_HIST = 2                   # 季節性至少要幾年有值才採用
+MIN_REPORTED = 0.5             # 已公布家數低於此比例不寫檔（月初 push 觸發時避免產出殘缺月檔）
+FAIL_ABORT = 0.1               # 抓取失敗超過此比例即中止（資料源異常，避免誤列大量「未公布」）
 EQ_CLAMP = (0.75, 1.30)        # C 層預期季營收相對上季的上下限
 SHARE_BAND = 0.06              # 正常進度相對 k/3 的容許偏離
 RUNRATE_W = 0.7                # C 層季內修正：跑速權重（其餘為季初預期）
@@ -84,7 +86,8 @@ def qsum(r: dict, y: int, q: int):
 
 
 def pct(a, b):
-    return (a / b - 1) * 100 if a and b else None
+    """a 相對 b 的增減%；a 為 0 是有效值（−100%），b 為 0 或任一缺值回 None。"""
+    return (a / b - 1) * 100 if a is not None and b else None
 
 
 def hist_share(r: dict, y: int, q: int, k: int):
@@ -255,6 +258,14 @@ def build_month(series: dict, universe: dict, overrides: dict, y: int, m: int, f
     }
 
 
+def parse_month(s: str) -> tuple:
+    """'YYYY-MM' → (年, 月)；格式不符 raise ValueError。"""
+    import re
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", s or ""):
+        raise ValueError(f"月份格式錯誤（需 YYYY-MM）：{s!r}")
+    return int(s[:4]), int(s[5:])
+
+
 def default_month(today) -> tuple:
     """目標營收月份＝台北今日的上個月。"""
     return prev_m(today.year, today.month)
@@ -274,6 +285,8 @@ def fetch_series(codes: list, cache_dir: Path | None = None) -> dict:
             except RuntimeError as e:
                 failed.append(code)
                 print(f"  ! {code} 抓取失敗：{e}", flush=True)
+                if len(failed) > len(codes) * FAIL_ABORT:      # 提早中止：限流時每檔要等 65 秒，別拖到 timeout
+                    raise RuntimeError(f"抓取失敗已達 {len(failed)}/{len(codes)} 檔，超過一成，中止") from e
             if raw is not None and cf:
                 cf.parent.mkdir(parents=True, exist_ok=True)
                 cf.write_text(json.dumps(raw), encoding="utf-8")
@@ -314,8 +327,7 @@ def main(argv=None) -> int:
     if a.month:
         targets = []
         for s in a.month:
-            y, m = s.split("-")
-            targets.append((int(y), int(m)))
+            targets.append(parse_month(s))
     else:
         targets = [default_month(taipei_today())]
     universe = json.loads((OUT_DIR / "universe.json").read_text(encoding="utf-8"))
@@ -324,13 +336,10 @@ def main(argv=None) -> int:
     if len(set(codes)) != len(codes):
         raise RuntimeError("universe.json 有重複代號（一檔只能屬一個次產業）")
     series, failed = fetch_series(codes, Path(a.cache_dir) if a.cache_dir else None)
-    # 抓取失敗超過一成＝資料源異常，中止不寫檔（避免把大量公司誤列為「未公布」）
-    if len(failed) > len(codes) * 0.1:
-        raise RuntimeError(f"抓取失敗 {len(failed)}/{len(codes)} 檔，超過一成，中止")
     for y, m in targets:
         payload = build_month(series, universe, overrides, y, m, failed)
-        if payload["reported_n"] == 0:
-            print(f"{y}-{m:02d}：尚無任何公司公布，略過不寫檔")
+        if payload["reported_n"] < payload["universe_n"] * MIN_REPORTED:
+            print(f"{y}-{m:02d}：已公布 {payload['reported_n']}/{payload['universe_n']} 未達五成，略過不寫檔")
             continue
         changed = write_if_changed(OUT_DIR / f"{y}-{m:02d}.json", payload)
         c = payload["counts"]

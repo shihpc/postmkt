@@ -149,3 +149,48 @@ def test_committed_inputs_are_well_formed():
     for e in exp["entries"]:
         assert e["layer"] in ("A", "B") and e["source"] and e["as_of"] and e["code"] in codes
         assert "彭博" not in e["source"] and "bloomberg" not in e["source"].lower()
+
+
+def test_pct_zero_numerator_is_minus_100():
+    assert br.pct(0.0, 50.0) == -100.0
+    assert br.pct(10.0, 0.0) is None and br.pct(None, 5.0) is None and br.pct(5.0, None) is None
+
+
+def test_parse_month_validates_format():
+    import pytest
+    assert br.parse_month("2026-10") == (2026, 10)
+    for bad in ("2026-13", "2026-1", "202610", "", "2026-00", "abcd-ef"):
+        with pytest.raises(ValueError):
+            br.parse_month(bad)
+
+
+def test_fetch_aborts_early_when_failures_exceed_tenth(monkeypatch):
+    import pytest
+    calls = []
+
+    def boom(*a, **k):
+        calls.append(1)
+        raise RuntimeError("rate limited")
+
+    monkeypatch.setattr(br, "api_get", boom)
+    monkeypatch.setattr(br.time, "sleep", lambda s: None)
+    with pytest.raises(RuntimeError, match="超過一成"):
+        br.fetch_series([str(i) for i in range(100)])
+    assert len(calls) == 11                                           # 第 11 檔失敗即中止，不再往下抓
+
+
+def test_main_skips_month_below_half_reported(monkeypatch, tmp_path):
+    uni = {"lumpy_sectors": [], "sectors": {"甲": [{"code": c, "name": c} for c in ("1", "2", "3")]}}
+    (tmp_path / "universe.json").write_text(json.dumps(uni), encoding="utf-8")
+    (tmp_path / "expect.json").write_text(json.dumps({"entries": []}), encoding="utf-8")
+    full = {k: v for k, v in flat(6).items() if k <= (2026, 10)}
+    late = {k: v for k, v in flat(6).items() if k <= (2026, 9)}
+    monkeypatch.setattr(br, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(br, "fetch_series", lambda codes, cache=None: ({"1": full, "2": late, "3": late}, []))
+    assert br.main(["--month", "2026-10"]) == 0
+    assert not (tmp_path / "2026-10.json").exists()                    # 1/3 已公布 → 不寫檔
+    monkeypatch.setattr(br, "fetch_series", lambda codes, cache=None: ({"1": full, "2": full, "3": late}, []))
+    assert br.main(["--month", "2026-10"]) == 0
+    d = json.loads((tmp_path / "2026-10.json").read_text(encoding="utf-8"))
+    assert d["reported_n"] == 2 and "generated_at" in d
+    assert json.loads((tmp_path / "index.json").read_text(encoding="utf-8"))["latest"] == "2026-10"
