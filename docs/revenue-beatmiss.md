@@ -7,8 +7,8 @@
 
 | 階段 | 範圍 | 狀態 |
 |---|---|---|
-| 一 | 資料管線：`src/build_revenue.py`＋輸入檔＋`revenue.yml`＋離線測試 | 本文件 §4 驗收 |
-| 二 | 前端第 19 個 tab「月營收」 | 未開始；動工前另寫驗收條件 |
+| 一 | 資料管線：`src/build_revenue.py`＋輸入檔＋`revenue.yml`＋離線測試 | **完成（2026-11-12）**，結果見 §4 末 |
+| 二 | 前端第 19 個 tab「月營收」 | 進行中；驗收條件見 §5 |
 | 三 | 回測（beat／miss 公布後報酬）＋門檻校準 | 未開始 |
 
 ## 1. 鐵律 8 狀態（重要）
@@ -17,7 +17,8 @@
 （對照陸行之公開點名的個案），樣本極小。
 
 - 階段一只產生資料檔、**不在任何畫面顯示**；資料檔自帶 `label: "AI 研判，未經回測，非保證"`。
-- 階段二要把它顯示在畫面前，**須先取得使用者依鐵律 8 的明確裁定**並登錄於本節；畫面須標同一句。
+- **使用者裁定（2026-11-12）：無回測依據、同意標示「未經回測」先上線。** 階段二畫面須逐字標「AI 研判，未經回測，非保證」，
+  並列入事後驗證（階段三回測）。
 - 階段三回測結論出來前，不得拿掉「未經回測」標示。
 
 ## 2. 資料與口徑
@@ -65,3 +66,37 @@
 6. 不動 `index.html`、不動既有四支管線與既有測試。
 7. push 後 `revenue` workflow 實際跑成功，`data/revenue/2026-10.json` 出現在 main，
    且 GitHub Pages 上 `data/revenue/index.json` 讀得到（線上驗證，鐵律 6）。
+
+### 階段一結果（2026-11-12）
+
+- 獨立驗收兩輪（fresh-context）：`be4c146` 首驗、`17c6c0c` 重驗修正範圍，皆通過；之後 `515849f` 只改文件文字。
+- push 後 `revenue` workflow 實跑成功（run 43124936325 產出 2026-10；run 43125189070 回補 2026-08／09），三個月皆 149/150、
+  `fetch_failed` 為空、`missing` 只有 7769。CI 產出與本機以同一份快取重建的內容完全相同（builder 回報「內容相同未重寫」）。
+- **線上讀取未由本 session 直接驗證**：雲端 session 的網路白名單連不到 `shihpc.github.io`；只確認 `pages build and deployment`
+  對含資料的 commit `6eed01a` 成功。依鐵律 6，這不等於已在實際服務位置驗證，待使用者開網址確認。
+
+## 5. 階段二驗收條件（前端「月營收」tab）
+
+目標：`/home/claude/postmkt/index.html` 新增第 19 個 tab `revenue`（標籤「月營收」），排在 `sentiment` 之後、`dates` 之前。
+
+1. **只在切到本 tab 時才抓資料**，首屏請求清單不變：先抓 `data/revenue/index.json`，再抓選定月份的 `data/revenue/<YYYY-MM>.json`
+   （同源相對路徑、CSP 不改）。in-flight 去重；失敗記錯不重試、畫面一句話說明、不拋錯。`months` 為空或 `latest` 為 null 顯示「尚無資料」。
+2. **標示**：頁內顯眼處逐字顯示「AI 研判，未經回測，非保證」（取資料檔 `label`，缺值時用同一句常數）；另一行說明口徑（預期三層、門檻取資料檔 `thresholds`）。
+3. **自帶資料日**：顯示營收月份、`generated_at`（先過格式檢查）、已分析 `reported_n`／`universe_n`；`missing` 逐檔列出代號、名稱與原因。
+   頂列 stats 比照籌碼雷達清空。
+4. **內容三區**：(a) 四類摘要，「高預期仍Beat」「低預期仍Miss」置前，各列檔數與個股（代號、名稱、驚喜%）；
+   (b) 次產業表（年增%、上月年增%、變化、加速／減速），並列台積電當月年增 `tsmc_yoy` 作基準；
+   (c) 個股表，沿用共用 `tbl()`，欄位＝分類、代號、名稱、次產業、當月營收（億）、月增%、年增%、預期季營收、預期季增%、預期年增%、
+   達成率%、正常進度%、驚喜%、基準層、來源；可依分類與次產業篩選，預設排序＝資料檔順序。
+5. **月份切換**：下拉選單列 `index.months`（新到舊）；hash 新 key `rm`（`^\d{4}-\d{2}$` 且須在 `months` 內）只在 `tab=revenue` 讀寫，
+   預設（最新月）不寫入 hash；非法值靜默退回最新月。
+6. **顏色**：分類以文字標籤呈現、中性色，不新增紅綠燈號；漲跌著色只用在月增%／年增%／驚喜%（沿用 `sgn()`）。
+7. **安全**：外來字串插值一律 `esc()`；數值先做 typeof number＋isFinite 檢查，否則顯示「—」；來源欄的網址**不轉成連結**。
+8. **不動**三站／四站同步碼（`callClaude`／`mdToHtml`／`linkifyStocks`／`ghSaveAnalysis`／`sumCtx*`／費用估算／`loadSiteVer`）、不動 CSP、
+   不動既有 tab 行為；CSS 一律 `.rev-*` 前綴；純函式集中在 `rev-pure:begin`～`end` 區段。
+9. **測試**：新增 `tests/test_revenue_frontend.mjs`（由 `tests/test_revenue_frontend.py` 代跑）涵蓋純函式（月份白名單、篩選、數值格式、
+   generated_at 檢查）與讀碼檢查（lazy 載入、標示句、`esc()`）；既有測試全綠（含會讀 `index.html` 的測試）；`ruff check .` 無違規。
+10. **實測**：本機 http.server 以 Playwright 逐一點 19 個 tab，console 零 error；375／390／1280 三寬度下整頁
+    `document.documentElement.scrollWidth == window.innerWidth`，個股表在 `.tblbox` 內橫捲、逐格無裁切（CLAUDE.md「手機驗收條件」）。
+11. **文件**：README（tab 數與本 tab 說明）、CLAUDE.md 佈局（18→19、hash key `rm`）、CHANGELOG 同步；CANON 區塊不動。
+12. **部署**：push 後 pages 部署成功；因本 session 連不到 `shihpc.github.io`，線上頁面由使用者開啟確認。
