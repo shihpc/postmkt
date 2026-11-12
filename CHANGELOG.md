@@ -16,7 +16,17 @@
   D 連湧／新湧的資料日是前一交易日，晚間建置時判過期、另列不計入。個股 a 同步買超 Top30（基準）、b 主動 ETF ≥2 檔同買、c 選股二追蹤、
   d 月營收 Beat（月頻容許窗）、e 千張大戶週增前 20（週頻容許窗）；**f 彙總分析精華標的不納入**（八場標題七種寫法，方向無法可靠解析）。
 - 分類體系實查：flows chain、classify、chain_daily 三者 47 個產業名完全相同；次產業 484 個中 19 個同名掛多個產業，這些不上卷。
-- 首份快照（2026-11-12，本機 checkout 實跑）：類股交集 5 列、個股交集 18 列。
+- 首份快照（2026-11-12，本機 checkout 實跑）：類股交集 5 列、個股交集 18 列（**同日驗收後修正為 4 列／18 列，見下**）。
+- **獨立驗收（綁 `7e72bf7`）後的修正**：
+  - **A、B 重複計票**：兩者讀同檔同窗，`acc_in` 保證近 5 日淨額不為負，B 成員進 A 前 10 就自動 2 票。改為通用的**計票群組**
+    （來源帶 `group`）：A、B 併為「法人資金流」只算 1 票，`hits` 與畫面仍分別標出。類股交集 5→4 列（「資通訊安全」原只靠 A＋B 上榜，移出；
+    「製藥」3→2 票）；個股層逐對查過無同型問題，18 列不變。
+  - **測試缺口**：補 7 支後端測試（count≥2 門檻、A／C 前 10、A 只收正值、B 只收加速流入、E 以真實序列 fixture 走通 build、C／b 過期路徑、
+    同來源重複鍵去重、計票群組）；驗收指出的 8 個突變逐一實做，各至少一支測試轉紅後還原。
+  - `mktbal.yml` 拿掉 `add_all: "true"`：composite 的 add_all 路徑是 `git add -A … 2>/dev/null || true`，會把主產物的 add 失敗一起吞掉；
+    改回原本的 `git add <paths>`、只在 paths 追加 `data/overview`（目錄已在 repo 內，overview 步驟失敗時不會報 pathspec 錯）。`diag.yml` 本來就開著 add_all，行為未變。
+  - README 的 tab 數標題同步為二十個；畫面說明列補寫計票群組與 D 只另列的原因。
+  - `tests/test_pm_retry.py` 的 e2e 以 `playwright==1.63.0`（與沙箱瀏覽器相符）實跑 8 項全過，含改過的 tab 數斷言。
 - 排程：`diag.yml`（pick2 之後）與 `mktbal.yml` 各加一步，`continue-on-error`、commit 之後才轉紅；內容沒變不重寫檔。
 - 測試：`tests/test_overview_build.py`（21 項，含 node 對跑前端口徑逐位比對）、`tests/test_overview_frontend.mjs`（21 項）；
   既有測試中寫死的 tab 數同步（19→20；只收純小寫 id 的 regex 為 18→19）。未動 `tbl()` 與三站同步碼。

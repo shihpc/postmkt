@@ -266,7 +266,9 @@
     6、7 標「AI 研判」。②**類股交集**③**個股交集**：後端 `src/build_overview.py` → `data/overview/latest.json`，**前端只渲染、不重算**。
     **鐵律 8（使用者 2026-11-12 裁定：無回測依據、標示後先上線）**：交集表依「出現在幾個來源清單」排序是新的候選排序；載入中／讀取失敗／正常三種狀態
     都逐字顯示「AI 研判，未經回測，非保證」（`OV_LABEL`／`ovLabel()`），每日快照 `data/overview/daily/<date>.json` 留存供事後驗證，結論出來前不得拿掉標示；
-    **只做偏多（資金流入）側**。**硬約束**：盤勢 1–5 的渲染函式不得出現偏多／偏空／建議等字樣（來源檔自帶文字原樣顯示並標來源；測試讀碼守門）；
+    **只做偏多（資金流入）側**。**計票群組**：「出現清單數」以群組計——類股來源 A（r5 淨買前 10）與 B（籌碼雷達加速流入）讀同檔同窗、不獨立，
+    併為「法人資金流」一組只算 1 票（後端 `GROUP_NAMES`／來源的 `group` 欄；畫面來源欄仍分別標 A、B）；連湧／新湧（D）資料日是前一交易日，恆為另列不計入。
+    **硬約束**：盤勢 1–5 的渲染函式不得出現偏多／偏空／建議等字樣（來源檔自帶文字原樣顯示並標來源；測試讀碼守門）；
     著色只經 `sgn()` 用在漲跌與買賣超正負；出現清單數中性色、不加燈號；外來字串一律 `esc()`、數值一律 `ovNum()`；彙總檔名過 `OV_SUMFILE_RE`。
     全部同源相對路徑、CSP 未改、**只在切到本 tab 時才抓**（每支檔以 `OV.loading[key]` 去重、失敗記 `OV.err[key]` 不重試），首屏請求清單不變；
     CSS 一律 `.ov-*`；不加新 hash key；頂列 stats 清空。**未動 `tbl()`**。
@@ -274,7 +276,7 @@
     taiwan-flows `data/totals.json`（`dates`／`rows[d].tse|otc.*_k`）與 `data/futures/<日>.json`（`cols`／`rows`）、taiwan-stock-news `daily-brief-card.json`（`top3`／`positioning`／`date`）；
     後端讀 taiwan-flows `sector_ranges_lite.json`（r5／r20 chain total）與 `latest.json`（`pages.sync.sync_buy`）、taiwan-flow-live-v2 `aetf/diff.json`（`stocks[].by`／`subs`／`primary_date`）、
     `morning.json`（`signals`／`recap.baseline_date`）、`chain_daily/series.json`、`classify.json`（`map[].p`）。
-    測試 `tests/test_overview_frontend.mjs`（21 項，pytest 由 `tests/test_overview_frontend.py` 代跑）＋`tests/test_overview_build.py`（21 項）。
+    測試 `tests/test_overview_frontend.mjs`（22 項，pytest 由 `tests/test_overview_frontend.py` 代跑）＋`tests/test_overview_build.py`（28 項）。
     本機驗證同籌碼雷達（http.server 起在上一層）。
   - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
     `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／

@@ -49,6 +49,11 @@ ok("ovSources：狀態白名單（不認得的當讀取失敗）、counted 只�
   assert.deepEqual(r[0].items, [{ key: "x" }]); assert.deepEqual(r[1].unmapped, ["u"]);
   assert.deepEqual(J(S.ovSources(null)), []);
 });
+ok("ovSources：計票群組（group／group_name）；缺 group 時各自成組", () => {
+  const r = J(S.ovSources({ sources: [{ id: "A", status: "valid", counted: true, group: "flow", group_name: "法人資金流" },
+    { id: "B", status: "valid", counted: true, group: "flow", group_name: "法人資金流" }, { id: "C", status: "valid", counted: true }] }));
+  assert.deepEqual(r.map(s => [s.id, s.group, s.groupName]), [["A", "flow", "法人資金流"], ["B", "flow", "法人資金流"], ["C", "C", ""]]);
+});
 ok("ovRows：形狀不合的列丟棄、順序＝資料檔順序、via 攤平成文字", () => {
   const r = J(S.ovRows({ rows: [
     { key: "紡織", count: 3, hits: ["A", "C", "E"], via: { C: ["人造纖維"], E: ["領先"] } },
@@ -146,6 +151,7 @@ ok("外來字串插值過 esc()：區段內 ${…} 直接引用 j./x./s./r./c. �
   assert.deepEqual(bad, []);
 });
 ok("說明列寫明：只做偏多側、排序無回測、輪動雷達 0/12", () => {
+  assert.ok(sec.includes("以計票群組計") && sec.includes("資料日是前一交易日") && sec.includes("不是獨立來源"));
   assert.ok(sec.includes("沒有回測依據") && sec.includes("只做偏多（資金流入）側，偏空側未做") && sec.includes("0/12 顯著"));
 });
 ok("不改 tbl()：交集表走既有 tbl(cols, rows, opts)，CSS 一律 .ov- 前綴", () => {

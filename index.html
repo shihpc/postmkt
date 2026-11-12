@@ -2086,6 +2086,7 @@ function ovSources(layer){
     out.push({ id: s.id, name: typeof s.name === "string" ? s.name : "", status, text: OV_STATUS[status],
       date: typeof s.date === "string" ? s.date : "", n: ovNum(s.n), counted: s.counted === true && status === "valid",
       note: typeof s.note === "string" ? s.note : "",
+      group: typeof s.group === "string" ? s.group : s.id, groupName: typeof s.group_name === "string" ? s.group_name : "",
       items: Array.isArray(s.items) ? s.items.filter(x => x && typeof x.key === "string") : [],
       unmapped: Array.isArray(s.unmapped) ? s.unmapped.filter(x => typeof x === "string") : [] });
   }
@@ -2264,10 +2265,15 @@ function ovBriefHtml(){
   return h + `<div class="ov-note">AI 研判：取自 taiwan-stock-news 每日晨報卡（當日 07:30 前後產製，講的是開盤前的狀態）。</div>`;
 }
 function ovSrcHtml(srcs, base){
+  const grp = {};
+  for (const s of srcs) if (s.groupName) (grp[s.groupName] = grp[s.groupName] || []).push(s.id);
+  const gtxt = Object.keys(grp).filter(k => grp[k].length > 1).map(k => `${k}（${grp[k].join("、")}）`).join("；");
   return `<div class="ov-src">` + `<div class="ov-sub">基準日 ${esc(ovDate(base) || "—")}（日頻來源的資料日須等於基準日才計入）</div>`
+    + (gtxt ? `<div class="ov-sub">同一計票群組內命中幾個來源都只算 1 票：${esc(gtxt)}——它們讀同一份資料的同一個區間，不是獨立來源。</div>` : "")
     + srcs.map(s => `<div class="ov-srow"><b>${esc(s.id)}</b> ${esc(s.name)}`
       + `<span class="ov-badge">資料日 ${esc(s.date || "—")}</span><span class="ov-badge ov-st">${esc(s.text)}</span>`
       + (s.n !== null && s.status !== "fail" && s.status !== "excluded" ? `<span class="ov-badge">${ovFmt(s.n, 0)} 項</span>` : "")
+      + (s.groupName ? `<span class="ov-badge">計票群組：${esc(s.groupName)}</span>` : "")
       + (s.note ? `<span class="ov-sub">${esc(s.note)}</span>` : "")
       + (s.unmapped.length ? `<span class="ov-sub">未上卷（一個次產業名對到多個產業或查無對映）：${esc(s.unmapped.join("、"))}</span>` : "")
       + (!s.counted && s.items.length ? `<span class="ov-sub">另列（不計入交集）：${esc(s.items.map(x => x.key + (typeof x.name === "string" && x.name ? " " + x.name : "")).join("、"))}</span>` : "")
@@ -2282,7 +2288,7 @@ function ovTableHtml(layer, isStock){
   const mark = id => r => r.hits.includes(id) ? "●" : `<span class="mut">·</span>`;
   const cols = [
     isStock ? { h: "個股", cls: "l", f: r => nameCell({ c: r.key, n: r.name }) } : { h: "產業", cls: "l", f: r => esc(r.key) },
-    { h: "出現清單數", f: r => `<span class="ov-cnt">${ovFmt(r.count, 0)}</span>` },
+    { h: "出現清單數（群組計）", f: r => `<span class="ov-cnt">${ovFmt(r.count, 0)}</span>` },
     ...cs.map(s => ({ h: esc(s.id), f: mark(s.id) })),
   ];
   if (!isStock) cols.push({ h: "依據（上卷前的次產業／象限）", cls: "l", f: r => r.via ? esc(r.via) : `<span class="mut">—</span>` });
@@ -2306,7 +2312,7 @@ function ovRender(){
   h += `<div class="msection">交集表<span class="n">後端每日產出 · 前端只渲染</span></div>`
     + `<div class="ov-label">${esc(ovLabel(j))}</div>`
     + `<div class="ov-note">依「出現在幾個來源清單」由多到少排列——這個排序<b>沒有回測依據</b>（使用者 2026-11-12 裁定標示後先上線，每日快照留存供事後驗證）。`
-    + `本頁只做偏多（資金流入）側，偏空側未做。各來源的資料日與是否計入列在每張表上方；日級輪動雷達來源（E）另註：其回測 12 格中信賴區間不跨 0 的為 0 格（0/12 顯著）。</div>`;
+    + `本頁只做偏多（資金流入）側，偏空側未做。各來源的資料日與是否計入列在每張表上方；「出現清單數」以計票群組計（同檔同窗的來源併為一組、只算 1 票，各來源欄仍分別標出命中）；連湧／新湧（D）的資料日是前一交易日，晚間產出時與基準日不同，故只另列、不計入；日級輪動雷達來源（E）另註：其回測 12 格中信賴區間不跨 0 的為 0 格（0/12 顯著）。</div>`;
   if (!j){
     h += `<div class="ov-na ov-pad">${OV.err.ov ? "交集表資料尚未產生或讀取失敗（data/overview/latest.json）；上方盤勢七項不受影響" : "載入中…"}</div>`;
   } else {

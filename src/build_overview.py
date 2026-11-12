@@ -11,6 +11,7 @@
 #   類股（主鍵＝產業鏈「產業」，47 條；flows chain／classify.c／chain_daily 三者同一套命名，2026-11-12 實查）
 #     A 產業鏈資金流：taiwan-flows sector_ranges_lite.json windows.r5 chain/total 淨買金額 >0 前 10（基準日＝r5.end）
 #     B 籌碼雷達：同檔 r5 對 r20，index.html radarPoints(…,"chain","total") 的 acc_in（加速流入）象限
+#       ※ A、B 同檔同窗、不獨立 → 同一個計票群組「法人資金流」，兩者皆中也只算 1 票（見 GROUP_NAMES 上方說明）
 #     C 主動 ETF 次產業加碼前 10：taiwan-flow-live-v2 aetf/diff.json subs（val>0），經 classify.json 的
 #       (產業, 次產業) 配對上卷；一個次產業名對到多個產業時不上卷（列入 unmapped）
 #     D 連湧／新湧次產業：taiwan-flow-live-v2 morning.json signals.cont_subs＋new_subs，同法上卷；
@@ -369,7 +370,8 @@ def src_D(morning, parents):
         return {"date": date, "items": [], "subs": names, "listed": True,
                 "note": "次產業對映檔（classify.json）讀不到，無法上卷到產業：另列、不計入交集"}
     items, unmapped = roll_up(names, parents)
-    return {"date": date, "items": items, "subs": names, "unmapped": unmapped}
+    return {"date": date, "items": items, "subs": names, "unmapped": unmapped,
+            "stale_note": "資料日為前一交易日（morning.json 的連湧／新湧由前一交易日的資料算出），與基準日不同：另列、不計入"}
 
 
 def src_E(series):
@@ -436,21 +438,26 @@ def src_e(diag):
 
 # ---------- 交集 ----------
 
+# 計票群組（group）：同一群組內命中幾個來源都只算 1 票。A、B 讀同一個檔的同一個 r5 窗，而 acc_in 的定義
+# （近 20 日日均 ≥0 且近 5 日日均 ≥ 近 20 日日均）保證近 5 日淨額不為負——B 的成員只要進 A 前 10 就必然兩者皆中，
+# 不是兩個獨立來源，故併為「法人資金流」一組。個股層逐對查過，沒有「同檔同窗、其一成立即保證另一成立」的來源對
+# （c 的多空總分 12 項中有 1 項用到 e 的 hdw，但不構成保證），各自成組。
+GROUP_NAMES = {"flow": "法人資金流"}
 SECTOR_DEFS = [
-    ("A", "產業鏈資金流：近 5 日三大法人淨買前 10", "daily"),
-    ("B", "籌碼雷達：近 5 日對近 20 日「加速流入」象限", "daily"),
-    ("C", "主動 ETF 次產業加碼前 10（上卷到產業）", "daily"),
-    ("D", "連湧／新湧次產業（上卷到產業）", "daily"),
-    ("E", "日級輪動雷達：連續 3 日「改善」或「領先」", "daily"),
+    ("A", "產業鏈資金流：近 5 日三大法人淨買前 10", "daily", "flow"),
+    ("B", "籌碼雷達：近 5 日對近 20 日「加速流入」象限", "daily", "flow"),
+    ("C", "主動 ETF 次產業加碼前 10（上卷到產業）", "daily", "C"),
+    ("D", "連湧／新湧次產業（上卷到產業）", "daily", "D"),
+    ("E", "日級輪動雷達：連續 3 日「改善」或「領先」", "daily", "E"),
 ]
 STOCK_DEFS = [
-    ("a", "外資投信同步買超 Top30", "daily"),
-    ("b", "主動 ETF 跨 ETF 加碼共識（≥2 檔同買）", "daily"),
-    ("c", "選股二追蹤名單", "daily"),
-    ("d", "月營收 Beat／高預期仍Beat", "monthly"),
-    ("e", "千張大戶週增前 20", "weekly"),
+    ("a", "外資投信同步買超 Top30", "daily", "a"),
+    ("b", "主動 ETF 跨 ETF 加碼共識（≥2 檔同買）", "daily", "b"),
+    ("c", "選股二追蹤名單", "daily", "c"),
+    ("d", "月營收 Beat／高預期仍Beat", "monthly", "d"),
+    ("e", "千張大戶週增前 20", "weekly", "e"),
 ]
-EXCLUDED_F = {"id": "f", "name": "彙總分析精華標的", "freq": "daily", "date": None, "ok": False, "stale": False,
+EXCLUDED_F = {"id": "f", "name": "彙總分析精華標的", "freq": "daily", "group": "f", "date": None, "ok": False, "stale": False,
               "counted": False, "status": "excluded", "n": 0, "items": [],
               "note": "不納入：彙總分析為 AI 自由文字，標題格式逐場不同，方向無法可靠解析"}
 
@@ -460,9 +467,9 @@ def judge(defs, got: dict, base_id: str, valid_fn) -> tuple[str | None, list[dic
     b = got.get(base_id)
     base = b["date"] if isinstance(b, dict) else None
     out = []
-    for sid, name, freq in defs:
+    for sid, name, freq, grp in defs:
         g = got.get(sid)
-        s = {"id": sid, "name": name, "freq": freq, "date": None, "ok": False, "stale": False,
+        s = {"id": sid, "name": name, "freq": freq, "group": grp, "date": None, "ok": False, "stale": False,
              "counted": False, "status": "fail", "n": 0, "items": []}
         if not isinstance(g, dict):
             s["note"] = "讀取失敗或形狀不合" + (f"（{type(g).__name__}）" if isinstance(g, Exception) else "")
@@ -484,6 +491,10 @@ def judge(defs, got: dict, base_id: str, valid_fn) -> tuple[str | None, list[dic
         else:
             s["status"] = "stale"
             s["stale"] = True
+            if g.get("stale_note") and not s.get("note"):
+                s["note"] = g["stale_note"]
+        if grp in GROUP_NAMES:
+            s["group_name"] = GROUP_NAMES[grp]
         out.append(s)
     return base, out
 
@@ -502,9 +513,11 @@ def stock_valid(sid, date, base) -> bool:
 
 def intersect(sources: list[dict], with_name: bool) -> tuple[list[dict], str | None]:
     counted = [s for s in sources if s["counted"]]
-    if len(counted) < MIN_VALID:
-        return [], f"有效來源只有 {len(counted)} 個（少於 {MIN_VALID} 個），不輸出交集"
+    ngroups = len({s["group"] for s in counted})
+    if ngroups < MIN_VALID:
+        return [], f"有效計票群組只有 {ngroups} 個（少於 {MIN_VALID} 個），不輸出交集"
     hits: dict[str, list[str]] = {}
+    groups: dict[str, set] = {}
     names: dict[str, str] = {}
     via: dict[str, dict] = {}
     for s in counted:
@@ -514,16 +527,18 @@ def intersect(sources: list[dict], with_name: bool) -> tuple[list[dict], str | N
             if k not in seen:
                 seen.add(k)
                 hits.setdefault(k, []).append(s["id"])
+                groups.setdefault(k, set()).add(s["group"])
             if with_name and it.get("name") and k not in names:
                 names[k] = it["name"]
             if it.get("via"):
                 via.setdefault(k, {}).setdefault(s["id"], [])
                 via[k][s["id"]] += [v for v in it["via"] if v not in via[k][s["id"]]]
     rows = []
-    for k in sorted(hits, key=lambda k: (-len(hits[k]), k)):
-        if len(hits[k]) < 2:
+    # count＝命中的**計票群組**數（同組多個來源只算 1 票）；hits 仍列出每一個命中的來源
+    for k in sorted(hits, key=lambda k: (-len(groups[k]), k)):
+        if len(groups[k]) < 2:
             continue
-        r = {"key": k, "count": len(hits[k]), "hits": hits[k]}
+        r = {"key": k, "count": len(groups[k]), "hits": hits[k]}
         if with_name:
             r["name"] = names.get(k, "")
         if k in via:

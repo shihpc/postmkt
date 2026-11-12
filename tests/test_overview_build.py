@@ -175,8 +175,9 @@ def test_count_and_sort():
         ("2330", 5, ["a", "b", "c", "d", "e"]), ("2454", 3, ["a", "c", "d"]), ("1101", 2, ["a", "e"])]
     assert o["stocks"]["rows"][0]["name"] == "台積電"
     assert all(r["count"] >= 2 for r in o["stocks"]["rows"] + o["sectors"]["rows"])
-    # 類股：A＝甲乙丙；B＝甲乙丙（x>0、y=0 → acc_in）；C＝甲（甲子）乙（乙子）；D stale；E 失敗
-    assert [(r["key"], r["count"]) for r in o["sectors"]["rows"]] == [("乙", 3), ("甲", 3), ("丙", 2)]
+    # 類股：A＝甲乙丙；B＝甲乙丙（x>0、y=0 → acc_in）——A、B 同一計票群組只算 1 票；C＝甲（甲子）乙（乙子）；D stale；E 失敗
+    # 丙只中 A＋B（同組）→ 1 票 → 不上榜
+    assert [(r["key"], r["count"], r["hits"]) for r in o["sectors"]["rows"]] == [("乙", 2, ["A", "B", "C"]), ("甲", 2, ["A", "B", "C"])]
     assert o["sectors"]["rows"][0]["via"] == {"C": ["乙子"]}
 
 
@@ -217,6 +218,7 @@ def test_fewer_than_two_valid_sources_outputs_no_rows():
         i[k] = ValueError()
     o = bo.build(i, "G")
     assert o["stocks"]["rows"] == [] and "少於 2 個" in o["stocks"]["note"]
+    assert src(o, "stocks", "a")["counted"] is True
 
 
 def test_base_missing():
@@ -240,7 +242,8 @@ def test_rollup_unique_parent_only_and_downgrade():
     for sid in ("C", "D"):
         s = src(o, "sectors", sid)
         assert s["status"] == "listed" and s["counted"] is False and s["items"] == [] and s["subs"] and "不計入" in s["note"]
-    assert all(set(r["hits"]) <= {"A", "B"} for r in o["sectors"]["rows"])
+    # 只剩 A、B 兩個有效來源，但同屬一個計票群組 → 有效群組 1 個 → 不輸出列
+    assert o["sectors"]["rows"] == [] and "計票群組只有 1 個" in o["sectors"]["note"]
 
 
 def test_windows():
@@ -317,6 +320,114 @@ def test_committed_snapshot_schema():
         rows = o[layer]["rows"]
         assert rows == sorted(rows, key=lambda r: (-r["count"], r["key"]))
         for r in rows:
-            assert r["count"] == len(r["hits"]) >= 2 and set(r["hits"]) <= counted
+            grp = {s["id"]: s["group"] for s in o[layer]["sources"]}
+            assert r["count"] == len({grp[h] for h in r["hits"]}) >= 2 and set(r["hits"]) <= counted
+            assert len(r["hits"]) == len(set(r["hits"]))
         for s in o[layer]["sources"]:
             assert s["status"] in ("valid", "stale", "fail", "listed", "excluded") and s["counted"] == (s["status"] == "valid")
+
+
+# ---------- 2026-11-12 驗收補測：門檻、前 N、正值過濾、象限、E 走通、C／b stale、同來源去重、計票群組 ----------
+
+def test_single_source_key_not_listed_and_dedupe_within_source():
+    i = base_inp()
+    i["tf"]["pages"]["sync"]["sync_buy"] += [{"code": "9904", "name": "只在 a"}, {"code": "9904", "name": "重複"},
+                                             {"code": "8888", "name": "a 重複"}, {"code": "8888", "name": "a 重複"}]
+    i["track"]["tracking"].append({"code": "8888", "name": "a 重複"})
+    o = bo.build(i, "G")
+    rows = {r["key"]: r for r in o["stocks"]["rows"]}
+    assert "9904" not in rows                      # 只出現在一個來源（即使該來源內重複兩次）→ count 1 → 不上榜
+    assert rows["8888"]["hits"] == ["a", "c"] and rows["8888"]["count"] == 2   # 同來源內重複鍵只記一次
+    assert min(r["count"] for r in o["stocks"]["rows"]) == 2
+
+
+def big_sr(npos=14, nneg=3):
+    rows = [{"sector": f"正{k:02d}", "net_amt_k": (k + 1) * 1000, "n": 10} for k in range(npos)]
+    rows += [{"sector": f"負{k:02d}", "net_amt_k": -(k + 1) * 1000, "n": 10} for k in range(nneg)]
+    w = {"trading_days": 5, "end": "2026-11-12", "classifications": {"chain": {"investors": {"total": rows}}}}
+    return {"date": "2026-11-12", "windows": {"r5": w, "r20": {**w, "trading_days": 20}}}
+
+
+def test_src_A_top10_positive_only():
+    a = bo.src_A(big_sr())
+    assert [x["key"] for x in a["items"]] == [f"正{k:02d}" for k in range(13, 3, -1)]   # 金額遞減的前 10
+    few = bo.src_A(big_sr(npos=3, nneg=5))
+    assert [x["key"] for x in few["items"]] == ["正02", "正01", "正00"]                  # 不足 10 個時不拿負值補
+    z = big_sr(npos=2, nneg=1)
+    z["windows"]["r5"]["classifications"]["chain"]["investors"]["total"].append({"sector": "零", "net_amt_k": 0, "n": 10})
+    assert [x["key"] for x in bo.src_A(z)["items"]] == ["正01", "正00"]                  # 0 不算淨買
+    assert [x["key"] for x in src(bo.build(base_inp(), "G"), "sectors", "A")["items"]] == ["甲", "乙", "丙"]
+
+
+def test_src_C_top10_positive_only():
+    parents = {f"子{k:02d}": [f"業{k:02d}"] for k in range(14)}
+    d = {"primary_date": "2026/11/12", "subs": [{"name": f"子{k:02d}", "val": k + 1} for k in range(14)] + [{"name": "負", "val": -99}]}
+    c = bo.src_C(d, parents)
+    assert c["subs"] == [f"子{k:02d}" for k in range(13, 3, -1)] and len(c["items"]) == 10
+    assert sorted(x["key"] for x in c["items"]) == [f"業{k:02d}" for k in range(4, 14)]
+
+
+def test_src_B_only_acc_in():
+    s = sr()
+    r5 = s["windows"]["r5"]["classifications"]["chain"]["investors"]["total"]
+    r20 = s["windows"]["r20"]["classifications"]["chain"]["investors"]["total"]
+    r5.append({"sector": "戊", "net_amt_k": 1000, "n": 10})        # 近 5 日日均 200
+    r20.append({"sector": "戊", "net_amt_k": 80000, "n": 10})      # 近 20 日日均 4000 → 流入放緩（slow_in）
+    r5.append({"sector": "己", "net_amt_k": 5000, "n": 10})
+    r20.append({"sector": "己", "net_amt_k": -90000, "n": 10})     # 流出放緩（slow_out）
+    r5.append({"sector": "庚", "net_amt_k": 90000, "n": 3})
+    r20.append({"sector": "庚", "net_amt_k": 90000, "n": 3})       # n<8 不列
+    q = {p["sector"]: p["q"] for p in bo.radar_points(s["windows"]["r5"], s["windows"]["r20"], "chain", "total")}
+    assert q["戊"] == "slow_in" and q["己"] == "slow_out" and q["丁"] == "acc_out" and "庚" not in q
+    assert {x["key"] for x in bo.src_B(s)["items"]} == {"甲", "乙", "丙"}
+
+
+def test_src_E_through_build_with_real_series_fixture():
+    series = load(FIX / "overview_series_tail.json")
+    p = bo.rrgd_prep(series)
+    t = p["valid"][-1]
+    imp = bo.rrgd_persist_list(p["coords"], t, "改善", 3, 1)
+    lead = bo.rrgd_persist_list(p["coords"], t, "領先", 3, 0)
+    weak = bo.rrgd_persist_list(p["coords"], t, "轉弱", 3, 0)
+    assert imp and lead and weak and not (set(weak) & set(lead))   # fixture 三種都有，才分得出換象限的突變
+    i = base_inp()
+    i["series"] = series
+    names = list(series["chains"])
+    i["sr"] = sr(end=series["dates"][t], pos=tuple(lead[:2]) + (names[0],))
+    i["tf"]["date"] = series["dates"][t]
+    o = bo.build(i, "G")
+    e = src(o, "sectors", "E")
+    assert e["status"] == "valid" and e["counted"] is True and e["date"] == series["dates"][t]
+    assert {x["key"]: x["via"] for x in e["items"]} == {**{k: ["改善"] for k in imp}, **{k: ["領先"] for k in lead}}
+    rows = {r["key"]: r for r in o["sectors"]["rows"]}
+    for k in lead[:2]:                             # A（＋B 同組）＋E → 2 票
+        assert rows[k]["count"] == 2 and rows[k]["hits"] == ["A", "B", "E"] and rows[k]["via"] == {"E": ["領先"]}
+    assert not (set(weak) & set(rows))
+
+
+def test_aetf_sources_stale_when_primary_date_differs():
+    i = base_inp()
+    i["diff"] = diff("2026/11/11")
+    o = bo.build(i, "G")
+    c, b = src(o, "sectors", "C"), src(o, "stocks", "b")
+    assert c["date"] == b["date"] == "2026-11-11"
+    assert c["status"] == b["status"] == "stale" and c["counted"] is False and b["counted"] is False
+    assert all("C" not in r["hits"] for r in o["sectors"]["rows"]) and all("b" not in r["hits"] for r in o["stocks"]["rows"])
+    assert o["sectors"]["rows"] == []              # 只剩 A、B（同組）→ 不輸出
+
+
+def test_vote_groups():
+    o = bo.build(base_inp(), "G")
+    g = {s["id"]: s["group"] for s in o["sectors"]["sources"]}
+    assert g["A"] == g["B"] == "flow" and len({g["C"], g["D"], g["E"], "flow"}) == 4
+    assert src(o, "sectors", "A")["group_name"] == src(o, "sectors", "B")["group_name"] == "法人資金流"
+    gs = [s["group"] for s in o["stocks"]["sources"]]
+    assert len(gs) == len(set(gs))                 # 個股層各自成組
+    assert all("group_name" not in s for s in o["stocks"]["sources"])
+    # 只中 A 或只中 B 加上另一組，都是 2 票；A＋B 皆中再加另一組仍是 2 票（不是 3）
+    i = base_inp()
+    i["sr"] = sr(pos=("甲",))
+    i["sr"]["windows"]["r5"]["classifications"]["chain"]["investors"]["total"].append({"sector": "乙", "net_amt_k": -5, "n": 10})
+    i["sr"]["windows"]["r20"]["classifications"]["chain"]["investors"]["total"].append({"sector": "乙", "net_amt_k": 0, "n": 10})
+    rows = {r["key"]: (r["count"], r["hits"]) for r in bo.build(i, "G")["sectors"]["rows"]}
+    assert rows == {"甲": (2, ["A", "B", "C"])}     # 乙：r5 為負 → 不在 A；x=0、y<0 → 不在 B；只剩 C → 不上榜

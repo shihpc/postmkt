@@ -62,9 +62,10 @@ jobs:
       - name: Commit and push
         uses: ./.github/actions/commit-data
         with:
+          # 不開 add_all：那條路徑的 git add 失敗會被 `|| true` 吞掉，連主產物也受影響。data/overview 已在 repo 內
+          #（首份快照已 commit），overview 步驟失敗時目錄仍在、git add 只是沒有變更，不會報 pathspec 錯
           paths: data/market_balance_history.json data/overview
           message: "data: mktbal"
-          add_all: "true"
 
       - name: Fail if overview failed
         if: always() && steps.overview.outcome == 'failure'
