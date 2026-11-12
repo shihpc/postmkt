@@ -304,8 +304,8 @@
 - `src/backtest_revenue.py` → `data/revenue/backtest/`（`summary.json`＋`events.csv`；月營收 Beat／Miss 回測，2026-11-13 階段三；規格與**預先登錄判準**
   `docs/revenue-beatmiss.md` §7——設計與判準已定案，跑出結果後不得回頭改。分類只呼叫 `build_revenue` 的純函式、只回測 C 層、**不讀 `expect.json`**；
   門檻格點以 `th_override()` 暫時覆寫 `build_revenue.TH_C`／`TH_C_LUMPY` 後還原，**不改 `build_revenue.py`**。`revenue-backtest.yml` 只有 `workflow_dispatch`。
-  **沒有任何 tab 讀這份產出**；**2026-11-13 已實跑（run 43267484432）：依預先登錄判準機械判定為「有回測支持」，但只限 20 日的 Beat 類合計對 Miss 類合計；高預期／低預期兩子類各自未達顯著。報告 `docs/revenue-backtest.md`。標示與門檻是否更改待使用者裁定**（實跑確認取得到 `TaiwanStockPriceAdj` 與報酬指數）；
-  **使用者裁定前**畫面「未經回測」標示與門檻不得更動。本機驗證用 `--cache-dir <目錄> --out-dir <暫存目錄> [--offline]`，不要把合成結果寫進 repo）
+  **沒有任何 tab 讀這份產出**；**2026-11-13 已實跑（run 43267484432）：依預先登錄判準機械判定為「有回測支持」，但只限 20 日的 Beat 類合計對 Miss 類合計；高預期／低預期兩子類各自未達顯著。報告 `docs/revenue-backtest.md`。**（實跑確認取得到 `TaiwanStockPriceAdj` 與報酬指數）；
+  **使用者 2026-11-13 裁定：畫面標示維持「AI 研判，未經回測，非保證」不動、門檻維持 15／25**——要改須使用者另行裁定。本機驗證用 `--cache-dir <目錄> --out-dir <暫存目錄> [--offline]`，不要把合成結果寫進 repo）
 - `src/build_pick2.py` → `data/pick2/`（選股二追蹤名單；掛在 diag workflow 的 screen 之後，`continue-on-error`；見上方「選股二」節）
 - `src/build_screen.py` → `data/screen/screen.json`（選股：TradingView 初篩＋鉅亨 FactSet 預估
   EPS/目標價/評等＋diag 合併；掛在 diag workflow 後段，`continue-on-error` 失敗不擋 diag）
