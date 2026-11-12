@@ -27,7 +27,7 @@
 ## 2026-11-12 月營收 Beat／Miss：階段二（前端「月營收」tab）
 
 `index.html` 新增第 19 個 tab `revenue`（標籤「月營收」，排在「市場情緒」之後、「日期」之前）；驗收條件正本 `docs/revenue-beatmiss.md` §5。
-**本條為實作者自測結果，尚待 fresh-context 獨立驗收與 push／部署（§5.12 未做）。**
+**獨立驗收（fresh-context，綁 commit `8d09c7e`）§5 第 1–11 條全數通過；已 push，`tests`／`canon`／pages 部署皆成功。§5.12 線上頁面因雲端 session 連不到 `shihpc.github.io` 未直接驗證，待使用者確認。驗收者的四項建議與兩項待裁示取捨記在 `docs/revenue-beatmiss.md`「階段二結果」。**
 
 - 資料只在切到本 tab 時才抓：`data/revenue/index.json` → 選定月份檔（同源相對路徑、CSP 未改）；in-flight 去重、失敗不重試、不拋錯；
   `months` 空或 `latest` 無效顯示「尚無資料」。首屏請求清單與改動前相同（Playwright 比對 HEAD 版）。

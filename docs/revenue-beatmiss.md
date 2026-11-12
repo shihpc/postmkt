@@ -8,7 +8,7 @@
 | 階段 | 範圍 | 狀態 |
 |---|---|---|
 | 一 | 資料管線：`src/build_revenue.py`＋輸入檔＋`revenue.yml`＋離線測試 | **完成（2026-11-12）**，結果見 §4 末 |
-| 二 | 前端第 19 個 tab「月營收」 | 實作與自測完成（2026-11-12），待獨立驗收與部署；驗收條件見 §5 |
+| 二 | 前端第 19 個 tab「月營收」 | **已上線（2026-11-12，commit `8d09c7e`）**；驗收條件 §5、結果見 §5 末；線上頁面待使用者確認 |
 | 三 | 回測（beat／miss 公布後報酬）＋門檻校準 | 未開始 |
 
 ## 1. 鐵律 8 狀態（重要）
@@ -100,3 +100,15 @@
     `document.documentElement.scrollWidth == window.innerWidth`，個股表在 `.tblbox` 內橫捲、逐格無裁切（CLAUDE.md「手機驗收條件」）。
 11. **文件**：README（tab 數與本 tab 說明）、CLAUDE.md 佈局（18→19、hash key `rm`）、CHANGELOG 同步；CANON 區塊不動。
 12. **部署**：push 後 pages 部署成功；因本 session 連不到 `shihpc.github.io`，線上頁面由使用者開啟確認。
+
+### 階段二結果（2026-11-12）
+
+- 獨立驗收（fresh-context，綁 commit `8d09c7e`）：§5 第 1–11 條全數通過，無會導致錯誤行為的問題；同步碼（含 `mdToHtml`）、CSP、`tbl()` 與上一版位元組相同。
+- push 後 `tests`、`canon`、`pages build and deployment` 對 `8d09c7e` 皆成功。
+- **§5.12 線上頁面未由本 session 直接驗證**（雲端 session 連不到 `shihpc.github.io`），待使用者開 `#tab=revenue` 確認。
+- 驗收者的建議（未處理，列入後續）：
+  1. 非當前選定月份的請求晚到時也會整頁重繪，可能重置表格橫捲位置（`revLoadMonth` 的 `.finally`）。
+  2. 分類與次產業篩選跨月保留；帶著篩選切月可能看到 0 檔而誤以為沒資料。
+  3. 畫面不顯示資料檔的 `fetch_failed`（目前三個月皆為空）。
+  4. 月份檔 `month` 與檔名不符時與 404 顯示同一句，除錯時無法區分。
+- 實作取捨待使用者裁示：手機橫捲時凍結欄是「分類」而非代號；來源欄含完整網址時很寬。
