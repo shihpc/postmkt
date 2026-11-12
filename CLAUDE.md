@@ -229,7 +229,7 @@
   - **月營收 `revenue`（2026-11-12 階段二新增，第 19 個 tab，排在 `sentiment` 之後、`dates` 之前；規格與驗收條件正本
     `docs/revenue-beatmiss.md` §5）**：`index.html` grep `// ================= 月營收 tab`（接在市場情緒之後、「日期 tab」之前）；
     渲染 `function revRender`、載入 `function revEnsure`／`function revLoadMonth`、純函式 `rev-pure:begin`～`end`
-    （`revLabel`／`revIndex`／`revPickMonth`／`revMonthOk`／`revRows`／`revFilter`／`revFmt`／`revPct`／`revDir`／`revGenOk`／`revThText`）。
+    （`revLabel`／`revIndex`／`revPickMonth`／`revMonthOk`／`revRows`／`revFilter`／`revFmt`／`revPct`／`revDir`／`revGenOk`／`revThText`／`revSrcText`）。
     資料＝`REV_BASE`＝`data/revenue/`（**本站同源相對路徑、CSP 未改**）：先 `index.json`（`months`／`latest`）再選定月份檔，
     **只在切到本 tab 時才抓**，首屏請求清單不變；index 以 `REV.idxLoading`、月份檔以 `REV.loading[m]` 去重，失敗記
     `REV.idxErr`／`REV.err[m]` 不重試、畫面一句話、不拋錯；`months` 空或 `latest` 不在 `months` 內＝「尚無資料」；
@@ -237,14 +237,23 @@
     都逐字顯示「AI 研判，未經回測，非保證」（`revLabel()`：取資料檔 `label`，缺值或不含該句時退回常數 `REV_LABEL`），
     階段三回測結論出來前不得拿掉。畫面三區：四類摘要（高預期仍Beat／低預期仍Miss 置前，「符合」只列檔數）、
     次產業表（`tbl()`，並列 `tsmc_yoy`）、個股表（`tbl()` 15 欄、**未動 `tbl()`**，預設順序＝資料檔順序，分類／次產業兩個下拉篩選
-    ——篩選狀態不進 hash）。**hash 新 key `rm`**（`HASH_RM_RE`＝`^\d{4}-\d{2}$`，只在 `tab=revenue` 讀寫；清單到手後由
+    ——篩選狀態不進 hash）。
+    **階段二之二（2026-11-12，驗收條件 `docs/revenue-beatmiss.md` §6）**：①個股表欄序＝代號、名稱、分類、次產業…（只把分類移到名稱之後），
+    **第一欄（`tbl()` 凍結欄）是代號**；②**來源欄畫面上去掉網址**——純函式 `revSrcText()`（在 `rev-pure` 區段；`https?://` 起至下一個空白或結尾
+    整段去掉後 trim，空字串由 `revTxt()` 顯示「—」），仍經 `esc()`、不產生連結，**資料檔不改**（網址仍在 `data/revenue/*.json` 與 `expect.json`）；
+    ③**月份改變時篩選重設**：`REV.month` 只在 `function revSetMonth` 內賦值（下拉 listener 與 `revEnsure()` 套用 hash `rm`／`hashchange`／首次選月都走它），
+    月份真的變了才把 `REV.fCls`／`REV.fSec` 退回 `"all"`，同月份內重繪（含 hash 帶同一個月）不重設；
+    ④**晚到的請求不亂重繪**：`revLoadMonth()` 的 `.finally` 只有「仍在本 tab 且 `REV.month === m`」才 `render()`（資料照樣進 `REV.cache`），
+    `index.json` 的 `.finally` 只有仍在本 tab 才 `render()`。**刻意不做**：畫面另列 `fetch_failed`、月份檔 `month` 不符的訊息區分（理由見 §6.5）。**hash 新 key `rm`**（`HASH_RM_RE`＝`^\d{4}-\d{2}$`，只在 `tab=revenue` 讀寫；清單到手後由
     `revEnsure()` 以 `revPickMonth()` 比對 `months` 白名單，非法值靜默退回最新月；最新月不寫入 hash；清單未到前保留網址原值，同 `sd`）。
     **硬約束**：分類與加速／減速一律中性色文字（`.rev-cls`），不新增燈號；漲跌著色只經 `revSgn()`→`sgn()`，只用在月增%／年增%／驚喜%
     （含摘要的驚喜%與台積電年增基準；上月年增%／變化／預期季增%／預期年增%為中性色）；外來字串一律 `esc()`／`revTxt()`，
-    數值一律 `revNum()`（typeof number＋isFinite）後格式化、否則「—」；**來源欄網址為純文字、不轉連結**。CSS 一律 `.rev-*`；
+    數值一律 `revNum()`（typeof number＋isFinite）後格式化、否則「—」；**來源欄為純文字、不轉連結**（網址在畫面上已由 `revSrcText()` 去掉）。CSS 一律 `.rev-*`；
     頂列 stats 比照籌碼雷達清空（頁內自帶營收月份與產出時刻）。手機：個股表 15 欄與次產業表 6 欄都在 `.tblbox` 內橫捲、未藏欄
-    （375／390／1280 實測整頁無水平捲軸、逐格零裁切、無換行，2026-11-12 Playwright）。**個股表第一欄（凍結欄）是「分類」**——照規格欄序。
-    測試 `tests/test_revenue_frontend.mjs`（18 項，pytest 由 `tests/test_revenue_frontend.py` 代跑；樣本
+    （375／390／1280 實測整頁無水平捲軸、逐格零裁切、無換行，2026-11-12 Playwright，階段二之二改欄序後重量）。**個股表第一欄（凍結欄）是「代號」**
+    （階段二原為「分類」，2026-11-12 使用者裁示改）。
+    測試 `tests/test_revenue_frontend.mjs`（21 項：階段二之二加來源去網址、切月重設篩選、晚到請求三項——後兩項把 `revLoadMonth`／`revSetMonth`／`revEnsure`
+    原始碼抽出、配假 `loadJSON`／`render` 實跑；pytest 由 `tests/test_revenue_frontend.py` 代跑；樣本
     `tests/fixtures/revenue_sample.json`＝`data/revenue/2026-10.json` 的 12 檔子集）＋`tests/test_frontend_moved.py` 的 `rm` 白名單。
     本 tab 只讀本站資料，本機驗證 http.server 起在 repo 根目錄或上一層皆可。
   - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：

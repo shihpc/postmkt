@@ -1,8 +1,9 @@
-// tests/test_revenue_frontend.mjs —— 月營收 tab 前端（2026-11-12 階段二，規格正本 docs/revenue-beatmiss.md §5）
+// tests/test_revenue_frontend.mjs —— 月營收 tab 前端（2026-11-12 階段二＋階段二之二，規格正本 docs/revenue-beatmiss.md §5／§6）
 // 從 index.html 抽出 `rev-pure:begin`～`rev-pure:end` 區段在 node vm 沙箱跑，以 tests/fixtures/revenue_sample.json
 // （取自 data/revenue/2026-10.json 的子集：每類至少一檔＋A／B 層各檔，universe_n／reported_n／counts 依子集重算）
 // 驗月份白名單／index 形狀／篩選／數值格式／generated_at 檢查，並以原始碼靜態檢查 lazy 載入、標示句、esc()、
-// 來源欄不轉連結、CSS 前綴與首屏不碰本 tab。
+// 來源欄不轉連結、CSS 前綴與首屏不碰本 tab。階段二之二（§6）另驗：欄序（凍結欄＝代號）、來源去網址 revSrcText()、
+// 切月重設篩選 revSetMonth()（抽出原始碼實跑）、晚到請求只在「仍在本 tab 且月份相符」才重繪（以假 loadJSON 實跑 revLoadMonth／revEnsure）。
 // 用法：node tests/test_revenue_frontend.mjs（pytest 由 tests/test_revenue_frontend.py 代跑）
 import fs from "node:fs";
 import path from "node:path";
@@ -20,7 +21,7 @@ const sb = { console };
 vm.createContext(sb);
 new vm.Script(pure + `
 Object.assign(this, { REV_LABEL, revLabel, REV_MONTH_RE, REV_GEN_RE, REV_CLS, REV_CLS_SUMMARY, revNum, revGenOk, revIndex, revPickMonth,
-  revMonthOk, revRows, revList, revSectorNames, revFilter, revFmt, revPct, revDir, revThText });`).runInContext(sb);
+  revMonthOk, revRows, revList, revSectorNames, revFilter, revFmt, revPct, revDir, revThText, revSrcText });`).runInContext(sb);
 const S = sb;
 const J = JSON.parse(fs.readFileSync(path.join(ROOT, "tests", "fixtures", "revenue_sample.json"), "utf8"));
 
@@ -200,14 +201,16 @@ ok("安全：區段內 ${…} 插值不得直接放資料欄位（須過 esc／r
   // 直接取欄位的寫法一律不得出現在模板字串裡
   assert.ok(!/\$\{\s*(r|x|j)\.[a-z_]+\s*\}/.test(code));
   assert.ok(!/<a\b|href=|target=/.test(sec), "本區段不得產生連結（來源欄網址為純文字）");
-  assert.ok(sec.includes('{ h:"來源", f:r => revTxt(r.src) }'));
+  assert.ok(sec.includes('{ h:"來源", f:r => revTxt(revSrcText(r.src)) }'));
+  assert.ok(!sec.includes("revTxt(r.src)"), "來源欄不得繞過 revSrcText");
   assert.ok(sec.includes('const revTxt = v => typeof v === "string" && v ? esc(v) : "—";'));
 });
 
-ok("個股表欄位＝規格 §5.4(c) 的 15 欄且順序一致；預設排序＝資料檔順序（不帶 sortI）", () => {
+ok("個股表欄位＝規格 §6.1 的 15 欄且順序一致（第一欄＝凍結欄＝代號，分類在名稱之後）；預設排序＝資料檔順序（不帶 sortI）", () => {
   const st = sec.slice(sec.indexOf("function revStockHtml("), sec.indexOf("function revRender("));
   const cols = [...st.matchAll(/\{ h:"([^"]+)",/g)].map(m => m[1]);
-  assert.deepEqual(cols, ["分類", "代號", "名稱", "次產業", "當月營收(億)", "月增%", "年增%", "預期季營收(億)", "預期季增%", "預期年增%",
+  assert.equal(cols[0], "代號", "tbl() 凍結第一欄，須為代號");
+  assert.deepEqual(cols, ["代號", "名稱", "分類", "次產業", "當月營收(億)", "月增%", "年增%", "預期季營收(億)", "預期季增%", "預期年增%",
     "達成率%", "正常進度%", "驚喜%", "基準層", "來源"]);
   assert.ok(!/sortI\s*:|sortD\s*:/.test(sec), "不帶 sortI／sortD＝資料檔順序");
   assert.ok(st.includes("], list);") && st.includes("revFilter(rows, REV.fCls, REV.fSec)"));
@@ -235,6 +238,144 @@ ok("hash：rm 只在 tab=revenue 讀寫；頂列 stats 於本 tab 清空", () =>
   assert.ok(html.includes('if (state.tab === "revenue") REV.hashRm = h.rm || "";'));
   assert.equal(html.split('"rm="').length, 3, "rm 寫出只有 currentHash 內兩處（已定月份／清單未到前保留原值）");
   assert.ok(/state\.tab === "pick2" \|\| state\.tab === "revenue"\)\{\n[^\n]*\n\s*el\.innerHTML = "";/.test(html));
+});
+
+// ---- 階段二之二（規格 §6）----
+const escSrc = html.match(/^const esc = s => [\s\S]*?;\n/m);
+assert.ok(escSrc, "找不到 esc 定義");
+const revTxtSrc = 'const revTxt = v => typeof v === "string" && v ? esc(v) : "—";';
+assert.ok(sec.includes(revTxtSrc));
+
+ok("revSrcText：去掉網址並修剪空白；只有網址→「—」；沒有網址原樣；經 revTxt 後仍會 esc", () => {
+  const sb2 = { revSrcText: S.revSrcText };
+  vm.createContext(sb2);
+  new vm.Script(escSrc[0] + revTxtSrc + "\nthis.cell = v => revTxt(revSrcText(v));").runInContext(sb2);
+  const cell = sb2.cell;
+  assert.equal(S.revSrcText("https://example.com/a?b=1#c"), "");
+  assert.equal(cell("https://example.com/a?b=1#c"), "—", "只有網址");
+  assert.equal(cell("  http://example.com  "), "—");
+  assert.equal(S.revSrcText("公司法說：Q4 營收季增 15%–20%（取中位數） https://example.com/x-1"), "公司法說：Q4 營收季增 15%–20%（取中位數）");
+  assert.equal(S.revSrcText("https://a.example/1 說明"), "說明", "網址在前");
+  const multi = S.revSrcText("甲 https://a.example/1 乙 HTTP://b.example/2\thttps://c.example/3");
+  assert.ok(!/https?:/i.test(multi) && multi.startsWith("甲") && multi.includes("乙") && multi === multi.trim(), multi);
+  assert.equal(cell("https://a.example/1 https://b.example/2"), "—", "多個網址且無其他文字");
+  assert.equal(S.revSrcText("模型"), "模型", "沒有網址原樣");
+  assert.equal(S.revSrcText("網址見 httpx 與 http 字樣"), "網址見 httpx 與 http 字樣", "不是網址的 http 字樣不動");
+  for (const v of [null, undefined, 1, {}, ["https://x"], ""]){ assert.equal(S.revSrcText(v), "", String(v)); assert.equal(cell(v), "—"); }
+  assert.equal(cell('<img src=x onerror=alert(1)> & "q" https://example.com/<script>'), "&lt;img src=x onerror=alert(1)&gt; &amp; &quot;q&quot;");
+  assert.equal(cell("<b>粗</b>"), "&lt;b&gt;粗&lt;/b&gt;");
+  // 實檔（若存在）：每個月份每一列的來源欄顯示文字都不含網址，且有來源說明的列不會變成「—」
+  const dir = path.join(ROOT, "data", "revenue");
+  for (const f of fs.existsSync(dir) ? fs.readdirSync(dir).filter(x => /^\d{4}-\d{2}\.json$/.test(x)) : []){
+    for (const r of JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")).rows){
+      const t = cell(r.src);
+      assert.ok(!/https?:\/\//i.test(t), f + " " + r.code);
+      if (typeof r.src === "string" && r.src.trim()) assert.notEqual(t, "—", f + " " + r.code);
+    }
+  }
+  for (const r of J.rows) assert.ok(!/https?:\/\//i.test(cell(r.src)), r.code);
+  assert.ok(J.rows.some(r => /https?:\/\//.test(r.src || "")), "樣本須含帶網址的來源，否則本測試失去鑑別力");
+});
+
+// 抽出 revLoadMonth／revSetMonth／revEnsure 原始碼，配假 loadJSON／render 在沙箱實跑（不依賴 DOM）
+const ctlSrc = sec.slice(sec.indexOf("function revLoadMonth("), sec.indexOf("const revSgn"));
+assert.ok(ctlSrc.includes("function revSetMonth(") && ctlSrc.includes("function revEnsure("));
+function mkCtl(){
+  const c = { state: { tab: "revenue" }, renders: 0, pend: {}, revPickMonth: S.revPickMonth, revIndex: S.revIndex, revMonthOk: S.revMonthOk };
+  c.render = () => { c.renders++; };
+  c.loadJSON = url => new Promise((res, rej) => { c.pend[url] = { res, rej }; });
+  vm.createContext(c);
+  new vm.Script(`const REV_BASE = "data/revenue/";
+const REV = { idx: null, idxErr: null, idxLoading: false, month: null, hashRm: null, cache: {}, err: {}, loading: {}, fCls: "all", fSec: "all" };
+${ctlSrc}
+Object.assign(this, { REV, revLoadMonth, revSetMonth, revEnsure });`).runInContext(c);
+  return c;
+}
+const tick = () => new Promise(r => setImmediate(r));
+const IDX = { months: ["2026-08", "2026-09", "2026-10"], latest: "2026-10" };
+const MJ = m => ({ month: m, rows: [] });
+const okAsync = async (name, f) => { await f(); n++; console.log("ok  ", name); };
+
+await okAsync("切月重設篩選（§6.3）：下拉／hash rm 換月都經 revSetMonth 退回「全部」；同月份重繪與同月 hash 不重設", async () => {
+  const code = sec.split("\n").filter(l => !/^\s*\/\//.test(l)).join("\n");
+  assert.equal((code.match(/REV\.month = /g) || []).length, 1, "REV.month 只在 revSetMonth 內賦值");
+  assert.ok(/function revSetMonth\(m\)\{\n\s*if \(m === REV\.month\) return;\n\s*REV\.month = m; REV\.fCls = "all"; REV\.fSec = "all";\n\}/.test(code));
+  assert.equal(code.split("revSetMonth(").length, 4, "定義＋revEnsure（hash／首次）＋下拉 listener");
+  assert.ok(code.includes("revSetMonth(m); render();"), "下拉 listener");
+  assert.ok(code.includes('else if (t.id === "revCls"){ REV.fCls = t.value; render(); }') && code.includes('else if (t.id === "revSec"){ REV.fSec = t.value; render(); }'),
+    "篩選下拉本身不碰月份");
+  // 實跑
+  const c = mkCtl(), REV = c.REV;
+  c.revEnsure(); c.pend["data/revenue/index.json"].res(IDX); await tick();
+  c.revEnsure();                                    // 首次：選最新月
+  assert.equal(REV.month, "2026-10");
+  REV.fCls = "Beat"; REV.fSec = "ABF載板";
+  c.revEnsure();                                    // 同月份重繪
+  assert.deepEqual([REV.month, REV.fCls, REV.fSec], ["2026-10", "Beat", "ABF載板"], "同月份重繪不重設");
+  c.revSetMonth("2026-10");
+  assert.deepEqual([REV.fCls, REV.fSec], ["Beat", "ABF載板"], "設成同一個月不重設");
+  REV.hashRm = "2026-10"; c.revEnsure();            // hashchange 但月份相同
+  assert.deepEqual([REV.month, REV.fCls, REV.fSec, REV.hashRm], ["2026-10", "Beat", "ABF載板", null], "hash 帶同一個月不重設");
+  c.revSetMonth("2026-09");                         // 下拉換月
+  assert.deepEqual([REV.month, REV.fCls, REV.fSec], ["2026-09", "all", "all"]);
+  REV.fCls = "Miss"; REV.fSec = "x";
+  REV.hashRm = "2026-08"; c.revEnsure();            // hash rm 換月
+  assert.deepEqual([REV.month, REV.fCls, REV.fSec], ["2026-08", "all", "all"]);
+  REV.fCls = "Miss";
+  REV.hashRm = "bogus"; c.revEnsure();              // 非法 rm → 退回最新月，也是換月
+  assert.deepEqual([REV.month, REV.fCls, REV.fSec], ["2026-10", "all", "all"]);
+  REV.fCls = "Miss"; c.revSetMonth("2026-09"); REV.fCls = "Beat";
+  REV.hashRm = ""; c.revEnsure();                   // hashchange 到不帶 rm（＝最新月）
+  assert.deepEqual([REV.month, REV.fCls], ["2026-10", "all"]);
+});
+
+await okAsync("晚到請求（§6.4）：月份檔完成時只有「仍在本 tab 且＝目前選定月份」才重繪，資料仍進快取；index 完成時只有仍在本 tab 才重繪", async () => {
+  const lm = sec.slice(sec.indexOf("function revLoadMonth("), sec.indexOf("function revSetMonth("));
+  assert.ok(lm.includes('.finally(() => { REV.loading[m] = false; if (state.tab === "revenue" && REV.month === m) render(); });'));
+  const ens = sec.slice(sec.indexOf("function revEnsure("), sec.indexOf("const revSgn"));
+  assert.ok(ens.includes('.finally(() => { REV.idxLoading = false; if (state.tab === "revenue") render(); });'));
+  const U = m => "data/revenue/" + m + ".json";
+  // (1) 第一次載入：index 回來重繪一次 → 選最新月並抓 → 月份檔回來再重繪一次
+  let c = mkCtl(), REV = c.REV;
+  c.revEnsure(); assert.equal(c.renders, 0);
+  c.pend["data/revenue/index.json"].res(IDX); await tick();
+  assert.equal(c.renders, 1, "index 完成要畫");
+  c.revEnsure(); assert.ok(c.pend[U("2026-10")] && REV.loading["2026-10"]);
+  c.pend[U("2026-10")].res(MJ("2026-10")); await tick();
+  assert.equal(c.renders, 2, "第一次載入完成要畫出來"); assert.ok(REV.cache["2026-10"]);
+  // (2) 正常切月：新月份載完要畫
+  c.revSetMonth("2026-09"); c.revEnsure();
+  c.pend[U("2026-09")].res(MJ("2026-09")); await tick();
+  assert.equal(c.renders, 3, "切月後新月份載入完成要畫出來");
+  // (3) 9 月在途時切到 8 月，8 月先回、9 月後回：9 月不重繪但進快取
+  c = mkCtl(); REV = c.REV;
+  c.revEnsure(); c.pend["data/revenue/index.json"].res(IDX); await tick();
+  REV.hashRm = "2026-09"; c.revEnsure();
+  c.revSetMonth("2026-08"); c.revEnsure();
+  assert.ok(REV.loading["2026-09"] && REV.loading["2026-08"]);
+  let r0 = c.renders;
+  c.pend[U("2026-08")].res(MJ("2026-08")); await tick();
+  assert.equal(c.renders, r0 + 1, "目前選定月份回來要畫");
+  c.pend[U("2026-09")].res(MJ("2026-09")); await tick();
+  assert.equal(c.renders, r0 + 1, "非選定月份晚到不得重繪");
+  assert.ok(REV.cache["2026-09"] && REV.loading["2026-09"] === false, "晚到的資料仍進快取");
+  assert.equal(REV.month, "2026-08");
+  // (4) 晚到且失敗／形狀不符：一樣記錯、不重繪
+  c.revSetMonth("2026-10"); c.revEnsure(); c.revSetMonth("2026-08");
+  r0 = c.renders;
+  c.pend[U("2026-10")].rej(new Error("404")); await tick();
+  assert.equal(c.renders, r0); assert.ok("2026-10" in REV.err);
+  // (5) 請求在途時切到別的 tab：月份檔與 index 回來都不重繪（不會去重畫別的 tab），回到本 tab 時資料已在快取
+  c = mkCtl(); REV = c.REV;
+  c.revEnsure(); c.state.tab = "screen";
+  c.pend["data/revenue/index.json"].res(IDX); await tick();
+  assert.equal(c.renders, 0, "index 晚到、已離開本 tab"); assert.ok(REV.idx);
+  c.state.tab = "revenue"; c.revEnsure(); c.state.tab = "screen";
+  c.pend[U("2026-10")].res(MJ("2026-10")); await tick();
+  assert.equal(c.renders, 0, "月份檔晚到、已離開本 tab"); assert.ok(REV.cache["2026-10"]);
+  // (6) index 失敗：仍在本 tab 要重繪（顯示失敗訊息）
+  c = mkCtl(); c.revEnsure(); c.pend["data/revenue/index.json"].rej(new Error("404")); await tick();
+  assert.equal(c.renders, 1); assert.ok(c.REV.idxErr);
 });
 
 console.log(`\n${n} passed`);

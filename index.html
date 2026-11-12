@@ -2748,7 +2748,7 @@ function sentRender(){
   main.innerHTML = h;
 }
 
-// ================= 月營收 tab（revenue，2026-11-12 階段二；第 19 個 tab，排在「市場情緒」之後；規格 docs/revenue-beatmiss.md §5）=================
+// ================= 月營收 tab（revenue，2026-11-12 階段二；第 19 個 tab，排在「市場情緒」之後；規格 docs/revenue-beatmiss.md §5／§6）=================
 // 資料：本站 data/revenue/index.json（months 升序＋latest）與 data/revenue/<YYYY-MM>.json（src/build_revenue.py 產出），
 // 同源相對路徑、CSP 未改。**只在切到本 tab 時才抓**（首屏零新增請求）：先 index 再選定月份檔；in-flight 去重、
 // 失敗記錯不重試、畫面一句話說明、不拋錯。
@@ -2757,6 +2757,10 @@ function sentRender(){
 // 分類一律中性色文字標籤、不新增燈號；漲跌著色只用在月增%／年增%／驚喜%（sgn()）。
 // 外來字串插 innerHTML 一律 esc()；數值一律 typeof number＋isFinite 後 toFixed，否則「—」；來源欄網址不轉連結。
 // 每段自帶資料月份與產出時刻（頂列 stats 清空）；不接休市行事曆、不做「今天」判斷。CSS 一律 .rev-* 前綴。
+// **階段二之二（2026-11-12，規格 §6）**：①個股表第一欄（tbl() 的凍結欄）＝代號，分類移到名稱之後；
+// ②來源欄畫面上去掉網址（revSrcText()，資料檔不改）；③月份改變（下拉／hash rm／hashchange）一律經 revSetMonth()，
+// 分類與次產業篩選退回「全部」，同月份內重繪不重設；④月份檔請求完成時只有「仍在本 tab 且該月份＝目前選定月份」才重繪
+// （資料照樣進快取），index.json 請求完成時只有仍在本 tab 才重繪。
 const REV_BASE = "data/revenue/";
 const REV = { idx: null, idxErr: null, idxLoading: false, month: null, hashRm: null,
   cache: {}, err: {}, loading: {}, fCls: "all", fSec: "all" };
@@ -2831,6 +2835,11 @@ function revThText(th){
     + `高預期＝預期年增 ≥${f("hi_yoy")}% 或預期季增 ≥${f("hi_qoq")}%；低預期＝預期年增或預期季增 ≤−${a("lo")}%。`
     + `次產業年增率與上月相差達 ${f("sector_delta")} 個百分點標「加速／減速」。C 層的預期高低是模型推估，不等於分析師實際預期。`;
 }
+// 來源欄顯示用（規格 §6.2）：去掉網址（https?:// 起至下一個空白或字串結尾）並修剪前後空白；非字串或去掉後為空回 ""
+// （呼叫端 revTxt() 把 "" 顯示成「—」並做 esc()）。只影響畫面，資料檔仍保留網址。
+function revSrcText(v){
+  return typeof v === "string" ? v.replace(/https?:\/\/\S*/gi, "").trim() : "";
+}
 // ---- rev-pure:end ----
 
 function revLoadMonth(m){
@@ -2839,7 +2848,13 @@ function revLoadMonth(m){
   loadJSON(REV_BASE + m + ".json")     // m 已過 revPickMonth 白名單（^\d{4}-\d{2}$ 且在 index.months 內）
     .then(j => { if (revMonthOk(j, m)) REV.cache[m] = j; else REV.err[m] = "shape"; })
     .catch(e => { REV.err[m] = e; })
-    .finally(() => { REV.loading[m] = false; if (state.tab === "revenue") render(); });
+    // 晚到的請求不亂重繪（規格 §6.4）：資料已進快取；只有仍在本 tab 且 m 仍是目前選定月份才重繪
+    .finally(() => { REV.loading[m] = false; if (state.tab === "revenue" && REV.month === m) render(); });
+}
+// 月份改變的唯一入口（規格 §6.3）：真的換了月份才把分類／次產業篩選退回「全部」；同月份不動篩選
+function revSetMonth(m){
+  if (m === REV.month) return;
+  REV.month = m; REV.fCls = "all"; REV.fSec = "all";
 }
 function revEnsure(){
   if (!REV.idx){
@@ -2854,7 +2869,7 @@ function revEnsure(){
   if (!REV.idx.months.length || !REV.idx.latest) return;     // 尚無資料
   if (REV.hashRm !== null || !REV.month){
     // 網址帶入的 rm（或尚未選月）：不在白名單內靜默退回最新月；hashRm===null 表示已套用過
-    REV.month = revPickMonth(REV.hashRm !== null ? REV.hashRm : REV.month, REV.idx.months) || REV.idx.latest;
+    revSetMonth(revPickMonth(REV.hashRm !== null ? REV.hashRm : REV.month, REV.idx.months) || REV.idx.latest);
     REV.hashRm = null;
   }
   revLoadMonth(REV.month);
@@ -2902,9 +2917,9 @@ function revStockHtml(rows){
     + `<span class="rev-lbl">${list.length}／${rows.length} 檔</span></div>`;
   if (!list.length) return h + `<div class="rev-empty">此篩選條件下沒有個股</div>`;
   return h + tbl([
-    { h:"分類", f:r => `<span class="rev-cls">${revTxt(r.cls)}</span>` },
-    { h:"代號", f:r => `<span class="code">${esc(r.code)}</span>` },
+    { h:"代號", f:r => `<span class="code">${esc(r.code)}</span>` },     // 第一欄＝tbl() 的凍結欄（規格 §6.1）
     { h:"名稱", f:r => revTxt(r.name) },
+    { h:"分類", f:r => `<span class="rev-cls">${revTxt(r.cls)}</span>` },
     { h:"次產業", f:r => revTxt(r.sector) },
     { h:"當月營收(億)", f:r => revFmt(r.rev, 2) },
     { h:"月增%", f:r => revSgn(r.mom, 1) },
@@ -2916,7 +2931,7 @@ function revStockHtml(rows){
     { h:"正常進度%", f:r => revFmt(r.norm, 1) },
     { h:"驚喜%", f:r => revSgn(r.sur, 1) },
     { h:"基準層", f:r => revTxt(r.layer) },
-    { h:"來源", f:r => revTxt(r.src) },     // 純文字：網址不轉連結（規格 §5.7）
+    { h:"來源", f:r => revTxt(revSrcText(r.src)) },     // 純文字、去掉網址只留說明（規格 §5.7／§6.2）
   ], list);
 }
 function revRender(){
@@ -2964,7 +2979,7 @@ document.addEventListener("change", e => {
   if (t.id === "revMonth"){
     const m = revPickMonth(t.value, REV.idx ? REV.idx.months : []);
     if (!m) return;
-    REV.month = m; render();
+    revSetMonth(m); render();
   } else if (t.id === "revCls"){ REV.fCls = t.value; render(); }
   else if (t.id === "revSec"){ REV.fSec = t.value; render(); }
 });
