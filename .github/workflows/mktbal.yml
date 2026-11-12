@@ -50,11 +50,27 @@ jobs:
             python src/build_mktbal.py
           fi
 
+      # 市場總覽交集表第二班（見 diag.yml 同名步驟與 docs/market-overview.md）：mktbal 是晚場鏈最後一棒，
+      # 這班補上 diag 那班之後才落地的上游（例：主動 ETF、輪動雷達日頻序列）。內容沒變就不重寫檔、不產生 commit。
+      # 失敗不擋 mktbal 主產物，commit 之後再轉紅。backfill 手動班不跑。
+      - name: Build overview
+        id: overview
+        if: inputs.backfill != true
+        continue-on-error: true
+        run: python src/build_overview.py
+
       - name: Commit and push
         uses: ./.github/actions/commit-data
         with:
-          paths: data/market_balance_history.json
+          paths: data/market_balance_history.json data/overview
           message: "data: mktbal"
+          add_all: "true"
+
+      - name: Fail if overview failed
+        if: always() && steps.overview.outcome == 'failure'
+        run: |
+          echo "::error::build_overview 失敗（data/overview 未更新；mktbal 已照常 commit），詳見「Build overview」步驟 log"
+          exit 1
 
       - name: Notify failure
         # cancelled 也要告警：跑一半被取消（GitHub 端異常或誤按）同樣代表該場沒產出，
