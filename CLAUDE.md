@@ -276,7 +276,15 @@
     taiwan-flows `data/totals.json`（`dates`／`rows[d].tse|otc.*_k`）與 `data/futures/<日>.json`（`cols`／`rows`）、taiwan-stock-news `daily-brief-card.json`（`top3`／`positioning`／`date`）；
     後端讀 taiwan-flows `sector_ranges_lite.json`（r5／r20 chain total）與 `latest.json`（`pages.sync.sync_buy`／`sync_sell`）、taiwan-flow-live-v2 `aetf/diff.json`（`stocks[].by`／`subs`／`primary_date`）、
     `morning.json`（`signals`／`recap.baseline_date`）、`chain_daily/series.json`、`classify.json`（`map[].p`）。
-    測試 `tests/test_overview_frontend.mjs`（25 項，pytest 由 `tests/test_overview_frontend.py` 代跑）＋`tests/test_overview_build.py`（39 項）。
+    **我的持股對照（2026-11-13，使用者裁定「暫以最小作法」；規格與實作定案 `docs/market-overview.md` §7）**：個股交集表之後的一段（`.ov-myhold`），
+    列出持股清單中出現在流入側／流出側**個股層**來源的個股（兩側並列、不受上方切換影響；列順序＝持股清單原順序，**不排序、不計分、不加燈號**；
+    未命中只計數；類股層未做）。純函式 `ovHoldLayer`／`ovHoldMatch`（grep `function ovHoldMatch(`，在 `ov-pure` 區段），渲染 `function ovHoldHtml`，
+    持股讀取 `function ovHoldCodes`＝沿用 `diagHoldings()`＋`HOLD_CODE_RE`。只用計入的來源（`stale`／失敗／另列／不納入者不對照）；
+    「在交集表內」直接取資料檔該側 `stocks.rows`（群組數 ≥2，前端不重算）；`out` 缺時只對照流入側。四種狀態（未設定持股／資料檔讀不到／全部未命中／正常）都逐字顯示標示句。
+    **隱私硬約束（約定 6）**：本段零新增網路請求、不寫 localStorage／sessionStorage、持股代號不進任何 URL／hash／history／請求；
+    **個股欄不得放 `stkBtn`／`nameCell`**（開側欄會把代號寫進網址 `stock=`）、不得產生連結；「前往持股診斷」鈕（`data-ovgo="diag"`）只改 `state.tab`。
+    `build_overview.py` 與資料檔 schema 未動。
+    測試 `tests/test_overview_frontend.mjs`（31 項，pytest 由 `tests/test_overview_frontend.py` 代跑）＋`tests/test_overview_build.py`（39 項）。
     本機驗證同籌碼雷達（http.server 起在上一層）。
   - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
     `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／

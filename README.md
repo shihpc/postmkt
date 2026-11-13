@@ -7,6 +7,7 @@
 
 | Tab | 資料源 | 內容 |
 |---|---|---|
+| 市場總覽 | 盤勢七項讀既有同源檔；交集表讀本站 `data/overview/latest.json`（`src/build_overview.py`，頂層 `sectors`／`stocks`＝資金流入側、`out:{sectors,stocks}`＝資金流出側） | 盤勢七項（描述性）＋類股／個股交集表（兩側切換）＋「我的持股對照」（持股只在本機比對、不外送）；交集排序無回測依據，畫面標「AI 研判，未經回測，非保證」。規格 `docs/market-overview.md` |
 | 摘要分析 | 前端彙整以下各 tab ＋ 即時呼叫 Anthropic Claude API | AI 生成以查找 alpha 標的為目標的洞見（首頁預設 tab） |
 | 彙總分析 | 三頁面（本站盤後/即時類股/新聞晨報）context × Sonnet5 各 1 次 ＝ 3 份摘要 → Opus4.8 彙總（自動場走 Message Batches 半價） | 跨份共振精粹 alpha：方向預測＋進出建議；手動一鍵（近2次存瀏覽器）＋自動場（近3日、讀 `data/summary/`） |
 | 主動ETF | taiwan-flow-live-v2 `data/aetf/`（跨 repo 唯讀，資料源 FinMind、20+ 檔） | 每日投組快照、主動加減碼**兩欄並列**（主動純額 net_active｜含申贖 raw_change）、進出個股、次產業流向（含ETF名稱）；點 ETF 一律可展開，先看**最新持股組合**（標持股基準日）再看加減碼明細（標資料日，無加減碼顯示「今日無主動加減碼」）；彙整含跨ETF共識與「主動 vs 含申贖」解讀 |

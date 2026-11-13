@@ -171,6 +171,7 @@
 | `generated_at` | 產出時刻（內容沒變時不重寫，所以可能早於當晚最後一次執行） | 台北 +08:00 | 時刻 |
 | `date` | 交集表日期＝個股層基準日（taiwan-flows `latest.date`），缺則類股層基準日 | — | 交易日 |
 | `sectors.base_date`／`stocks.base_date` | 各層基準來源（A／a）的資料日；日頻來源須與它相同才計入 | — | 交易日 |
+| `out.sectors.*`／`out.stocks.*` | 資金流出側（2026-11-13 起；舊檔沒有 `out`），欄位與語意同流入側，`base_date` 取流出側自己的基準來源（A′／a′） | — | 同流入側 |
 | `sources[].date` | 該來源自己的資料日；`d` 是營收月份 `YYYY-MM`、`e` 是集保資料日（週頻）、`D` 是 `morning.json` 的 `recap.baseline_date`（前一交易日） | — | 依來源 |
 
 ### data/analyses/*.json（前端手動分析雲端存檔）
