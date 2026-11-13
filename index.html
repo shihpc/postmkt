@@ -414,9 +414,11 @@
   .ov-ttl{font-weight:700;font-size:.92rem;color:var(--txt);margin-bottom:4px;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
   .ov-date{color:var(--muted);font-weight:400;font-size:.72rem}
   .ov-ai{font-size:.68rem;font-weight:600;color:var(--txt);border:1px solid var(--txt);border-radius:6px;padding:0 5px}
-  .ov-kv{display:grid;grid-template-columns:auto 1fr;gap:1px 12px;font-size:.8rem}
+  /* 標籤欄最多 46%、數值欄保底拿其餘寬度：原本 auto 1fr 在窄螢幕遇到長標籤（含日期）時，
+     卡片的 overflow-wrap:anywhere 讓數值欄的最小寬度塌成一個字 → 數字被一字一行直排（2026-11-13 使用者回報） */
+  .ov-kv{display:grid;grid-template-columns:fit-content(46%) minmax(0,1fr);gap:1px 12px;font-size:.8rem}
   .ov-kv span{color:var(--muted)}
-  .ov-kv b{color:var(--txt);font-weight:600}
+  .ov-kv b{color:var(--txt);font-weight:600;overflow-wrap:break-word}
   .ov-row{margin-top:4px}
   .ov-lbl{color:var(--muted);font-size:.76rem;margin-top:4px}
   .ov-list{display:flex;flex-wrap:wrap;gap:2px 14px}
