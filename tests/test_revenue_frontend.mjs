@@ -129,7 +129,7 @@ ok("revThText：門檻取資料檔 thresholds；缺值顯示「—」、不拋�
 });
 
 // ---- 靜態檢查（讀碼）----
-ok("index.html 內嵌 script 整段可編譯（語法錯誤會讓全站 19 個 tab 一起掛掉）", () => {
+ok("index.html 內嵌 script 整段可編譯（語法錯誤會讓全站 20 個 tab 一起掛掉）", () => {
   const m = html.match(/<script>([\s\S]*)<\/script>/);
   assert.ok(m, "找不到內嵌 <script>");
   new vm.Script(m[1], { filename: "index.html<script>" });   // 只編譯、不執行
@@ -140,10 +140,10 @@ assert.ok(secStart > 0 && secEnd > secStart, "找不到月營收 tab 區段");
 assert.ok(secStart > html.indexOf("// ================= 市場情緒 tab"), "月營收區段須接在市場情緒之後");
 const sec = html.slice(secStart, secEnd);
 
-ok("tab 順序：revenue 排在 sentiment 之後、dates 之前；共 19 個", () => {
+ok("tab 順序：revenue 排在 sentiment 之後、dates 之前；共 20 個（2026-11-12 加市場總覽 overview）", () => {
   const body = html.slice(html.indexOf("const TABS = ["), html.indexOf("];", html.indexOf("const TABS = [")));
   const tabs = [...body.matchAll(/\["([a-z0-9]+)","([^"]+)"\]/g)].map(m => [m[1], m[2]]);
-  assert.equal(tabs.length, 19);
+  assert.equal(tabs.length, 20);
   assert.deepEqual(tabs.slice(-3), [["sentiment", "市場情緒"], ["revenue", "月營收"], ["dates", "日期"]]);
   const sub = html.match(/^\s*revenue:"([^"]*)",/m);
   assert.ok(sub && sub[1].includes("AI 研判，未經回測，非保證"), "SUBS.revenue 須帶標示句");

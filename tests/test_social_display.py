@@ -199,8 +199,8 @@ def test_disclaimer_and_tab_order():
     body = body[:body.index("];")]
     tabs = re.findall(r'\["([a-z]+)",', body)
     # 2026-09-29 加市場情緒 sentiment（social 之後、dates 之前）；2026-11-12 加月營收 revenue（sentiment 之後、dates 之前）。
-    # 此 regex 只收純小寫 id，pick2 含數字不計入，所以是 18 而非 19
-    assert len(tabs) == 18
+    # 2026-11-12 另加市場總覽 overview（排在最前）。此 regex 只收純小寫 id，pick2 含數字不計入，所以是 19 而非 20
+    assert len(tabs) == 19
     assert tabs[-5:] == ["chipradar", "social", "sentiment", "revenue", "dates"]
     assert "const HASH_TABS = new Set(TABS.map(t => t[0]));" in s
 

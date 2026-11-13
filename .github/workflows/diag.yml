@@ -72,12 +72,21 @@ jobs:
         continue-on-error: true
         run: python src/build_pick2.py
 
+      # 市場總覽交集表（2026-11-12 使用者裁定標示後先上線；無回測依據，見 docs/market-overview.md）：
+      # 讀本 repo diag／pick2 track／revenue ＋ taiwan-flows、taiwan-flow-live-v2 的 raw main 公開檔（免 token）
+      # → data/overview/latest.json＋daily/<date>.json。排在 pick2 之後（track.json 為本班剛產的版本）。
+      # 內容（generated_at 以外）沒變就不重寫檔；失敗不擋 diag 主產物，commit 之後再由「Fail if overview failed」轉紅。
+      - name: Build overview
+        id: overview
+        continue-on-error: true
+        run: python src/build_overview.py
+
       - name: Commit and push
         uses: ./.github/actions/commit-data
         with:
-          paths: data/diag data/screen data/pick2
+          paths: data/diag data/screen data/pick2 data/overview
           message: "data: diag"
-          # data/screen 在 screen abort、data/pick2 在 pick2 失敗（皆不寫檔）時可能不存在，add_all 逐路徑容錯不致 pathspec 報錯
+          # data/screen 在 screen abort、data/pick2 在 pick2 失敗、data/overview 在 overview 失敗（皆不寫檔）時可能不存在，add_all 逐路徑容錯不致 pathspec 報錯
           add_all: "true"
 
       # 必須排在 commit 之後、notify 之前：diag／screen 已落地，這步只負責把 job 轉紅，下一步 failure() 成立即告警
@@ -85,6 +94,12 @@ jobs:
         if: steps.pick2.outcome == 'failure'
         run: |
           echo "::error::build_pick2 失敗（data/pick2 未更新；diag／screen 已照常 commit），詳見「Build pick2 track」步驟 log"
+          exit 1
+
+      - name: Fail if overview failed
+        if: always() && steps.overview.outcome == 'failure'
+        run: |
+          echo "::error::build_overview 失敗（data/overview 未更新；其餘產物已照常 commit），詳見「Build overview」步驟 log"
           exit 1
 
       - name: Notify failure

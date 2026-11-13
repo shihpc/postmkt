@@ -134,7 +134,8 @@ def H():
 def test_hash_tabs_include_moved(H):
     # 2026-09-29 加市場情緒 sentiment（排在 social 之後、dates 之前）；2026-10-14 加選股二 pick2；
     # 2026-11-12 加月營收 revenue（排在 sentiment 之後、dates 之前）
-    assert len(H["tabs"]) == 19
+    assert len(H["tabs"]) == 20   # 2026-11-12 加市場總覽 overview（排在最前，預設 tab 仍是 insight）
+    assert H["tabs"][0] == "overview"
     assert H["tabs"][H["tabs"].index("screen") + 1] == "pick2"   # 選股二排在選股之後
     assert H["tabs"][-5:] == ["chipradar", "social", "sentiment", "revenue", "dates"]
     assert "mychg" in H["tabs"] and "radar" not in H["tabs"]
