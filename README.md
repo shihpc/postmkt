@@ -109,7 +109,7 @@
 - `src/build_revenue.py`：月營收 Beat／Miss 管線（2026-11-12 階段一，規格與驗收條件 `docs/revenue-beatmiss.md`）。
   逐檔抓 FinMind `TaiwanStockMonthRevenue`，對 `data/revenue/universe.json` 的科技／半導體股算「季累計達成率 vs 預期」，
   輸出 `data/revenue/<YYYY-MM>.json`＋`index.json`。預期基準＝`data/revenue/expect.json`（A 公司財測／B 媒體引用預估，人工維護）
-  或模型（C）。`.github/workflows/revenue.yml`：每月 11–16 日 07:30 台北（只有 GitHub cron、無 Worker 觸發），內容相同不重寫檔。
+  或模型（C）。`.github/workflows/revenue.yml`：**主觸發＝taiwan-flow-live-v2 Worker**（2026-11-13 起；台北每月 11–16 日 07:13 檢查 `data/revenue/index.json` 的 `latest` 是否已到上個月，未到即 workflow_dispatch，規格見該 repo `docs/revenue-trigger.md`），**GitHub cron 每月 11–16 日 07:30 台北保留為兜底**（也是上個月已產出後晚報／更正重算的唯一來源）；內容相同不重寫檔。
   前端「月營收」tab（2026-11-12 階段二）讀這兩種檔：`rows[]`／`sectors[]`／`missing[]`／`thresholds`／`label`／`tsmc_yoy`／`reported_n`／`universe_n`／`generated_at`
   與 `index.json` 的 `months`／`latest` 改名或改語意＝要同步改 `index.html` 的「月營收 tab」區段。
 - `src/backtest_revenue.py`：月營收 Beat／Miss 回測（2026-11-13 階段三；設計、預先登錄判準與驗收條件 `docs/revenue-beatmiss.md` §7）。

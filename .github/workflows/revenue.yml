@@ -2,6 +2,10 @@ name: build revenue data
 
 # 月營收 Beat／Miss（規格 docs/revenue-beatmiss.md）。申報期限＝每月 10 日、遇假日順延，
 # 故每月 11–16 日 07:30 台北各跑一次：涵蓋順延與晚報；內容相同時 builder 不重寫檔、不產生 commit。
+# 觸發分工（2026-11-13 起，規格 taiwan-flow-live-v2 docs/revenue-trigger.md）：**主觸發＝taiwan-flow-live-v2 Cloudflare Worker**
+# （cron "13 23 10-15 * *"＝台北每月 11–16 日 07:13，檢查 data/revenue/index.json 的 latest 是否已到上個月，未到即 workflow_dispatch 本檔）；
+# 下方 schedule 保留為**兜底**（GitHub 排程可能延遲數小時或整次跳過），同時是「上個月已產出後」晚報公司與數字更正的唯一重算來源。
+# 兩邊交錯無害：concurrency group 序列化、內容相同不寫檔。
 on:
   schedule:
     - cron: "30 23 10-15 * *"   # UTC 10–15 日 23:30 ＝ 台北 11–16 日 07:30
