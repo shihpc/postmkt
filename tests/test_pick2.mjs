@@ -76,7 +76,7 @@ ok("pk2ParseCsv：CRLF、空欄、尾端空行、欄數不足、壞代號整列�
   assert.deepEqual(R(S.pk2ParseCsv("market,code,date,close,r5,r20,above60,ext,slope60").rows), []);
 });
 
-ok("pk2ParseCsv：真實 taiwan-backtest latest.csv（若存在）117 列全收", () => {
+ok("pk2ParseCsv：真實 taiwan-backtest latest.csv（若存在）全收（候選池每月浮動，不寫死列數）", () => {
   const p = path.join(ROOT, "..", "taiwan-backtest", "output", "aisc", "daily", "latest.csv");
   if (!fs.existsSync(p)){ console.log("     （略過：找不到 ../taiwan-backtest/output/aisc/daily/latest.csv）"); return; }
   const c = S.pk2ParseCsv(fs.readFileSync(p, "utf8"));
@@ -91,8 +91,22 @@ ok("pk2Universe：代號白名單、去重、TW 在前；形狀不對回 null", 
   for (const j of [null, [], "x", {}, { TW: "a" }]) assert.equal(S.pk2Universe(j), null, JSON.stringify(j));
   const p = path.join(ROOT, "..", "taiwan-backtest", "aisc", "universe.json");
   if (fs.existsSync(p)){
-    const u = S.pk2Universe(JSON.parse(fs.readFileSync(p, "utf8")));
-    assert.equal(u.length, 117, "現行 universe 117 檔（台股 93＋美股 24）");
+    // 候選池台股每月換池（taiwan-backtest aisc/universe_refresh.py），檔數會變——不寫死總數（原寫死 117，2026-11-11 換池後為 121 而長紅）。
+    // 改驗「檔內每一筆合法且不重複的代號都被收進來」：期望值由這裡獨立算出，不經 pk2Universe。
+    const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+    const u = S.pk2Universe(raw);
+    const RE = { TW: /^\d{4}[0-9A-Z]{0,2}$/, US: /^[A-Z]{1,5}$/ };
+    const want = [];
+    for (const m of ["TW", "US"]){
+      const seen = new Set();
+      for (const x of raw[m]){
+        const c = x && typeof x.code === "string" ? x.code.trim().toUpperCase() : "";
+        if (RE[m].test(c) && !seen.has(c)){ seen.add(c); want.push(m + ":" + c); }
+      }
+    }
+    assert.ok(want.length >= 50, "真實 universe 檔數異常偏少：" + want.length);
+    assert.deepEqual(R(u).map(x => x.m + ":" + x.code), want);
+    assert.equal(raw.US.length, 24, "美股 24 檔為 2026-10-02 凍結（universe.json note）");
   }
 });
 

@@ -224,7 +224,7 @@
     `user.json`；「加入追蹤／停止追蹤」（2026-10-23 由「刪除」改名）以記憶體 `CRED.gh`（`ghToken()`）對 Contents API 追加寫 `data/pick2/user.json`（帶 sha、409 重試、
     壞檔拒寫），**新寫的函式，三站同步碼 `ghSaveAnalysis` 未動**；PAT 只進 header。**本站因此有一個外部消費者**：taiwan-flow-live-v2 Worker
     讀 raw main `data/pick2/track.json` 推 LINE——`track.json`／`user.json`／`daily/*.json` 欄位改名或改語意＝跨站變更。
-    測試 `tests/test_pick2.mjs`（40 項；pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest／taiwan-stock-iching checkout 另驗真實 universe 117 檔、latest.csv 與易經 latest.json）＋`tests/test_pick2_build.py`（20 項）。
+    測試 `tests/test_pick2.mjs`（40 項；pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest／taiwan-stock-iching checkout 另驗真實 universe（檔數每月浮動、不寫死；驗檔內合法代號全收、美股 24 檔凍結）、latest.csv 與易經 latest.json）＋`tests/test_pick2_build.py`（20 項）。
     本機驗證同籌碼雷達（http.server 起在上一層，`../taiwan-backtest/` 才可達）。
   - **月營收 `revenue`（2026-11-12 階段二新增，第 19 個 tab，排在 `sentiment` 之後、`dates` 之前；規格與驗收條件正本
     `docs/revenue-beatmiss.md` §5）**：`index.html` grep `// ================= 月營收 tab`（接在市場情緒之後、「日期 tab」之前）；
