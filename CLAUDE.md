@@ -224,7 +224,7 @@
     `user.json`；「加入追蹤／停止追蹤」（2026-10-23 由「刪除」改名）以記憶體 `CRED.gh`（`ghToken()`）對 Contents API 追加寫 `data/pick2/user.json`（帶 sha、409 重試、
     壞檔拒寫），**新寫的函式，三站同步碼 `ghSaveAnalysis` 未動**；PAT 只進 header。**本站因此有一個外部消費者**：taiwan-flow-live-v2 Worker
     讀 raw main `data/pick2/track.json` 推 LINE——`track.json`／`user.json`／`daily/*.json` 欄位改名或改語意＝跨站變更。
-    測試 `tests/test_pick2.mjs`（40 項；pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest／taiwan-stock-iching checkout 另驗真實 universe 117 檔、latest.csv 與易經 latest.json）＋`tests/test_pick2_build.py`（20 項）。
+    測試 `tests/test_pick2.mjs`（40 項；pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest／taiwan-stock-iching checkout 另驗真實 universe（檔數每月浮動、不寫死；驗檔內合法代號全收、美股 24 檔凍結）、latest.csv 與易經 latest.json）＋`tests/test_pick2_build.py`（20 項）。
     本機驗證同籌碼雷達（http.server 起在上一層，`../taiwan-backtest/` 才可達）。
   - **月營收 `revenue`（2026-11-12 階段二新增，第 19 個 tab，排在 `sentiment` 之後、`dates` 之前；規格與驗收條件正本
     `docs/revenue-beatmiss.md` §5）**：`index.html` grep `// ================= 月營收 tab`（接在市場情緒之後、「日期 tab」之前）；
@@ -266,7 +266,7 @@
     6、7 標「AI 研判」。②**類股交集**③**個股交集**：後端 `src/build_overview.py` → `data/overview/latest.json`，**前端只渲染、不重算**。
     **鐵律 8（使用者 2026-11-12 裁定：無回測依據、標示後先上線）**：交集表依「出現在幾個來源清單」排序是新的候選排序；載入中／讀取失敗／正常三種狀態
     都逐字顯示「AI 研判，未經回測，非保證」（`OV_LABEL`／`ovLabel()`），每日快照 `data/overview/daily/<date>.json` 留存供事後驗證，結論出來前不得拿掉標示；
-    **只做偏多（資金流入）側**。**計票群組**：「出現清單數」以群組計——類股來源 A（r5 淨買前 10）與 B（籌碼雷達加速流入）讀同檔同窗、不獨立，
+    **兩側（2026-11-13 起）**：資金流入側（資料檔頂層 `sectors`／`stocks`，A–E／a–f）＋**資金流出側**（頂層 `out:{sectors,stocks}`，流入側各來源的鏡像，定案見 `docs/market-overview.md` §6.1：A′ 淨賣前 10、B′ `acc_out`（與 A′ 同組）、C′ 次產業減碼前 10、E′ 連續 3 日「轉弱」或「落後」、a′ `sync_sell`、b′ `nSellers>=2`、d′ Miss 類、e′ `radarHolders().down`；D′（`signals` 無退潮類訊號）與 c′（追蹤名單只有選入）無對應來源、以 `excluded` 列出）。後端是**同一份實作換方向參數**（`SIDES`，來源函式的 `side` 參數），schema 仍為 1、只增不改，流入側輸出逐位不變由 `tests/fixtures/overview_inflow_golden.json` 守門。前端交集區有「資金流入側／資金流出側」切換（`OV.side`，預設流入側，**只存記憶體、不進 hash／localStorage**，切換不發請求；純函式 `ovSide()`）；資料檔沒有 `out`（舊檔）時流出側顯示「尚無資料」、流入側照常。**用語一律「資金流出側」，畫面與文件不得寫成放空／賣出建議**（測試讀碼守門）；兩側、三種狀態都顯示標示句。**計票群組**：「出現清單數」以群組計——類股來源 A（r5 淨買前 10）與 B（籌碼雷達加速流入）讀同檔同窗、不獨立，
     併為「法人資金流」一組只算 1 票（後端 `GROUP_NAMES`／來源的 `group` 欄；畫面來源欄仍分別標 A、B）；連湧／新湧（D）晚間建置時資料日是前一交易日 → 另列不計入；**隔天早上 `morning.json` 更新後若再建置則計入**（2026-11-13 線上實證，類股列 4→6；原寫「恆為另列」已更正），故同一基準日的每日快照以最後一次寫入為準、可能前後不同（`docs/market-overview.md` §3.4）。
     **硬約束**：盤勢 1–5 的渲染函式不得出現偏多／偏空／建議等字樣（來源檔自帶文字原樣顯示並標來源；測試讀碼守門）；
     著色只經 `sgn()` 用在漲跌與買賣超正負；出現清單數中性色、不加燈號；外來字串一律 `esc()`、數值一律 `ovNum()`；彙總檔名過 `OV_SUMFILE_RE`。
@@ -274,9 +274,9 @@
     CSS 一律 `.ov-*`；不加新 hash key；頂列 stats 清空。**未動 `tbl()`**。
     **本站因此新增為下列檔案的消費者（改名或改語意＝跨站變更）**：前端讀 taiwan-flow-live-v2 `data/daysummary/latest.json`（`index`／`breadth`／`subs_top5`／`subs_bot3`／`tone`／`date`）、
     taiwan-flows `data/totals.json`（`dates`／`rows[d].tse|otc.*_k`）與 `data/futures/<日>.json`（`cols`／`rows`）、taiwan-stock-news `daily-brief-card.json`（`top3`／`positioning`／`date`）；
-    後端讀 taiwan-flows `sector_ranges_lite.json`（r5／r20 chain total）與 `latest.json`（`pages.sync.sync_buy`）、taiwan-flow-live-v2 `aetf/diff.json`（`stocks[].by`／`subs`／`primary_date`）、
+    後端讀 taiwan-flows `sector_ranges_lite.json`（r5／r20 chain total）與 `latest.json`（`pages.sync.sync_buy`／`sync_sell`）、taiwan-flow-live-v2 `aetf/diff.json`（`stocks[].by`／`subs`／`primary_date`）、
     `morning.json`（`signals`／`recap.baseline_date`）、`chain_daily/series.json`、`classify.json`（`map[].p`）。
-    測試 `tests/test_overview_frontend.mjs`（22 項，pytest 由 `tests/test_overview_frontend.py` 代跑）＋`tests/test_overview_build.py`（28 項）。
+    測試 `tests/test_overview_frontend.mjs`（25 項，pytest 由 `tests/test_overview_frontend.py` 代跑）＋`tests/test_overview_build.py`（39 項）。
     本機驗證同籌碼雷達（http.server 起在上一層）。
   - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
     `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／
@@ -331,7 +331,7 @@
 - `src/build_overview.py` → `data/overview/latest.json`＋`data/overview/daily/<date>.json`（市場總覽的類股／個股交集表，2026-11-12；口徑與各來源
   納入／降級／不納入的定案見 `docs/market-overview.md` §3。掛在 `diag.yml`（pick2 之後）與 `mktbal.yml`（最後一棒）各一次，`continue-on-error`、
   commit 後才轉紅；跨 repo 檔走 raw main（免 token），本機用 `--src-root /home/user`。**B／E／e／b 是前端口徑的 Python 移植**
-  （`radarPoints`／RRGD 純函式／`radarHolders`／`nBuyers`）：改前端這幾支要同步改本檔，`tests/test_overview_build.py` 以 node 對跑逐位守門。
+  （`radarPoints`／RRGD 純函式／`radarHolders`／`nBuyers`，流出側另用到 `radarQuad` 的 `acc_out`、`radarHolders().down`、`nSellers` 與 `rrgdPersistList` 的「轉弱」「落後」）：改前端這幾支要同步改本檔，`tests/test_overview_build.py` 以 node 對跑逐位守門。
   `generated_at` 以外內容沒變就不重寫檔）
 - `src/build_pick2.py` → `data/pick2/`（選股二追蹤名單；掛在 diag workflow 的 screen 之後，`continue-on-error`；見上方「選股二」節）
 - `src/build_screen.py` → `data/screen/screen.json`（選股：TradingView 初篩＋鉅亨 FactSet 預估

@@ -12,20 +12,23 @@ const radar = cut("const RADAR_MIN_N=8;", "// 散佈圖：inline SVG");
 const rrgd = cut("const RRGD_N = 12", "// RRGD-PURE-END");
 const nb = html.match(/^\s*const nBuyers = s => .*;$/m);
 if (!nb) throw new Error("index.html 找不到 aetfInsight 的 nBuyers");
+const ns = html.match(/^\s*const nSellers = s => .*;$/m);
+if (!ns) throw new Error("index.html 找不到 aetfInsight 的 nSellers");
 const inp = JSON.parse(fs.readFileSync(0, "utf8"));
 const sb = { console, INPUT: inp, OUT: null };
 vm.createContext(sb);
-new vm.Script(radar + "\n" + rrgd + "\n" + nb[0] + `
+new vm.Script(radar + "\n" + rrgd + "\n" + nb[0] + "\n" + ns[0] + `
 const out = {};
 if (INPUT.sr) out.points = radarPoints(INPUT.sr.windows.r5, INPUT.sr.windows.r20, "chain", "total");
-if (INPUT.diag){ const h = radarHolders(INPUT.diag, "all"); out.holders = { up: h.up.map(r => ({ code: r.code, name: r.name, hdw: r.hdw })), cover: h.cover, hdd: h.hdd }; }
+if (INPUT.diag){ const h = radarHolders(INPUT.diag, "all"); out.holders = { up: h.up.map(r => ({ code: r.code, name: r.name, hdw: r.hdw })), down: h.down.map(r => ({ code: r.code, name: r.name, hdw: r.hdw })), cover: h.cover, hdd: h.hdd }; }
 if (INPUT.series){
   const p = rrgdPrep(INPUT.series), t = p.valid[p.valid.length - 1];
   out.rrgd = { t, date: INPUT.series.dates[t], imp: rrgdPersistList(p.coords, t, "改善", RRGD_PERSIST, RRGD_SORT_MOM),
     lead: rrgdPersistList(p.coords, t, "領先", RRGD_PERSIST, RRGD_SORT_RATIO),
+    weak: rrgdPersistList(p.coords, t, "轉弱", RRGD_PERSIST, RRGD_SORT_MOM), lag: rrgdPersistList(p.coords, t, "落後", RRGD_PERSIST, RRGD_SORT_RATIO),
     coords: Object.fromEntries(p.names.map(n => [n, p.coords[n][t]])), valid: p.valid.length };
 }
-if (INPUT.diff) out.cobuy = (INPUT.diff.stocks || []).filter(s => nBuyers(s) >= 2).map(s => s.c);
+if (INPUT.diff){ out.cobuy = (INPUT.diff.stocks || []).filter(s => nBuyers(s) >= 2).map(s => s.c); out.cosell = (INPUT.diff.stocks || []).filter(s => nSellers(s) >= 2).map(s => s.c); }
 OUT = JSON.stringify(out);
 `).runInContext(sb);
 process.stdout.write(sb.OUT);
