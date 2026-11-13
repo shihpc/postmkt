@@ -3,6 +3,17 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-11-13 市場總覽：上線驗證與文件更正（程式行為不變）
+
+- **上線驗證**：PR #38 合併（`ec44f8c`）；線上 `index.html` sha256 與 main 相同；push 觸發的 mktbal run 43339158924 的 overview 步驟成功，
+  十個來源自各 repo raw main 全數讀取成功（先前唯一未驗的「CI 跨 repo 讀檔」已實證）；線上 `data/overview/latest.json` 為該班產出。
+  **未做**：真瀏覽器開線上頁面（沙箱瀏覽器連不到外網，以 curl 比對檔案）。
+- **更正「D 連湧／新湧恆為另列」**：錯的。晚間建置時 D 為 `stale` 不計入；隔天早上 `morning.json` 更新後再建置，D 資料日等於基準日而計入
+  （該班 2026-11-12 的類股交集由 4 列變 6 列）。使用者 2026-11-13 裁定：**維持現行行為、只改文件**。
+  影響：同一基準日的 `data/overview/daily/<date>.json` 以最後一次寫入為準、可能前後不同；事後驗證以檔內 D 來源的 `counted` 判斷。
+  `index.html` 總覽說明列那一句同步改寫（原寫「故只另列、不計入」，D 計入時畫面自相矛盾）；`src/build_overview.py` 只改一行註解。
+- 文件數字同步：上一節的 overview 測試項數（28／22）、README「頂列與本區塊」段的 tab 數（20／19）。
+
 ## 2026-11-12 市場總覽 tab（`overview`；使用者裁定：標示後先上線）
 
 `index.html` 新增第 20 個 tab「市場總覽」（`TABS` 第一個，預設 tab 仍是 `insight`）＋後端 `src/build_overview.py`。
@@ -28,7 +39,7 @@
   - README 的 tab 數標題同步為二十個；畫面說明列補寫計票群組與 D 只另列的原因。
   - `tests/test_pm_retry.py` 的 e2e 以 `playwright==1.63.0`（與沙箱瀏覽器相符）實跑 8 項全過，含改過的 tab 數斷言。
 - 排程：`diag.yml`（pick2 之後）與 `mktbal.yml` 各加一步，`continue-on-error`、commit 之後才轉紅；內容沒變不重寫檔。
-- 測試：`tests/test_overview_build.py`（21 項，含 node 對跑前端口徑逐位比對）、`tests/test_overview_frontend.mjs`（21 項）；
+- 測試：`tests/test_overview_build.py`（28 項，含 node 對跑前端口徑逐位比對）、`tests/test_overview_frontend.mjs`（22 項）；
   既有測試中寫死的 tab 數同步（19→20；只收純小寫 id 的 regex 為 18→19）。未動 `tbl()` 與三站同步碼。
 - 驗證（Playwright，http.server 起在上一層、外網請求擋掉）：20 個 tab 逐一點擊無非網路類 console error／pageerror；首屏請求清單與改動前相同；
   375／390／1280 整頁 `scrollWidth == innerWidth`、兩張表 175 格逐格 `scrollWidth − clientWidth == 0`；`latest.json` 404 與載入中都看得到標示句；

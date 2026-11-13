@@ -15,7 +15,7 @@
 #     C 主動 ETF 次產業加碼前 10：taiwan-flow-live-v2 aetf/diff.json subs（val>0），經 classify.json 的
 #       (產業, 次產業) 配對上卷；一個次產業名對到多個產業時不上卷（列入 unmapped）
 #     D 連湧／新湧次產業：taiwan-flow-live-v2 morning.json signals.cont_subs＋new_subs，同法上卷；
-#       資料日＝recap.baseline_date（前一交易日的資料）→ 晚間建置時通常 stale、不計入
+#       資料日＝recap.baseline_date（前一交易日的資料）→ 晚間建置時 stale、不計入；隔天早上 morning.json 更新後再建置則計入
 #     E 日級輪動雷達：chain_daily/series.json，index.html rrgdPersistList 的「改善」「領先」（連續 3 日）
 #   個股（主鍵＝代號）
 #     a 外資投信同步買超 Top30：taiwan-flows latest.json pages.sync.sync_buy（基準日＝latest.date）
