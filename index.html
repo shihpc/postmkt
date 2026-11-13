@@ -438,6 +438,8 @@
   .ov-srow{color:var(--txt)}
   .ov-srow .ov-sub{display:block;padding-left:14px}
   .ov-cnt{color:var(--txt);font-weight:700}
+  .ov-hold th{cursor:default}
+  .ov-go{margin-left:6px}
   /* 月營收 tab（2026-11-12 階段二，規格 docs/revenue-beatmiss.md §5）：分類一律中性色文字標籤、不新增燈號；
      漲跌著色只沿用既有 .up/.down（月增%／年增%／驚喜%）；全部 .rev-* 前綴避免撞名。 */
   .rev-label{display:inline-block;font-size:.86rem;font-weight:700;color:var(--txt);border:1px solid var(--txt);border-radius:8px;padding:3px 10px;margin:8px 0 2px}
@@ -2168,6 +2170,39 @@ function ovMktbal(j){
 }
 // yyyymmdd（futures 檔名）；日期不合回 ""
 function ovYmd(d){ return ovDate(d) ? d.replace(/-/g, "") : ""; }
+// ---- 我的持股對照（規格 §7）：把持股代號與個股層來源的成員清單做描述性對照；不排序、不計分 ----
+// 一側的個股層 → 只用「計入」的來源（過期／讀取失敗／另列／不納入的來源一律不對照）。
+// inter＝該側交集表 rows 內的代號（後端已依計票群組數 ≥2 算好；前端不重算口徑，同組兩個來源都命中仍不算在交集內）。
+function ovHoldLayer(layer){
+  const srcs = ovSources(layer).filter(s => s.counted), hit = Object.create(null), name = Object.create(null), inter = Object.create(null);
+  for (const s of srcs) for (const it of s.items){
+    const a = hit[it.key] || (hit[it.key] = []);
+    if (!a.includes(s.id)) a.push(s.id);
+    if (!name[it.key] && typeof it.name === "string" && it.name) name[it.key] = it.name;
+  }
+  for (const r of ovRows(layer)) if (r.count >= 2) inter[r.key] = true;
+  return { srcs: srcs.map(s => ({ id: s.id, name: s.name, date: s.date })), hit, name, inter };
+}
+// codes＝持股代號陣列（呼叫端已過代號白名單；這裡只收非空字串並去重）、j＝data/overview/latest.json。
+// 回 null＝資料檔不可用；否則 { date, total, rows, miss, hasOut, inSrcs, outSrcs }：
+// rows 只含至少命中一個來源的持股、順序＝持股清單原順序；其餘只計數（miss）。out 缺（舊檔）時只對照流入側。
+function ovHoldMatch(codes, j){
+  if (!ovShapeOk(j)) return null;
+  const list = [], seen = Object.create(null);
+  for (const c of Array.isArray(codes) ? codes : []){
+    if (typeof c !== "string" || !c || seen[c]) continue;
+    seen[c] = true; list.push(c);
+  }
+  const so = ovSide(j, "out"), I = ovHoldLayer(ovSide(j, "in").stocks), O = so ? ovHoldLayer(so.stocks) : null;
+  const rows = []; let miss = 0;
+  for (const c of list){
+    const a = I.hit[c] || [], b = O ? (O.hit[c] || []) : [];
+    if (!a.length && !b.length){ miss++; continue; }
+    rows.push({ code: c, name: I.name[c] || (O ? O.name[c] : "") || "", inHits: a.slice(), outHits: b.slice(),
+      inInter: a.length > 0 && I.inter[c] === true, outInter: b.length > 0 && !!O && O.inter[c] === true });
+  }
+  return { date: ovDate(j.date), total: list.length, rows, miss, hasOut: !!O, inSrcs: I.srcs, outSrcs: O ? O.srcs : [] };
+}
 // ---- ov-pure:end ----
 
 function ovLoad(key, url, okFn){
@@ -2305,6 +2340,42 @@ function ovTableHtml(layer, isStock){
   if (!isStock) cols.push({ h: "依據（上卷前的次產業／象限）", cls: "l", f: r => r.via ? esc(r.via) : `<span class="mut">—</span>` });
   return h + tbl(cols, rows, { sortI: 1, sortD: -1 });
 }
+// ---- 我的持股對照（規格 §7，使用者 2026-11-13 裁定「暫以最小作法」）----
+// 持股清單沿用持股診斷的讀取入口 diagHoldings()（讀取包 try/catch、壞資料當空），只取代號並過既有白名單 HOLD_CODE_RE。
+// **隱私硬約束（CLAUDE.md 約定 6）**：比對全在瀏覽器記憶體內完成；本段零新增網路請求、不寫任何瀏覽器儲存、
+// 持股代號不進網址／hash／歷史紀錄／任何請求；不放個股摘要側欄鈕（它會把代號寫進網址的 stock=）。
+function ovHoldCodes(){
+  return diagHoldings().map(h => typeof h.c === "string" ? h.c.trim().toUpperCase() : "").filter(c => HOLD_CODE_RE.test(c));
+}
+function ovHoldHtml(j){
+  const codes = ovHoldCodes(), m = j ? ovHoldMatch(codes, j) : null;
+  // 四種狀態（未設定持股／資料檔讀不到／全部未命中／正常）都逐字顯示標示句
+  let h = `<div class="msection">我的持股對照<span class="n">只在本機比對 · 持股不外送 · 不排序不計分</span></div>`
+    + `<div class="ov-label">${esc(ovLabel(j))}</div>`
+    + `<div class="ov-note">列出持股清單中，出現在流入側來源／流出側來源的個股（兩側並列，不受上方切換影響）。`
+    + `只對照<b>個股層</b>來源；類股層（產業）對照需要代號→產業的對映檔、會新增網路請求，目前未做。`
+    + `只用計入的來源（過期、讀取失敗、不納入的來源不對照）。列的順序＝持股清單原順序，未出現在任何來源的持股只計數。`
+    + `持股清單只存在這台裝置的瀏覽器內、只在本機比對，不外送、不進網址。本段只描述「出現在哪些來源清單」，來源清單本身沒有回測依據。</div>`;
+  if (!codes.length)
+    return h + `<div class="ov-na ov-pad">尚未設定持股清單。請到「持股診斷」分頁新增持股後再回來看。`
+      + `<button type="button" class="subtab ov-go" data-ovgo="diag">前往持股診斷</button></div>`;
+  if (!m)
+    return h + `<div class="ov-na ov-pad">${OV.err.ov || j ? "對照所需的資料檔尚未產生或讀取失敗（data/overview/latest.json），無法對照" : "載入中…"}</div>`;
+  h += `<div class="ov-badges"><span class="ov-badge">對照所用資料日 ${esc(m.date || "—")}</span>`
+    + `<span class="ov-badge">持股 ${ovFmt(m.total, 0)} 檔</span><span class="ov-badge">出現在來源 ${ovFmt(m.rows.length, 0)} 檔</span></div>`;
+  if (!m.hasOut) h += `<div class="ov-na ov-pad">資料檔還沒有資金流出側，本段只對照流入側來源</div>`;
+  if (!m.rows.length)
+    return h + `<div class="ov-na ov-pad">持股 ${ovFmt(m.total, 0)} 檔都沒有出現在任何個股層來源</div>`;
+  const ids = a => a.length ? esc(a.join("、")) : `<span class="mut">—</span>`;
+  const inter = r => { const t = [r.inInter ? "流入側" : "", r.outInter ? "流出側" : ""].filter(Boolean); return t.length ? esc(t.join("、")) : `<span class="mut">—</span>`; };
+  h += `<div class="tblbox"><table class="mtable ov-hold"><thead><tr><th>個股</th><th>流入側來源</th><th>流出側來源</th><th>在交集表內</th></tr></thead><tbody>`
+    + m.rows.map(r => `<tr><td><span class="code">${esc(r.code)}</span><span class="nm">${esc(r.name)}</span></td>`
+      + `<td>${ids(r.inHits)}</td><td>${ids(r.outHits)}</td><td>${inter(r)}</td></tr>`).join("") + `</tbody></table></div>`;
+  if (m.miss) h += `<div class="ov-na ov-pad">其餘 ${ovFmt(m.miss, 0)} 檔未出現在任何個股層來源</div>`;
+  const lg = srcs => srcs.map(s => `${esc(s.id)} ${esc(s.name)}（資料日 ${esc(s.date || "—")}）`).join("；") || "—";
+  return h + `<div class="ov-note">流入側來源：${lg(m.inSrcs)}。<br>流出側來源：${m.hasOut ? lg(m.outSrcs) : "尚無資料"}。<br>`
+    + `「在交集表內」＝該檔在該側個股交集表中（出現在 2 個以上計票群組）。</div>`;
+}
 function ovRender(){
   ovEnsure();
   const main = document.getElementById("main"), j = OV.d.ov, out = OV.side === "out";
@@ -2343,8 +2414,15 @@ function ovRender(){
       h += `<div class="msection">個股交集<span class="n">${out ? "資金流出側" : "資金流入側"} · 主鍵＝股票代號</span></div>` + ovTableHtml(sd.stocks, true);
     }
   }
+  h += `<div class="ov-myhold">` + ovHoldHtml(j) + `</div>`;
   main.innerHTML = h + `</div>`;
 }
+// 「前往持股診斷」：站內切 tab（只改 state.tab 後重繪；不帶任何持股資訊）
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest("[data-ovgo]");
+  if (!b || state.tab !== "overview" || b.getAttribute("data-ovgo") !== "diag") return;
+  state.tab = "diag"; pmUserRender();
+});
 // 兩側切換（document 級委派；只改記憶體狀態後重繪，不發請求）
 document.addEventListener("click", e => {
   const b = e.target.closest && e.target.closest("[data-ovside]");

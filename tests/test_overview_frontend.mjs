@@ -12,7 +12,7 @@ assert.ok(html.indexOf(B) > 0 && html.indexOf(E) > html.indexOf(B), "找不到 o
 const pure = html.slice(html.indexOf(B), html.indexOf(E));
 const sb = { console };
 vm.createContext(sb);
-new vm.Script(pure + "\nglobalThis.S = { OV_LABEL, OV_STATUS, OV_SUMFILE_RE, ovNum, ovDate, ovFmt, ovSigned, ovLabel, ovShapeOk, ovSide, OV_SIDES, ovSources, ovRows, ovSynthSection, ovTotals, ovFutOi, ovMktbal, ovYmd };").runInContext(sb);
+new vm.Script(pure + "\nglobalThis.S = { OV_LABEL, OV_STATUS, OV_SUMFILE_RE, ovNum, ovDate, ovFmt, ovSigned, ovLabel, ovShapeOk, ovSide, OV_SIDES, ovSources, ovRows, ovSynthSection, ovTotals, ovFutOi, ovMktbal, ovYmd, ovHoldLayer, ovHoldMatch };").runInContext(sb);
 const S = sb.S;
 let n = 0;
 const ok = (name, fn) => { fn(); n++; console.log("ok - " + name); };
@@ -195,5 +195,112 @@ ok("不改 tbl()：交集表走既有 tbl(cols, rows, opts)，CSS 一律 .ov- �
   assert.ok(sec.includes("tbl(cols, rows, { sortI: 1, sortD: -1 })"));
   const css = html.slice(html.indexOf("/* 市場總覽 tab"), html.indexOf("/* 月營收 tab"));
   for (const m of css.matchAll(/^\s*(\.[a-z][^{]*)\{/gm)) assert.ok(m[1].split(",").every(x => x.trim().startsWith(".ov-")), m[1]);
+});
+// ---- 我的持股對照（規格 §7）----
+const HSRC = (id, group, status, keys, extra) => ({ id, name: "來源" + id, group, status, counted: status === "valid", date: "2026-11-12", n: keys.length,
+  items: keys.map(k => typeof k === "string" ? { key: k } : k), ...(extra || {}) });
+const HFIX = () => ({ schema: 1, date: "2026-11-12", sectors: { sources: [], rows: [] },
+  stocks: { sources: [
+      HSRC("a", "a", "valid", [{ key: "1111", name: "甲一" }, { key: "3333", name: "丙三" }]),
+      HSRC("b", "b", "valid", ["3333"]),
+      HSRC("x1", "flow", "valid", ["4444"]), HSRC("x2", "flow", "valid", [{ key: "4444", name: "丁四" }]),
+      HSRC("s", "s", "stale", ["5555", "1111"], { counted: true }),          // 過期來源（即使檔內 counted 誤標為真也不對照）
+      HSRC("f", "f", "fail", ["5555"]), HSRC("l", "l", "listed", ["5555"]), HSRC("e", "e", "excluded", ["5555"]),
+    ], rows: [{ key: "3333", count: 2, hits: ["a", "b"], name: "丙三" }] },
+  out: { sectors: { sources: [], rows: [] },
+    stocks: { sources: [
+        HSRC("a", "a", "valid", [{ key: "2222", name: "乙二" }, "3333"]),
+        HSRC("d", "d", "valid", ["2222"]),
+        HSRC("s", "s", "stale", ["9999"]),
+      ], rows: [{ key: "2222", count: 2, hits: ["a", "d"], name: "乙二" }] } } });
+const HCODES = ["9999", "2222", "1111", "3333", "4444", "5555", "1111", 123, "", null];
+ok("持股對照：命中判定、兩側並列、順序＝持股原順序、未命中只計數、過期／失敗／另列／不納入來源不對照", () => {
+  const m = J(S.ovHoldMatch(HCODES, HFIX()));
+  assert.equal(m.date, "2026-11-12"); assert.equal(m.total, 6); assert.equal(m.hasOut, true);
+  assert.deepEqual(m.rows.map(r => r.code), ["2222", "1111", "3333", "4444"]);     // 持股原順序；9999／5555 不逐檔列出
+  assert.equal(m.miss, 2);                                                         // 9999（只在流出側過期來源）、5555（只在流入側過期／失敗／另列／不納入來源）
+  const by = Object.fromEntries(m.rows.map(r => [r.code, r]));
+  assert.deepEqual(by["2222"], { code: "2222", name: "乙二", inHits: [], outHits: ["a", "d"], inInter: false, outInter: true });
+  assert.deepEqual(by["1111"], { code: "1111", name: "甲一", inHits: ["a"], outHits: [], inInter: false, outInter: false });   // 過期來源 s 不列入 inHits
+  assert.deepEqual(by["3333"], { code: "3333", name: "丙三", inHits: ["a", "b"], outHits: ["a"], inInter: true, outInter: false });
+  assert.deepEqual(m.inSrcs.map(s => s.id), ["a", "b", "x1", "x2"]); assert.deepEqual(m.outSrcs.map(s => s.id), ["a", "d"]);
+  assert.equal(m.inSrcs[0].name, "來源a"); assert.equal(m.inSrcs[0].date, "2026-11-12");
+});
+ok("持股對照：交集內判定以計票群組計（取資料檔 rows），同組兩個來源都命中不算在交集內", () => {
+  const r = J(S.ovHoldMatch(["4444"], HFIX())).rows[0];
+  assert.deepEqual(r.inHits, ["x1", "x2"]); assert.equal(r.inInter, false); assert.equal(r.name, "丁四");
+  // rows 裡有、但沒有任何計入來源命中的代號（檔案不一致）不會被標成在交集內
+  const g = HFIX(); g.stocks.rows.push({ key: "2222", count: 2, hits: ["a", "b"] });
+  assert.equal(J(S.ovHoldMatch(["2222"], g)).rows[0].inInter, false);
+});
+ok("持股對照：out 缺或形狀不合 → 只對照流入側（hasOut=false），不讀半套的 out", () => {
+  const old = HFIX(); delete old.out;
+  const half = HFIX(); delete half.out.sectors;                                     // out.stocks 還在但整個 out 形狀不合
+  for (const g of [old, half, { ...HFIX(), out: "x" }]){
+    const m = J(S.ovHoldMatch(HCODES, g));
+    assert.equal(m.hasOut, false); assert.deepEqual(m.outSrcs, []);
+    assert.deepEqual(m.rows.map(r => r.code), ["1111", "3333", "4444"]); assert.equal(m.miss, 3);
+    assert.ok(m.rows.every(r => r.outHits.length === 0 && r.outInter === false));
+  }
+});
+ok("持股對照：持股空／壞資料、資料檔不可用", () => {
+  assert.equal(S.ovHoldMatch(["1111"], null), null); assert.equal(S.ovHoldMatch(["1111"], { schema: 2 }), null);
+  for (const c of [[], null, undefined, "1111", { 0: "1111" }, [null, 1, {}, ""]]){
+    const m = J(S.ovHoldMatch(c, HFIX())); assert.equal(m.total, 0); assert.deepEqual(m.rows, []); assert.equal(m.miss, 0);
+  }
+  const m = J(S.ovHoldMatch(["8888", "7777"], HFIX())); assert.equal(m.total, 2); assert.deepEqual(m.rows, []); assert.equal(m.miss, 2);
+  assert.equal(J(S.ovHoldMatch(["__proto__", "constructor"], HFIX())).miss, 2);    // 物件原型鍵不會誤命中
+  const g = HFIX(); g.out.stocks.sources[0].items = [{ key: "6666", name: "<b>x</b>" }, { key: "6667", name: 5 }];
+  assert.deepEqual(J(S.ovHoldMatch(["6667", "6666"], g)).rows.map(r => [r.code, r.name]), [["6667", ""], ["6666", "<b>x</b>"]]);   // 名稱原樣回傳（渲染端 esc）；非字串當空
+});
+ok("持股對照：repo 內實際資料檔——兩側交集表每一列的代號都判為在該側交集內，且命中來源＝該列 hits", () => {
+  const real = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "overview", "latest.json"), "utf8"));
+  for (const [side, lay] of [["in", real.stocks], ["out", real.out && real.out.stocks]]){
+    if (!lay) continue;
+    const m = J(S.ovHoldMatch(lay.rows.map(r => r.key), real));
+    assert.equal(m.rows.length, lay.rows.length);
+    lay.rows.forEach((r, i) => {
+      const x = m.rows[i]; assert.equal(x.code, r.key);
+      assert.equal(side === "in" ? x.inInter : x.outInter, true);
+      assert.deepEqual([...(side === "in" ? x.inHits : x.outHits)].sort(), [...r.hits].sort());
+    });
+  }
+});
+ok("持股對照（讀碼）：沿用 diagHoldings()＋HOLD_CODE_RE；零請求、不碰儲存／網址；不放側欄鈕；標示句在所有 return 之前；用語中性", () => {
+  const i0 = sec.indexOf("function ovHoldCodes("), i1 = sec.indexOf("function ovRender(");
+  assert.ok(i0 > 0 && i1 > i0);
+  const body = sec.slice(i0, i1);
+  assert.ok(body.includes("diagHoldings().map(") && body.includes("HOLD_CODE_RE.test(c)"));
+  assert.equal(html.split("function diagHoldings(").length - 1, 1, "持股讀取入口只該有一份");
+  assert.equal(sec.replace(/^\s*\/\/.*$/gm, "").split("diagHoldings(").length - 1, 1); assert.equal(sec.split("ovHoldCodes(").length - 1, 2);
+  // 隱私：對照段不得發請求、不得碰瀏覽器儲存／網址／歷史，也不得產生連結或帶代號的 data-* 屬性
+  assert.ok(!/ovLoad|loadJSON|fetch\(|XMLHttpRequest|sendBeacon|WebSocket|EventSource|import\(/.test(body));
+  assert.ok(!/localStorage|sessionStorage|indexedDB|document\.cookie|location|history|replaceState|pushState|syncHash/.test(body));
+  assert.ok(!/nameCell|stkBtn|data-stk|data-mychg|href=|<a |<img|src=/.test(body), "不得放個股摘要側欄鈕或連結（會把代號帶進網址）");
+  assert.deepEqual([...body.matchAll(/data-[a-z]+=/g)].map(x => x[0]), ['data-ovgo=']);
+  assert.ok(body.includes('data-ovgo="diag"'), "前往持股診斷的鈕只帶固定字面量");
+  for (const fn of ["parseHash", "currentHash", "applyHash", "syncHash"]){
+    const i = html.indexOf("function " + fn + "("), b = html.slice(i, html.indexOf("\n}\n", i));
+    assert.ok(i > 0 && !/ovHold/.test(b), fn + " 不得碰持股對照");
+  }
+  // 站內切 tab 的 listener 只改 state.tab
+  assert.ok(sec.includes('if (!b || state.tab !== "overview" || b.getAttribute("data-ovgo") !== "diag") return;\n  state.tab = "diag"; pmUserRender();'));
+  // 純函式不依賴環境
+  const pureHold = pure.slice(pure.indexOf("function ovHoldLayer("));
+  assert.ok(!/document|window|localStorage|diagHoldings|state\.|OV\./.test(pureHold));
+  // 四種狀態：標示句在 ovHoldHtml 的第一個 return 之前無條件輸出
+  const hh = body.slice(body.indexOf("function ovHoldHtml("));
+  const iLab = hh.indexOf('<div class="ov-label">${esc(ovLabel(j))}</div>'), iRet = hh.indexOf("return ");
+  assert.ok(iLab > 0 && iRet > iLab);
+  for (const w of ["尚未設定持股清單", "尚未產生或讀取失敗", "都沒有出現在任何個股層來源", "其餘 ", "只對照<b>個股層</b>來源", "會新增網路請求", "對照所用資料日",
+    "只在本機比對，不外送", "流入側來源", "流出側來源", "在交集表內", "持股清單原順序"]) assert.ok(hh.includes(w), w);
+  assert.ok(!/買進|賣出|放空|做空|建議|加碼|減碼|偏多|偏空|看多|看空/.test(body.replace(/^\s*\/\/.*$/gm, "")), "對照段不得出現操作字樣");
+  assert.ok(!/\.sort\(/.test(body) && !/\.sort\(/.test(pureHold), "不排序");
+  // 位置：交集表之後、寫入 #main 之前；兩側並列（不看 OV.side）
+  const r = sec.slice(i1);
+  assert.ok(r.indexOf("ovTableHtml(sd.stocks, true)") < r.indexOf("ovHoldHtml(j) + `</div>`;") && r.indexOf("ovHoldHtml(j) + `</div>`;") < r.indexOf("main.innerHTML"));
+  assert.ok(!/OV\.side/.test(body));
+  // 外來字串與持股字串都經 esc()
+  for (const w of ["esc(r.code)", "esc(r.name)", "esc(a.join(", "esc(s.id)", "esc(s.name)", "esc(m.date"]) assert.ok(hh.includes(w), w);
 });
 console.log(`\n${n} passed`);

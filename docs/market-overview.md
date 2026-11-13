@@ -259,3 +259,26 @@ b（個股層）與 C（類股層）同出自 `aetf/diff.json`，分屬兩張表
 4. 前端：20 tab 無頁面錯誤、首屏請求清單不變、375／390／1280 無整頁水平捲軸與逐格零裁切、四種狀態皆有標示句、
    持股清單內的惡意字串不執行、畫面無放空／做空／賣出建議／買進建議等字樣。
 5. fresh-context 驗收綁定 commit；CLAUDE.md／CHANGELOG／本文件同步。
+
+### 7.3 實作定案（2026-11-13）
+
+- **持股讀取**：沿用持股診斷的入口 `diagHoldings()`（`index.html` grep `function diagHoldings`；持股異動 tab 也用它），
+  `ovHoldCodes()` 只取 `c`、trim＋轉大寫後過既有白名單 `HOLD_CODE_RE`（`^[0-9A-Z]{4,6}$`），不合的丟棄。沒有另寫解析。
+- **對照用的資料欄位**（實檔核對 `data/overview/latest.json`）：流入側 `stocks.sources[]`、流出側 `out.stocks.sources[]` 的
+  `items[].key`（代號）／`items[].name`（股名，五個計入來源都帶）、`status`／`counted`（只用 `ovSources()` 判為計入者＝`status:"valid"` 且 `counted:true`）、
+  `id`／`name`／`date`（畫面下方的來源對照說明）；「在交集表內」直接取該側 `stocks.rows[].key`（後端已依計票群組數 ≥2 算好，前端不重算）。
+  頂層 `date` 當「對照所用資料日」。後端與資料檔 schema 未動。
+- **純函式**（`ov-pure` 區段）：`ovHoldLayer(layer)`、`ovHoldMatch(codes, j)` → `{date, total, rows:[{code, name, inHits, outHits, inInter, outInter}], miss, hasOut, inSrcs, outSrcs}`
+  （資料檔不可用回 `null`）。渲染 `ovHoldHtml(j)`，由 `ovRender()` 在個股交集表之後呼叫，包在 `.ov-myhold`。
+- **畫面**：手寫 4 欄表（個股｜流入側來源｜流出側來源｜在交集表內），放在 `.tblbox` 內、不經 `tbl()`（表頭不可點、沒有排序）；
+  來源欄顯示來源 id，表下列出各 id 的來源名稱與資料日。「前往持股診斷」鈕 `data-ovgo="diag"` 只改 `state.tab`。
+- **限制**：①股名只取資料檔來源項目內的名稱，沒有就只顯示代號 ②個股欄**刻意不放個股摘要側欄鈕**（`stkBtn`）——開側欄會把代號寫進網址的 `stock=`，
+  本段不讓持股代號有進網址的路徑 ③不計入的來源（`stale`／`fail`／`listed`／`excluded`）即使檔內帶成員也不對照，持股只出現在這類來源時算「未出現」
+  ④資料檔還在載入時本段顯示「載入中…」（同樣帶標示句） ⑤持股清單內重複的代號只算一次；`total`＝通過白名單且去重後的檔數
+  ⑥類股層對照未做（原因見 §7.1）。
+- **測試**：`tests/test_overview_frontend.mjs` 25 → 31 項（對照純函式 4 項、repo 內實檔一致性 1 項、隱私與用語讀碼 1 項）。
+  突變實測皆紅：過期來源也對照、交集判定改來源數、流入流出對調、未命中也逐檔列出、依命中數排序、`out` 形狀不合仍讀 `out.stocks`。
+- **Playwright 實測**（2026-11-13，http.server 起在 `/home/user`，非 localhost 請求 abort，假持股以 `addInitScript` 寫入）：
+  假持股 9998／3189／2454／惡意字串／3105／3661／2059／8887 → 畫面 5 列依持股原順序（3189 只在流出側 a；2454 只在流入側 a；3105 流入 a、b＋流出 b、在流入側交集內；
+  3661 流入 a、b、c、d；2059 流出 a、b、d、在流出側交集內）＋「其餘 2 檔」；請求清單 14 筆與未設定持股時逐項相同、無任何請求 URL／body／`location.href` 含持股代號；
+  四種狀態皆有標示句；375／390／1280 整頁無水平捲軸、本段 24 格零裁切；20 tab 無 pageerror；首屏請求清單與改動前相同；惡意字串未執行。
