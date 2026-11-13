@@ -429,6 +429,7 @@
   .ov-ol li,.ov-ul li{margin:3px 0}
   .ov-md{font-size:.82rem}
   .ov-label{display:inline-block;font-size:.86rem;font-weight:700;color:var(--txt);border:1px solid var(--txt);border-radius:8px;padding:3px 10px;margin:4px 0 2px}
+  .ov-sides{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 2px}
   .ov-badges{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
   .ov-badge{display:inline-block;font-size:.7rem;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin-left:6px}
   .ov-badges .ov-badge{margin-left:0}
@@ -550,7 +551,7 @@ const TABS = [
   ["chipradar","籌碼雷達"],["social","社群聲量"],["sentiment","市場情緒"],["revenue","月營收"],["dates","日期"],
 ];
 const SUBS = {
-  overview:"市場總覽：市場中心的每日一頁。上半「盤勢七項」為既有資料的描述性彙整（當日總結／三大法人／外資台指期／市場情緒／大盤餘額，另附 AI 文字的盤勢綜合研判與晨報重點），每項自帶資料日；下半「類股交集」「個股交集」列出同時出現在多個資金流入清單的產業與個股，依出現清單數排序——此排序無回測依據，AI 研判，未經回測，非保證。只做偏多（資金流入）側。",
+  overview:"市場總覽：市場中心的每日一頁。上半「盤勢七項」為既有資料的描述性彙整（當日總結／三大法人／外資台指期／市場情緒／大盤餘額，另附 AI 文字的盤勢綜合研判與晨報重點），每項自帶資料日；下半「類股交集」「個股交集」列出同時出現在多個資金流入清單的產業與個股，依出現清單數排序——此排序無回測依據，AI 研判，未經回測，非保證。交集表可切換「資金流入側／資金流出側」（預設流入側）。",
   insight:"AI 摘要分析：彙整本頁各 tab 資料（主動ETF／三大法人買賣超／融借券／當沖／鉅額／零股盤中／指定分點），由 Claude 生成以查找 alpha 標的為目標的洞見。前端即時呼叫，token 由你自備、存在瀏覽器密碼管理器，載入後只在本分頁記憶體。非投資建議、非預測，僅描述歷史統計傾向。",
   summary:"AI 彙總分析：一鍵 3+1 次 Claude 呼叫——3 個頁面（盤後分析／即時類股動態／新聞晨報）× Sonnet 5 各 1 次分析共 3 份摘要，再由 Opus 4.8 融會貫通彙總出跨份共振的精華 alpha。費用約每次 NT$10-12（摘要用 Sonnet 5、彙總用 Opus），token 由你自備、存在瀏覽器密碼管理器，載入後只在本分頁記憶體。另可閱讀 GitHub Actions 早晚場自動產出。非投資建議。",
   aetf:"主動式ETF每日投組快照＋主動加減碼（資料源：taiwan-flow-live-v2 via FinMind，每日揭露）。加減碼兩欄並列：主動純額（排除申贖）｜含申贖（原始總變動）。",
@@ -2033,7 +2034,9 @@ function renderTabs(){
 // 三段：①盤勢七項（描述性；前端直接讀既有同源檔顯示，每項自帶資料日，缺哪項只灰掉那項）
 //       ②類股交集表 ③個股交集表（後端 src/build_overview.py → data/overview/latest.json，前端只渲染、不重算）。
 // **鐵律 8（使用者 2026-11-12 裁定：無回測依據、標示後先上線）**：交集表依「出現在幾個來源清單」排序，屬新的候選排序；
-// 畫面三種狀態（正常／部分來源缺／讀取失敗）都逐字顯示 OV_LABEL，事後驗證結論出來前不得拿掉。本批只做偏多（資金流入）側。
+// 畫面三種狀態（正常／部分來源缺／讀取失敗）都逐字顯示 OV_LABEL，事後驗證結論出來前不得拿掉。
+// 交集表兩側（2026-11-13，規格 §6）：資金流入側（頂層 sectors／stocks）＋資金流出側（頂層 out，舊檔沒有 → 一句「尚無資料」）；
+// 切換狀態只存記憶體 OV.side（預設 "in"；不進網址、不存瀏覽器儲存）。流出側是「資金流出」的現況描述，畫面不寫成操作建議。
 // 盤勢 1–5 為純描述：除來源檔自帶文字（原樣顯示並標來源）外不寫任何多空判斷字樣；著色只用在漲跌與買賣超正負（sgn()）。
 // 盤勢 6、7 為 AI 文字，標「AI 研判」；6 走三站同步碼 mdToHtml（**只呼叫、不修改**）。
 // 資料全部同源相對路徑（CSP 未改）、**只在切到本 tab 時才抓**（首屏零新增請求）；每支檔 in-flight 去重、失敗記錯不重試。
@@ -2049,7 +2052,7 @@ const OV_URLS = {
 };
 const OV_FUT_BASE = "../taiwan-flows/data/futures/";   // 外資台指期：逐日小檔（約 5KB），日期取 totals.json 的最末兩個交易日
 const OV_SUM_BASE = "data/summary/";
-const OV = { d: {}, err: {}, loading: {} };
+const OV = { d: {}, err: {}, loading: {}, side: "in" };
 // ---- ov-pure:begin（純函式，tests/test_overview_frontend.mjs 以 node 抽出來測，勿依賴 DOM）----
 const OV_LABEL = "AI 研判，未經回測，非保證";
 const OV_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -2076,6 +2079,14 @@ function ovLabel(j){
 function ovShapeOk(j){
   const lay = x => !!x && typeof x === "object" && Array.isArray(x.sources) && Array.isArray(x.rows);
   return !!j && typeof j === "object" && j.schema === 1 && lay(j.sectors) && lay(j.stocks);
+}
+// 交集表的一側：side "out" 取頂層 out（形狀合才回；舊檔沒有 out → null＝「尚無資料」），其餘一律回流入側（頂層 sectors／stocks）
+const OV_SIDES = [["in", "資金流入側"], ["out", "資金流出側"]];
+function ovSide(j, side){
+  if (!ovShapeOk(j)) return null;
+  if (side !== "out") return { sectors: j.sectors, stocks: j.stocks };
+  const o = j.out, lay = x => !!x && typeof x === "object" && Array.isArray(x.sources) && Array.isArray(x.rows);
+  return (o && typeof o === "object" && lay(o.sectors) && lay(o.stocks)) ? { sectors: o.sectors, stocks: o.stocks } : null;
 }
 // 來源狀態列：只收形狀合的來源；status 不在白名單一律當「讀取失敗」
 function ovSources(layer){
@@ -2296,7 +2307,7 @@ function ovTableHtml(layer, isStock){
 }
 function ovRender(){
   ovEnsure();
-  const main = document.getElementById("main"), j = OV.d.ov;
+  const main = document.getElementById("main"), j = OV.d.ov, out = OV.side === "out";
   const day = OV.d.day, tt = OV.d.totals ? ovTotals(OV.d.totals) : null, mb = OV.d.mktbal ? ovMktbal(OV.d.mktbal) : null;
   const sr = OV.d.sent ? sentRows(OV.d.sent) : null, br = OV.d.brief;
   let h = `<div class="ov"><div class="msection">盤勢七項<span class="n">描述性顯示 · 每項自帶資料日 · 缺哪項只灰掉那項</span></div><div class="ov-grid">`;
@@ -2311,19 +2322,36 @@ function ovRender(){
   // 交集兩段：三種狀態（載入中／讀取失敗／正常含部分來源缺）都逐字顯示標示句
   h += `<div class="msection">交集表<span class="n">後端每日產出 · 前端只渲染</span></div>`
     + `<div class="ov-label">${esc(ovLabel(j))}</div>`
-    + `<div class="ov-note">依「出現在幾個來源清單」由多到少排列——這個排序<b>沒有回測依據</b>（使用者 2026-11-12 裁定標示後先上線，每日快照留存供事後驗證）。`
-    + `本頁只做偏多（資金流入）側，偏空側未做。各來源的資料日與是否計入列在每張表上方；「出現清單數」以計票群組計（同檔同窗的來源併為一組、只算 1 票，各來源欄仍分別標出命中）；連湧／新湧（D）只有資料日與基準日相同時才計入：晚間產出時它的資料日是前一交易日、只另列不計入，隔天早上更新後重新產出時才計入（實際狀態見類股表上方的來源列）；日級輪動雷達來源（E）另註：其回測 12 格中信賴區間不跨 0 的為 0 格（0/12 顯著）。</div>`;
+    + `<div class="ov-sides">` + OV_SIDES.map(([k, t]) => `<button class="subtab${out === (k === "out") ? " active" : ""}" data-ovside="${esc(k)}">${esc(t)}</button>`).join("") + `</div>`
+    + `<div class="ov-note">依「出現在幾個來源清單」由多到少排列——這個排序<b>沒有回測依據</b>（資金流入側：使用者 2026-11-12 裁定標示後先上線；資金流出側：2026-11-13 沿用同一裁定條件追加；每日快照留存供事後驗證）。`
+    + `各來源的資料日與是否計入列在每張表上方；「出現清單數」以計票群組計（同檔同窗的來源併為一組、只算 1 票，各來源欄仍分別標出命中）。`
+    + (out
+      ? `目前顯示<b>資金流出側</b>：各來源是流入側的鏡像——A 近 5 日三大法人淨賣前 10、B 籌碼雷達「加速流出」象限（與 A 同檔同窗、併為一組）、C 主動 ETF 次產業減碼前 10、E 日級輪動雷達連續 3 日「轉弱」或「落後」；a 外資投信同步賣超、b 主動 ETF 跨 ETF 減碼共識（≥2 檔）、d 月營收 Miss／低預期仍Miss、e 千張大戶週減前 20。`
+        + `連湧／新湧（D）與選股二追蹤名單（c）沒有流出側的對應來源，不納入。本表只描述資金流出的現況，不是操作建議。`
+      : `目前顯示<b>資金流入側</b>；連湧／新湧（D）只有資料日與基準日相同時才計入：晚間產出時它的資料日是前一交易日、只另列不計入，隔天早上更新後重新產出時才計入（實際狀態見類股表上方的來源列）。`)
+    + `日級輪動雷達來源（E）另註：其回測 12 格中信賴區間不跨 0 的為 0 格（0/12 顯著）。</div>`;
   if (!j){
     h += `<div class="ov-na ov-pad">${OV.err.ov ? "交集表資料尚未產生或讀取失敗（data/overview/latest.json）；上方盤勢七項不受影響" : "載入中…"}</div>`;
   } else {
     const gen = sentGenOk(j.generated_at) ? fmtGenTaipei(j.generated_at) : "";
+    const sd = ovSide(j, OV.side);
     h += `<div class="ov-badges"><span class="ov-badge">交集表日期 ${esc(ovDate(j.date) || "—")}</span>`
       + `<span class="ov-badge">產出 ${gen ? esc(gen) + "（台灣）" : "—"}</span></div>`;
-    h += `<div class="msection">類股交集<span class="n">主鍵＝產業鏈「產業」（47 條，多對多、非市佔）</span></div>` + ovTableHtml(j.sectors, false);
-    h += `<div class="msection">個股交集<span class="n">主鍵＝股票代號</span></div>` + ovTableHtml(j.stocks, true);
+    if (!sd) h += `<div class="ov-na ov-pad">資金流出側尚無資料（資料檔還沒有這一側，待下一次每日產出）；資金流入側不受影響</div>`;
+    else {
+      h += `<div class="msection">類股交集<span class="n">${out ? "資金流出側" : "資金流入側"} · 主鍵＝產業鏈「產業」（47 條，多對多、非市佔）</span></div>` + ovTableHtml(sd.sectors, false);
+      h += `<div class="msection">個股交集<span class="n">${out ? "資金流出側" : "資金流入側"} · 主鍵＝股票代號</span></div>` + ovTableHtml(sd.stocks, true);
+    }
   }
   main.innerHTML = h + `</div>`;
 }
+// 兩側切換（document 級委派；只改記憶體狀態後重繪，不發請求）
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest("[data-ovside]");
+  if (!b || state.tab !== "overview") return;
+  const k = b.getAttribute("data-ovside");
+  if ((k === "in" || k === "out") && k !== OV.side){ OV.side = k; render(); }
+});
 
 // ================= 籌碼雷達 tab（2026-09-28 由 taiwan-flows `radar` tab 搬來；規格正本 taiwan-flows/docs/radar-tab.md）=================
 // 搬家、不改口徑：radarQuad／radarPoints／radarHolders／radarSvg 與原站逐字相同（tests/test_chipradar.mjs 守門）。

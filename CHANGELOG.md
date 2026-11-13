@@ -3,6 +3,30 @@
 帶日期的變更紀錄從 README「快速接手」搬出集中於此（2026-07-24 起）；
 更早的逐日歷史見 git log。常青的架構／口徑／教訓說明仍在 README。
 
+## 2026-11-13 市場總覽：交集表加「資金流出側」
+
+使用者 2026-11-13 指示處理先前列為未做的資金流出側；沿用 2026-11-12 的裁定條件（無回測依據、逐字標示「AI 研判，未經回測，非保證」、
+每日快照留存、列入事後驗證）。用語一律「資金流出側」，畫面與文件不寫成放空／賣出建議。規格與定案 `docs/market-overview.md` §6。
+
+- **後端**（`src/build_overview.py`）：同一批來源函式加方向參數（`SIDES`），`judge`／`intersect`／容許窗未動，沒有第二份實作。
+  資料檔 schema 仍為 1、只增不改：新增頂層 `out:{sectors,stocks}`（形狀同流入側），`daily/<date>.json` 同步帶 `out`。
+  流入側輸出逐位不變——以加流出側之前（`23a2cbf`）的輸出為 golden（`tests/fixtures/overview_inflow_golden.json`）測試守門；
+  另以線上 raw main 實跑，流入側與 repo 內原有的線上快照除 `generated_at` 外完全相同。
+- **來源定案**（逐一打開實檔核對）：A′ r5 三大法人淨賣前 10（基準）；B′ 籌碼雷達 `acc_out`「加速流出」（`acc_in` 的嚴格鏡像；
+  保證近 5 日淨額 <0，與 A′ 仍併「法人資金流」一組）；C′ 主動 ETF 次產業減碼前 10（上卷）；E′ 日級輪動雷達連續 3 日「轉弱」或「落後」
+  （前端沒有現成鏡像清單，以同一純函式 `rrgdPersistList` 換象限名取得）；a′ `pages.sync.sync_sell`（基準）；b′ `nSellers(s)>=2`；
+  d′ 月營收「Miss」「低預期仍Miss」；e′ `radarHolders().down`。**不納入**：D′（`morning.json` 的 `signals` 沒有退潮類訊號）、
+  c′（追蹤名單只有選入）、f（同流入側）——三者以 `excluded` 列在來源狀態列。
+- **前端**：交集區加「資金流入側／資金流出側」切換（預設流入側；`OV.side` 只存記憶體，不進 hash、不進 localStorage；切換不發請求）；
+  流出側同樣有來源狀態列、標示句與說明列（如實列出各來源定案與無對應來源者）；資料檔沒有 `out` 時流出側顯示「尚無資料」、流入側照常。
+  未動 `tbl()`、CSP、三站同步碼、hash 路由；CSS 只加 `.ov-sides`。
+- **實跑**（2026-11-13，線上 raw main，基準日 2026-11-12）：流出側類股交集 3 列（其他、半導體、醫療器材）、個股交集 6 列
+  （2059、2344、2603、3450、3706、5289）。本機姊妹 repo checkout 的 `morning.json` 比線上舊（會讓流入側 D 由計入退回另列），
+  故 repo 內快照採 raw main 那次的產出，`--src-root /home/user` 的產出只寫暫存目錄比對（兩者流出側交集列相同）。
+- 測試：`tests/test_overview_build.py` 28 → 39 項（流出側方向／門檻／群組／count≥2／stale、與前端口徑對跑含 `nSellers`／`down`／轉弱・落後、
+  流入側 golden）、`tests/test_overview_frontend.mjs` 22 → 25 項（`ovSide` 降級、切換只存記憶體、用語）。workflow 未改。
+- 未定：`morning.json` 的 `recap.down_subs`（昨退次產業）是否可當 D′，見 `docs/market-overview.md` §6.4。
+
 ## 2026-11-13 市場總覽：上線驗證與文件更正（程式行為不變）
 
 - **上線驗證**：PR #38 合併（`ec44f8c`）；線上 `index.html` sha256 與 main 相同；push 觸發的 mktbal run 43339158924 的 overview 步驟成功，

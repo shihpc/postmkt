@@ -51,8 +51,9 @@ def check_radar(sr):
 def check_holders(diag):
     js, py = node({"diag": diag})["holders"], bo.radar_holders_up(diag)
     assert js["cover"] == py["cover"] and js["hdd"] == py["hdd"]
-    assert [(r["code"], r["name"]) for r in js["up"]] == [(r["code"], r["name"]) for r in py["up"]]
-    assert all(same(a["hdw"], b["hdw"]) for a, b in zip(js["up"], py["up"]))
+    for k in ("up", "down"):   # down＝流出側 e′（§6）
+        assert [(r["code"], r["name"]) for r in js[k]] == [(r["code"], r["name"]) for r in py[k]]
+        assert all(same(a["hdw"], b["hdw"]) for a, b in zip(js[k], py[k]))
 
 
 def check_rrgd(series):
@@ -61,6 +62,8 @@ def check_rrgd(series):
     assert js["t"] == t and js["valid"] == len(p["valid"])
     assert js["imp"] == bo.rrgd_persist_list(p["coords"], t, "改善", bo.RRGD_PERSIST, 1)
     assert js["lead"] == bo.rrgd_persist_list(p["coords"], t, "領先", bo.RRGD_PERSIST, 0)
+    assert js["weak"] == bo.rrgd_persist_list(p["coords"], t, "轉弱", bo.RRGD_PERSIST, 1)   # 流出側 E′（§6）
+    assert js["lag"] == bo.rrgd_persist_list(p["coords"], t, "落後", bo.RRGD_PERSIST, 0)
     assert list(js["coords"]) == p["names"]
     for nm in p["names"]:
         a, b = js["coords"][nm], p["coords"][nm][t]
@@ -70,7 +73,9 @@ def check_rrgd(series):
 
 
 def check_cobuy(diff):
-    assert node({"diff": diff})["cobuy"] == [s["c"] for s in bo.aetf_co_buy(diff)]
+    js = node({"diff": diff})
+    assert js["cobuy"] == [s["c"] for s in bo.aetf_co_buy(diff)]
+    assert js["cosell"] == [s["c"] for s in bo.aetf_co_buy(diff, -1)]   # 流出側 b′＝nSellers(s)>=2（§6）
 
 
 def test_parity_radar_fixture():
@@ -107,7 +112,8 @@ def test_parity_rrgd_with_gaps():
 def test_parity_cobuy_fixture():
     d = load(FIX / "overview_aetf_diff.json")
     check_cobuy(d)
-    assert len(bo.aetf_co_buy(d)) >= 1
+    assert len(bo.aetf_co_buy(d)) >= 1 and len(bo.aetf_co_buy(d, -1)) >= 1
+    assert not ({s["c"] for s in bo.aetf_co_buy(d)} == {s["c"] for s in bo.aetf_co_buy(d, -1)})
     check_cobuy({"stocks": [{"c": "1", "by": {"A": 1, "B": 0}}, {"c": "2", "by": {"A": 1, "B": 2, "C": -3}}, {"c": "3"}, {"c": "4", "by": {"A": -1, "B": -2}}]})
 
 
@@ -315,7 +321,9 @@ def test_committed_snapshot_schema():
     o = load(p)
     assert o["schema"] == 1 and o["label"] == bo.LABEL and bo.DATE_RE.match(o["date"])
     assert load(ROOT / f"data/overview/daily/{o['date']}.json")["date"] == o["date"]
-    for layer in ("sectors", "stocks"):
+    blocks = [o] + ([o["out"]] if "out" in o else [])   # out＝資金流出側（2026-11-13 起；舊檔沒有）
+    for blk, layer in [(b, x) for b in blocks for x in ("sectors", "stocks")]:
+        o = blk
         counted = {s["id"] for s in o[layer]["sources"] if s["counted"]}
         rows = o[layer]["rows"]
         assert rows == sorted(rows, key=lambda r: (-r["count"], r["key"]))
@@ -431,3 +439,198 @@ def test_vote_groups():
     i["sr"]["windows"]["r20"]["classifications"]["chain"]["investors"]["total"].append({"sector": "乙", "net_amt_k": 0, "n": 10})
     rows = {r["key"]: (r["count"], r["hits"]) for r in bo.build(i, "G")["sectors"]["rows"]}
     assert rows == {"甲": (2, ["A", "B", "C"])}     # 乙：r5 為負 → 不在 A；x=0、y<0 → 不在 B；只剩 C → 不上榜
+
+
+# ====================== 資金流出側（2026-11-13，規格 docs/market-overview.md §6） ======================
+
+def rich_inp():
+    """base_inp＋真實形狀的 fixture（籌碼雷達 r5／r20、主動 ETF diff、輪動雷達序列），日期對齊到 2026-11-12"""
+    i = base_inp()
+    i["series"] = load(FIX / "overview_series_tail.json")
+    i["diff"] = load(FIX / "overview_aetf_diff.json")
+    s = load(FIX / "chipradar_sector_ranges_r5r20.json")
+    s["date"] = "2026-11-12"
+    s["windows"]["r5"]["end"] = "2026-11-12"
+    i["sr"] = s
+    return i
+
+
+def dumps(o):
+    return json.dumps(o, ensure_ascii=False, separators=(",", ":"))
+
+
+def test_inflow_output_bit_identical_to_pre_out_golden():
+    """流入側輸出逐位不變：golden＝加流出側之前（commit 23a2cbf）的 build() 對同一份輸入的輸出，含鍵的順序。"""
+    g = load(FIX / "overview_inflow_golden.json")
+    for name, inp in (("base", base_inp()), ("rich", rich_inp())):
+        o = bo.build(inp, "G")
+        assert list(o) == list(g[name]) + ["out"], name          # 只在最後新增 out
+        out = o.pop("out")
+        assert dumps(o) == dumps(g[name]), name
+        assert set(out) == {"sectors", "stocks"}
+    assert len(g["rich"]["sectors"]["rows"]) >= 1 and len(g["rich"]["stocks"]["rows"]) >= 1   # golden 不是空表
+
+
+def test_inflow_unaffected_when_out_base_missing():
+    b = bo.build(out_inp(), "G")
+    i = out_inp()
+    del i["tf"]["pages"]["sync"]["sync_sell"]
+    c = bo.build(i, "G")
+    assert dumps({k: v for k, v in b.items() if k != "out"}) == dumps({k: v for k, v in c.items() if k != "out"})
+    assert b["side"] == "long" and b["schema"] == 1 and c["date"] == "2026-11-12" and c["stocks"]["rows"]
+    # 流出側基準（同步賣超）缺 → 只有流出側個股表不輸出列，其餘來源無從比對資料日
+    assert src(c["out"], "stocks", "a")["status"] == "fail" and c["out"]["stocks"]["rows"] == [] and c["out"]["stocks"]["base_date"] is None
+    assert src(c["out"], "stocks", "b")["status"] == "stale" and c["out"]["sectors"]["rows"] == b["out"]["sectors"]["rows"]
+
+
+def out_inp():
+    """流出側合成輸入（流入側部分沿用 base_inp）。
+    類股：乙、丙、丁 r5＝r20 皆負 → A′ 且 acc_out（B′）；己 r5 小負、r20 大負 → A′ 但 slow_out（不在 B′）；甲、戊為正。
+    個股：2603＝a′,b′,d′,e′；1101＝a′,d′,e′（by 全為正 → 不是減碼共識）；2317＝只在 a′（b 只有 1 檔賣、d 為 Beat、e 為增加）。"""
+    i = base_inp()
+    r5 = [("甲", 100000), ("戊", 50000), ("乙", -100000), ("丙", -90000), ("丁", -80000), ("己", -50)]
+    r20 = [("甲", 100000), ("戊", 50000), ("乙", -100000), ("丙", -90000), ("丁", -80000), ("己", -1000000)]
+    w = lambda n, rows: {"trading_days": n, "end": "2026-11-12",  # noqa: E731
+                         "classifications": {"chain": {"investors": {"total": [{"sector": k, "net_amt_k": v, "n": 10} for k, v in rows]}}}}
+    i["sr"] = {"date": "2026-11-12", "windows": {"r5": w(5, r5), "r20": w(20, r20)}}
+    i["classify"]["map"]["3"] = {"p": [["己", "己子"]]}
+    i["diff"] = {"primary_date": "2026/11/12",
+                 "subs": [{"name": "甲子", "val": 9}, {"name": "乙子", "val": -5}, {"name": "己子", "val": -4}, {"name": "共用", "val": -3}],
+                 "stocks": [{"c": "2603", "n": "長榮", "by": {"A": -1, "B": -2, "C": 5}}, {"c": "2317", "n": "鴻海", "by": {"A": -1, "B": 3}},
+                            {"c": "1101", "n": "台泥", "by": {"A": 1, "B": 2}}, {"c": "<img>", "n": "壞代號", "by": {"A": -1, "B": -1}}]}
+    i["tf"]["pages"]["sync"]["sync_sell"] = [{"code": "1101", "name": "台泥"}, {"code": "2603", "name": "長榮"}, {"code": "2317", "name": "鴻海"}]
+    i["rev"] = {"month": "2026-10", "rows": [{"code": "1101", "name": "台泥", "cls": "Miss"}, {"code": "2603", "name": "長榮", "cls": "低預期仍Miss"},
+                                              {"code": "2317", "name": "鴻海", "cls": "Beat"}, {"code": "2330", "name": "台積電", "cls": "高預期仍Beat"},
+                                              {"code": "2454", "name": "聯發科", "cls": "符合"}]}
+    i["diag"] = {"stocks": {"2603": {"hdw": -0.3, "hdd": "2026-11-06", "n": "長榮"}, "1101": {"hdw": -0.1, "hdd": "2026-11-06", "n": "台泥"},
+                            "2317": {"hdw": 0.5, "hdd": "2026-11-06", "n": "鴻海"}, "2330": {"hdw": 0.1, "hdd": "2026-11-06", "n": "台積電"}}}
+    return i
+
+
+def test_out_shape_sources_and_excluded():
+    o = bo.build(out_inp(), "G")
+    out = o["out"]
+    assert set(out) == {"sectors", "stocks"} and "side" not in out and "label" not in out
+    assert [s["id"] for s in out["sectors"]["sources"]] == ["A", "B", "C", "D", "E"]
+    assert [s["id"] for s in out["stocks"]["sources"]] == ["a", "b", "c", "d", "e", "f"]
+    for layer, sid in (("sectors", "D"), ("stocks", "c"), ("stocks", "f")):   # 無對應來源／不納入
+        s = src(out, layer, sid)
+        assert s["status"] == "excluded" and s["counted"] is False and s["items"] == [] and "不納入" in s["note"]
+    names = " ".join(s["name"] + s.get("note", "") for layer in ("sectors", "stocks") for s in out[layer]["sources"])
+    assert "淨賣" in names and "加速流出" in names and "減碼" in names and "同步賣超" in names and "週減" in names and "Miss" in names
+    assert not any(w in dumps(out) for w in ("放空", "做空", "賣出建議"))
+    assert out["sectors"]["base_date"] == out["stocks"]["base_date"] == "2026-11-12"
+    for layer in ("sectors", "stocks"):
+        for s in out[layer]["sources"]:
+            assert s["counted"] == (s["status"] == "valid")
+
+
+def test_out_count_sort_and_groups():
+    o = bo.build(out_inp(), "G")
+    out = o["out"]
+    assert [x["key"] for x in src(out, "sectors", "A")["items"]] == ["乙", "丙", "丁", "己"]      # 淨賣金額（絕對值）遞減；正值不收
+    assert {x["key"] for x in src(out, "sectors", "B")["items"]} == {"乙", "丙", "丁"}            # 只有 acc_out；己是 slow_out、甲戊是流入
+    c = src(out, "sectors", "C")
+    assert c["subs"] == ["乙子", "己子", "共用"] and c["unmapped"] == ["共用"]                    # 減碼金額遞減；加碼的甲子不收
+    assert c["items"] == [{"key": "乙", "via": ["乙子"]}, {"key": "己", "via": ["己子"]}]
+    g = {s["id"]: s["group"] for s in out["sectors"]["sources"]}
+    assert g["A"] == g["B"] == "flow" and src(out, "sectors", "A")["group_name"] == src(out, "sectors", "B")["group_name"] == "法人資金流"
+    # 乙：A′＋B′（同組 1 票）＋C′ → 2 票（不是 3）；己：A′＋C′ → 2 票；丙、丁只中 A′＋B′（同組）→ 1 票 → 不上榜
+    assert [(r["key"], r["count"], r["hits"]) for r in out["sectors"]["rows"]] == [("乙", 2, ["A", "B", "C"]), ("己", 2, ["A", "C"])]
+    assert out["sectors"]["rows"][0]["via"] == {"C": ["乙子"]}
+    # 個股
+    assert [x["key"] for x in src(out, "stocks", "a")["items"]] == ["1101", "2603", "2317"]
+    assert [x["key"] for x in src(out, "stocks", "b")["items"]] == ["2603"]                       # by 為負的 ETF ≥2；壞代號丟棄
+    assert [x["key"] for x in src(out, "stocks", "d")["items"]] == ["1101", "2603"]               # Miss／低預期仍Miss
+    assert [x["key"] for x in src(out, "stocks", "e")["items"]] == ["2603", "1101"]               # hdw<0 由小到大
+    assert [(r["key"], r["name"], r["count"], r["hits"]) for r in out["stocks"]["rows"]] == [
+        ("2603", "長榮", 4, ["a", "b", "d", "e"]), ("1101", "台泥", 3, ["a", "d", "e"])]
+    assert all(r["key"] != "2317" for r in out["stocks"]["rows"])                                 # 只中 a′ 一個來源 → 不上榜
+    assert all(r["count"] >= 2 for r in out["sectors"]["rows"] + out["stocks"]["rows"])
+    gs = [s["group"] for s in out["stocks"]["sources"]]
+    assert len(gs) == len(set(gs))
+
+
+def test_out_only_flow_group_outputs_no_rows():
+    i = out_inp()
+    i["diff"] = ValueError("x")
+    out = bo.build(i, "G")["out"]
+    assert out["sectors"]["rows"] == [] and "計票群組只有 1 個" in out["sectors"]["note"]   # 只剩 A′、B′（同組）
+
+
+def test_out_src_A_C_top10_negative_only():
+    a = bo.src_A(big_sr(npos=3, nneg=14), "out")
+    assert [x["key"] for x in a["items"]] == [f"負{k:02d}" for k in range(13, 3, -1)]             # 淨賣金額遞減的前 10
+    assert [x["key"] for x in bo.src_A(big_sr(npos=5, nneg=3), "out")["items"]] == ["負02", "負01", "負00"]   # 不足 10 個不拿正值補
+    z = big_sr(npos=2, nneg=1)
+    z["windows"]["r5"]["classifications"]["chain"]["investors"]["total"].append({"sector": "零", "net_amt_k": 0, "n": 10})
+    assert [x["key"] for x in bo.src_A(z, "out")["items"]] == ["負00"]                            # 0 不算淨賣
+    parents = {f"子{k:02d}": [f"業{k:02d}"] for k in range(14)}
+    d = {"primary_date": "2026/11/12", "subs": [{"name": f"子{k:02d}", "val": -(k + 1)} for k in range(14)] + [{"name": "正", "val": 99}]}
+    c = bo.src_C(d, parents, "out")
+    assert c["subs"] == [f"子{k:02d}" for k in range(13, 3, -1)] and len(c["items"]) == 10
+    assert bo.src_C(d, parents, "in")["subs"] == ["正"]
+
+
+def test_out_src_B_only_acc_out():
+    s = out_inp()["sr"]
+    q = {p["sector"]: p["q"] for p in bo.radar_points(s["windows"]["r5"], s["windows"]["r20"], "chain", "total")}
+    assert q == {"甲": "acc_in", "戊": "acc_in", "乙": "acc_out", "丙": "acc_out", "丁": "acc_out", "己": "slow_out"}
+    assert {x["key"] for x in bo.src_B(s, "out")["items"]} == {"乙", "丙", "丁"}
+    assert {x["key"] for x in bo.src_B(s, "in")["items"]} == {"甲", "戊"}
+    # acc_out 保證近 5 日淨額 <0（A′、B′ 併組的依據）：真實形狀 fixture 上逐一驗
+    f = load(FIX / "chipradar_sector_ranges_r5r20.json")
+    pts = [p for p in bo.radar_points(f["windows"]["r5"], f["windows"]["r20"], "chain", "total") if p["q"] == "acc_out"]
+    assert pts and all(p["v5"] < 0 for p in pts)
+
+
+def test_out_src_E_weak_or_lagging_through_build():
+    series = load(FIX / "overview_series_tail.json")
+    p = bo.rrgd_prep(series)
+    t = p["valid"][-1]
+    lists = {q: bo.rrgd_persist_list(p["coords"], t, q, 3, 1) for q in ("改善", "領先", "轉弱", "落後")}
+    assert all(lists.values())                               # fixture 四個象限都有，才分得出取錯象限的突變
+    e = bo.src_E(series, "out")
+    assert {x["key"]: x["via"] for x in e["items"]} == {**{k: ["轉弱"] for k in lists["轉弱"]}, **{k: ["落後"] for k in lists["落後"]}}
+    assert not ({x["key"] for x in e["items"]} & set(lists["改善"] + lists["領先"]))
+    i = out_inp()
+    i["series"] = series
+    weak = lists["轉弱"][0]
+    i["sr"]["windows"]["r5"]["classifications"]["chain"]["investors"]["total"].append({"sector": weak, "net_amt_k": -70000, "n": 10})
+    i["sr"]["windows"]["r5"]["end"] = series["dates"][t]
+    out = bo.build(i, "G")["out"]
+    assert src(out, "sectors", "E")["status"] == "valid"
+    rows = {r["key"]: r for r in out["sectors"]["rows"]}
+    assert rows[weak]["hits"] == ["A", "E"] and rows[weak]["count"] == 2 and rows[weak]["via"] == {"E": ["轉弱"]}
+
+
+def test_out_stale_and_windows():
+    i = out_inp()
+    i["diff"]["primary_date"] = "2026/11/11"
+    i["rev"]["month"] = "2026-08"
+    for s in i["diag"]["stocks"].values():
+        s["hdd"] = "2026-10-30"
+    out = bo.build(i, "G")["out"]
+    for layer, sid in (("sectors", "C"), ("stocks", "b"), ("stocks", "d"), ("stocks", "e")):
+        s = src(out, layer, sid)
+        assert s["status"] == "stale" and s["counted"] is False and s["ok"] is True
+    assert out["sectors"]["rows"] == [] and out["stocks"]["rows"] == [] and "少於 2 個" in out["stocks"]["note"]
+
+
+def test_main_writes_out_in_latest_and_daily(tmp_path):
+    root = make_tree(tmp_path, out_inp())
+    assert bo.main(["--root", str(root), "--src-root", str(tmp_path)]) == 0
+    a, d = load(root / "data/overview/latest.json"), load(root / "data/overview/daily/2026-11-12.json")
+    assert a == d and a["schema"] == 1 and a["side"] == "long"
+    assert [r["key"] for r in a["out"]["stocks"]["rows"]] == ["2603", "1101"] and [r["key"] for r in a["out"]["sectors"]["rows"]] == ["乙", "己"]
+
+
+@pytest.mark.skipif(not (SIB / "taiwan-flows/data/latest.json").exists(), reason="無姊妹 repo 本機 checkout")
+def test_out_real_sibling_key_names():
+    """§6.1 的實檔核對：賣方清單鍵名、淨額正負與方向（鍵名改了這裡會紅）"""
+    tf = load(SIB / "taiwan-flows/data/latest.json")
+    rows = tf["pages"]["sync"]["sync_sell"]
+    assert rows and all(r["t_amt_k"] < 0 and r["f_amt_k"] < 0 for r in rows)
+    assert all(r["t_amt_k"] > 0 and r["f_amt_k"] > 0 for r in tf["pages"]["sync"]["sync_buy"])
+    m = load(SIB / "taiwan-flow-live-v2/data/morning.json")
+    assert set(m["signals"]) == {"cont_subs", "new_subs", "dual"}     # 沒有退潮類訊號 → D′ 無對應來源；多了鍵就要回頭檢討

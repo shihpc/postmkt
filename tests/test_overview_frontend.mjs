@@ -12,7 +12,7 @@ assert.ok(html.indexOf(B) > 0 && html.indexOf(E) > html.indexOf(B), "找不到 o
 const pure = html.slice(html.indexOf(B), html.indexOf(E));
 const sb = { console };
 vm.createContext(sb);
-new vm.Script(pure + "\nglobalThis.S = { OV_LABEL, OV_STATUS, OV_SUMFILE_RE, ovNum, ovDate, ovFmt, ovSigned, ovLabel, ovShapeOk, ovSources, ovRows, ovSynthSection, ovTotals, ovFutOi, ovMktbal, ovYmd };").runInContext(sb);
+new vm.Script(pure + "\nglobalThis.S = { OV_LABEL, OV_STATUS, OV_SUMFILE_RE, ovNum, ovDate, ovFmt, ovSigned, ovLabel, ovShapeOk, ovSide, OV_SIDES, ovSources, ovRows, ovSynthSection, ovTotals, ovFutOi, ovMktbal, ovYmd };").runInContext(sb);
 const S = sb.S;
 let n = 0;
 const ok = (name, fn) => { fn(); n++; console.log("ok - " + name); };
@@ -38,6 +38,21 @@ ok("ovShapeOk：schema 1 且兩層都有 sources／rows 陣列", () => {
   assert.equal(S.ovShapeOk({ ...g, schema: 2 }), false);
   assert.equal(S.ovShapeOk({ ...g, stocks: { sources: [] } }), false);
   assert.equal(S.ovShapeOk(null), false);
+});
+ok("ovSide：流入側＝頂層 sectors／stocks；流出側＝頂層 out；out 缺或形狀不合 → null（畫面顯示「尚無資料」）", () => {
+  const lay = t => ({ sources: [], rows: [{ key: t, count: 2, hits: [] }] });
+  const g = { schema: 1, sectors: lay("入類"), stocks: lay("入股"), out: { sectors: lay("出類"), stocks: lay("出股") } };
+  assert.deepEqual(J(S.OV_SIDES), [["in", "資金流入側"], ["out", "資金流出側"]]);
+  assert.equal(S.ovSide(g, "in").sectors.rows[0].key, "入類"); assert.equal(S.ovSide(g, "in").stocks.rows[0].key, "入股");
+  assert.equal(S.ovSide(g, "out").sectors.rows[0].key, "出類"); assert.equal(S.ovSide(g, "out").stocks.rows[0].key, "出股");
+  assert.equal(S.ovSide(g, "亂填").sectors.rows[0].key, "入類");            // 不認得的值一律流入側
+  const old = J(g); delete old.out;
+  assert.equal(S.ovSide(old, "out"), null); assert.equal(S.ovSide(old, "in").stocks.rows[0].key, "入股");   // 舊檔：流出側尚無資料、流入側照常
+  assert.equal(S.ovSide({ ...g, out: { sectors: lay("x") } }, "out"), null);
+  assert.equal(S.ovSide({ ...g, out: { sectors: lay("x"), stocks: { sources: [] } } }, "out"), null);
+  assert.equal(S.ovSide({ ...g, out: "x" }, "out"), null);
+  assert.equal(S.ovShapeOk(old), true);                                       // out 缺不影響整檔形狀檢查
+  assert.equal(S.ovSide(null, "in"), null); assert.equal(S.ovSide({ ...g, schema: 2 }, "out"), null);
 });
 ok("ovSources：狀態白名單（不認得的當讀取失敗）、counted 只在 valid 成立", () => {
   const r = J(S.ovSources({ sources: [
@@ -150,9 +165,31 @@ ok("外來字串插值過 esc()：區段內 ${…} 直接引用 j./x./s./r./c. �
     .filter(v => !/^(s\.id|st\.n|st\.pct)$/.test(v));
   assert.deepEqual(bad, []);
 });
-ok("說明列寫明：只做偏多側、排序無回測、輪動雷達 0/12", () => {
+ok("說明列寫明：排序無回測、計票群組、D 的計入條件、輪動雷達 0/12；流出側如實寫出各來源定案（含無對應來源者）", () => {
   assert.ok(sec.includes("以計票群組計") && sec.includes("資料日是前一交易日") && sec.includes("不是獨立來源"));
-  assert.ok(sec.includes("沒有回測依據") && sec.includes("只做偏多（資金流入）側，偏空側未做") && sec.includes("0/12 顯著"));
+  assert.ok(sec.includes("沒有回測依據") && sec.includes("0/12 顯著"));
+  for (const w of ["淨賣前 10", "「加速流出」象限", "次產業減碼前 10", "「轉弱」或「落後」", "同步賣超", "減碼共識", "Miss／低預期仍Miss", "週減前 20",
+    "沒有流出側的對應來源，不納入", "不是操作建議"]) assert.ok(sec.includes(w), w);
+});
+ok("兩側切換：預設流入側、狀態只存記憶體（不進 hash／localStorage）、切換不發請求", () => {
+  assert.ok(html.includes('const OV = { d: {}, err: {}, loading: {}, side: "in" };'));
+  assert.ok(sec.includes('data-ovside="${esc(k)}"') && sec.includes('e.target.closest("[data-ovside]")'));
+  assert.ok(sec.includes('if ((k === "in" || k === "out") && k !== OV.side){ OV.side = k; render(); }'));
+  assert.equal(sec.split("OV.side = ").length - 1, 1, "OV.side 只該在切換 listener 內賦值");
+  assert.ok(!/localStorage|sessionStorage|replaceState|location\.hash/.test(sec), "市場總覽區段不得碰儲存或網址");
+  for (const fn of ["parseHash", "currentHash", "applyHash"]){
+    const i = html.indexOf("function " + fn + "("), body = html.slice(i, html.indexOf("\n}\n", i));
+    assert.ok(i > 0 && !/OV\.|ovside/.test(body), fn + " 不得讀寫總覽的側別");
+  }
+  assert.ok(sec.includes("資金流出側尚無資料") && sec.includes("資金流入側不受影響"));
+  // 標示句在切換鈕與 if(!j) 分支之前無條件輸出（兩側、三種狀態都看得到）
+  const r = sec.slice(sec.indexOf("function ovRender("));
+  assert.ok(r.indexOf('class="ov-label"') < r.indexOf('class="ov-sides"') && r.indexOf('class="ov-sides"') < r.indexOf("if (!j){"));
+});
+ok("用語：市場總覽區段與 SUBS.overview 一律「資金流出側」，不出現操作建議字樣", () => {
+  const sub = html.match(/^\s*overview:"([^"]*)",/m)[1];
+  for (const t of [sec, sub]) assert.ok(!/放空|做空|賣出建議|偏空側|看空|賣出訊號/.test(t));
+  assert.ok(sub.includes("資金流出側") && sec.includes("資金流出側"));
 });
 ok("不改 tbl()：交集表走既有 tbl(cols, rows, opts)，CSS 一律 .ov- 前綴", () => {
   assert.ok(sec.includes("tbl(cols, rows, { sortI: 1, sortD: -1 })"));

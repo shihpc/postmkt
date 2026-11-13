@@ -5,7 +5,9 @@
 # 前端（index.html「市場總覽」tab）只渲染、不重算——交集口徑只有這一份實作。
 #
 # 鐵律 8：交集表依「出現在幾個來源清單」排序，屬新的候選排序、**無回測依據**；使用者 2026-11-12 裁定
-# 標示「AI 研判，未經回測，非保證」後上線，列入事後驗證。本批只做偏多（資金流入）側。
+# 標示「AI 研判，未經回測，非保證」後上線，列入事後驗證。
+# 兩側：資金流入側（頂層 side／sectors／stocks，2026-11-12）＋資金流出側（頂層 out，2026-11-13 追加，規格 §6）。
+# 流出側＝同一批來源函式與同一套計票邏輯換方向參數（SIDES），沒有第二份實作；定案見本檔 SIDES 上方與規格 §6.1。
 #
 # 來源（各自獨立 try；讀不到／形狀不合＝status "fail"、不計入，其餘照算）：
 #   類股（主鍵＝產業鏈「產業」，47 條；flows chain／classify.c／chain_daily 三者同一套命名，2026-11-12 實查）
@@ -54,13 +56,14 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 CODE_RE = re.compile(r"^\d{4}[0-9A-Z]{0,2}$")
 
-TOP_A = 10                 # A：淨買金額前 10
-TOP_C = 10                 # C：次產業加碼前 10
+TOP_A = 10                 # A：淨買（流出側：淨賣）金額前 10
+TOP_C = 10                 # C：次產業加碼（流出側：減碼）前 10
 RADAR_MIN_N = 8            # ＝index.html RADAR_MIN_N
 RRGD_N, RRGD_K, RRGD_PERSIST = 12, 10, 3   # ＝index.html RRGD_N／RRGD_K／RRGD_PERSIST
 HOLDER_TOP = 20            # ＝index.html radarHolders 的 slice(0,20)
 HOLDER_MAX_AGE_DAYS = 10   # e（週頻）：集保資料日距基準日 0–10 個日曆日內才計入
 REV_CLS = ("高預期仍Beat", "Beat")
+REV_CLS_OUT = ("低預期仍Miss", "Miss")
 REV_VALID_UNTIL_DAY = 15   # d（月頻）：營收月份 M 自 M+1 月 1 日起、至 M+2 月 15 日止計入
 MIN_VALID = 2              # 有效來源少於 2 個時該表不輸出列
 FETCH_TIMEOUT = 30
@@ -138,7 +141,8 @@ def radar_points(r5, r20, classify: str, inv: str) -> list[dict]:
 
 # ---------- 口徑移植：千張大戶（index.html radarHolders，ind="all" 的 up 清單） ----------
 
-def radar_holders_up(diag) -> dict:
+def radar_holders(diag) -> dict:
+    """回 {up, down, cover, hdd}：up＝hdw>0 依 hdw 遞減前 20；down＝hdw<0 依 hdw 遞增前 20；同值依代號"""
     st = diag.get("stocks") if isinstance(diag, dict) else None
     st = st if isinstance(st, dict) else {}
     al = []
@@ -153,7 +157,11 @@ def radar_holders_up(diag) -> dict:
         if r["hdd"] and (hdd is None or r["hdd"] > hdd):
             hdd = r["hdd"]
     up = sorted((r for r in al if r["hdw"] > 0), key=lambda r: (-r["hdw"], r["code"]))[:HOLDER_TOP]
-    return {"up": up, "cover": len(al), "hdd": hdd}
+    down = sorted((r for r in al if r["hdw"] < 0), key=lambda r: (r["hdw"], r["code"]))[:HOLDER_TOP]
+    return {"up": up, "down": down, "cover": len(al), "hdd": hdd}
+
+
+radar_holders_up = radar_holders   # 舊名（流入側測試沿用）
 
 
 # ---------- 口徑移植：日級輪動雷達（index.html RRGD-PURE 區段） ----------
@@ -256,18 +264,19 @@ def rrgd_prep(j) -> dict:
     return {"coords": coords, "valid": valid, "names": names}
 
 
-# ---------- 口徑移植：主動 ETF 跨 ETF 加碼共識（index.html aetfInsight 的 nBuyers(s)>=2） ----------
+# ---------- 口徑移植：主動 ETF 跨 ETF 共識（index.html aetfInsight 的 nBuyers(s)>=2／nSellers(s)>=2） ----------
 
-def aetf_n_buyers(s) -> int:
+def aetf_n_buyers(s, sign: int = 1) -> int:
+    """sign=1＝nBuyers（by 為正的 ETF 數）；sign=-1＝nSellers（by 為負的 ETF 數）"""
     by = s.get("by") if isinstance(s, dict) else None
     if not isinstance(by, dict):
         return 0
-    return sum(1 for v in by.values() if fin(v) and v > 0)
+    return sum(1 for v in by.values() if fin(v) and sign * v > 0)
 
 
-def aetf_co_buy(diff) -> list[dict]:
+def aetf_co_buy(diff, sign: int = 1) -> list[dict]:
     st = diff.get("stocks") if isinstance(diff, dict) else None
-    return [s for s in (st if isinstance(st, list) else []) if aetf_n_buyers(s) >= 2]
+    return [s for s in (st if isinstance(st, list) else []) if aetf_n_buyers(s, sign) >= 2]
 
 
 # ---------- 次產業 → 產業 上卷 ----------
@@ -316,21 +325,42 @@ def holder_valid(hdd: str, base: str) -> bool:
     return 0 <= (_d(base) - _d(hdd)).days <= HOLDER_MAX_AGE_DAYS
 
 
-# ---------- 來源抽取（每個回 {id,name,freq,date,items,note?}；失敗 raise） ----------
+# ---------- 方向參數（流入側／流出側共用同一批來源函式；docs/market-overview.md §6） ----------
+# 流出側各來源是流入側的鏡像，逐項打開實檔核對後定案（2026-11-13）：
+#   A′ 同檔同窗，net_amt_k<0 依淨賣金額（絕對值）遞減前 10          → sign=-1
+#   B′ radarQuad 的 acc_out（加速流出：近 20 日日均 <0 且近 5 日日均 < 近 20 日日均）——acc_in 的嚴格鏡像；
+#      另一個流出象限 slow_out（流出放緩）不保證近 5 日為淨賣，不取。acc_out 保證近 5 日淨額 <0 → A′、B′ 仍併「法人資金流」一組
+#   C′ diff.subs 中 val<0 依減碼金額遞減前 10，上卷規則同 C
+#   D′ 不納入：morning.json 的 signals 只有 cont_subs／new_subs／dual（都是湧入側），沒有退潮類訊號
+#   E′ rrgdPersistList 對四個象限名通用；改善（RS<100、動能≥100）的鏡像＝轉弱（RS≥100、動能<100），領先的鏡像＝落後。
+#      前端 rrgd tab 只列改善／領先兩份清單，流出側以同一純函式換象限名取得，不另創口徑
+#   a′ latest.json pages.sync.sync_sell   b′ aetfInsight 的 nSellers(s)>=2（by 為負的 ETF 數）
+#   c′ 不納入（追蹤名單只有選入）   d′ cls ∈ 低預期仍Miss／Miss   e′ radarHolders(diag,"all").down
+SIDES = {
+    "in": {"sign": 1, "quad": "acc_in", "rrgd": (("改善", 1), ("領先", 0)), "sync": "sync_buy",
+           "rev_cls": REV_CLS, "holders": "up"},
+    "out": {"sign": -1, "quad": "acc_out", "rrgd": (("轉弱", 1), ("落後", 0)), "sync": "sync_sell",
+            "rev_cls": REV_CLS_OUT, "holders": "down"},
+}
 
-def src_A(sr):
+
+# ---------- 來源抽取（每個回 {date,items,note?}；失敗 raise；side＝"in"｜"out"） ----------
+
+def src_A(sr, side="in"):
+    sg = SIDES[side]["sign"]
     r5 = sr["windows"]["r5"]
     rows = r5["classifications"]["chain"]["investors"]["total"]
     date = norm_date(r5.get("end")) or norm_date(sr.get("date"))
     if not date or not isinstance(rows, list):
         raise ValueError("形狀不合")
     pos = [r for r in rows if isinstance(r, dict) and isinstance(r.get("sector"), str)
-           and fin(r.get("net_amt_k")) and r["net_amt_k"] > 0]
-    pos.sort(key=lambda r: (-r["net_amt_k"], r["sector"]))
+           and fin(r.get("net_amt_k")) and sg * r["net_amt_k"] > 0]
+    pos.sort(key=lambda r: (-sg * r["net_amt_k"], r["sector"]))
     return {"date": date, "items": [{"key": r["sector"]} for r in pos[:TOP_A]]}
 
 
-def src_B(sr):
+def src_B(sr, side="in"):
+    quad = SIDES[side]["quad"]
     w = sr["windows"]
     date = norm_date(w["r5"].get("end")) or norm_date(sr.get("date"))
     if not date:
@@ -338,16 +368,17 @@ def src_B(sr):
     pts = radar_points(w["r5"], w["r20"], "chain", "total")
     if not pts:
         raise ValueError("r5／r20 無可比類股")
-    return {"date": date, "items": [{"key": p["sector"]} for p in sorted(pts, key=lambda p: p["sector"]) if p["q"] == "acc_in"]}
+    return {"date": date, "items": [{"key": p["sector"]} for p in sorted(pts, key=lambda p: p["sector"]) if p["q"] == quad]}
 
 
-def src_C(diff, parents):
+def src_C(diff, parents, side="in"):
+    sg = SIDES[side]["sign"]
     date = norm_date(diff.get("primary_date"))
     subs = diff.get("subs")
     if not date or not isinstance(subs, list):
         raise ValueError("形狀不合")
-    pos = [s for s in subs if isinstance(s, dict) and isinstance(s.get("name"), str) and fin(s.get("val")) and s["val"] > 0]
-    pos.sort(key=lambda s: (-s["val"], s["name"]))
+    pos = [s for s in subs if isinstance(s, dict) and isinstance(s.get("name"), str) and fin(s.get("val")) and sg * s["val"] > 0]
+    pos.sort(key=lambda s: (-sg * s["val"], s["name"]))
     names = [s["name"] for s in pos[:TOP_C]]
     if parents is None:
         return {"date": date, "items": [], "subs": names, "listed": True,
@@ -356,7 +387,9 @@ def src_C(diff, parents):
     return {"date": date, "items": items, "subs": names, "unmapped": unmapped}
 
 
-def src_D(morning, parents):
+def src_D(morning, parents, side="in"):
+    if side != "in":
+        raise ValueError("流出側無對應來源")   # 防呆：流出側的 defs 不含 D，不會走到
     sig = morning.get("signals")
     date = norm_date((morning.get("recap") or {}).get("baseline_date"))
     if not isinstance(sig, dict) or not date:
@@ -374,15 +407,15 @@ def src_D(morning, parents):
             "stale_note": "資料日為前一交易日（morning.json 的連湧／新湧由前一交易日的資料算出），與基準日不同：另列、不計入"}
 
 
-def src_E(series):
+def src_E(series, side="in"):
     p = rrgd_prep(series)
     t = p["valid"][-1]
     date = norm_date(series["dates"][t])
     if not date:
         raise ValueError("日期不合")
-    imp = rrgd_persist_list(p["coords"], t, "改善", RRGD_PERSIST, 1)
-    lead = rrgd_persist_list(p["coords"], t, "領先", RRGD_PERSIST, 0)
-    items = [{"key": k, "via": ["改善"]} for k in imp] + [{"key": k, "via": ["領先"]} for k in lead]
+    items = []
+    for q, sort_key in SIDES[side]["rrgd"]:
+        items += [{"key": k, "via": [q]} for k in rrgd_persist_list(p["coords"], t, q, RRGD_PERSIST, sort_key)]
     return {"date": date, "items": sorted(items, key=lambda x: x["key"])}
 
 
@@ -392,24 +425,26 @@ def _stock_item(code, name):
     return {"key": code, "name": _s(name)}
 
 
-def src_a(tf):
+def src_a(tf, side="in"):
     date = norm_date(tf.get("date"))
-    rows = tf["pages"]["sync"]["sync_buy"]
+    rows = tf["pages"]["sync"][SIDES[side]["sync"]]
     if not date or not isinstance(rows, list):
         raise ValueError("形狀不合")
     items = [x for x in (_stock_item(r.get("code"), r.get("name")) for r in rows if isinstance(r, dict)) if x]
     return {"date": date, "items": items}
 
 
-def src_b(diff):
+def src_b(diff, side="in"):
     date = norm_date(diff.get("primary_date"))
     if not date or not isinstance(diff.get("stocks"), list):
         raise ValueError("形狀不合")
-    items = [x for x in (_stock_item(s.get("c"), s.get("n")) for s in aetf_co_buy(diff)) if x]
+    items = [x for x in (_stock_item(s.get("c"), s.get("n")) for s in aetf_co_buy(diff, SIDES[side]["sign"])) if x]
     return {"date": date, "items": items}
 
 
-def src_c(track):
+def src_c(track, side="in"):
+    if side != "in":
+        raise ValueError("流出側無對應來源")   # 防呆：流出側的 defs 不含 c
     date = norm_date(track.get("date"))
     rows = track.get("tracking")
     if track.get("schema") != 1 or not date or not isinstance(rows, list):
@@ -418,21 +453,21 @@ def src_c(track):
     return {"date": date, "items": items}
 
 
-def src_d(rev):
+def src_d(rev, side="in"):
     month = rev.get("month")
     rows = rev.get("rows")
     if not isinstance(month, str) or not MONTH_RE.match(month) or not isinstance(rows, list):
         raise ValueError("形狀不合")
     items = [x for x in (_stock_item(r.get("code"), r.get("name")) for r in rows
-                         if isinstance(r, dict) and r.get("cls") in REV_CLS) if x]
+                         if isinstance(r, dict) and r.get("cls") in SIDES[side]["rev_cls"]) if x]
     return {"date": month, "items": items}
 
 
-def src_e(diag):
-    h = radar_holders_up(diag)
+def src_e(diag, side="in"):
+    h = radar_holders(diag)
     if not h["cover"] or not h["hdd"] or not DATE_RE.match(h["hdd"]):
         raise ValueError("無大戶資料或集保資料日不合")
-    items = [x for x in (_stock_item(r["code"], r["name"]) for r in h["up"]) if x]
+    items = [x for x in (_stock_item(r["code"], r["name"]) for r in h[SIDES[side]["holders"]]) if x]
     return {"date": h["hdd"], "items": items}
 
 
@@ -457,6 +492,30 @@ STOCK_DEFS = [
     ("d", "月營收 Beat／高預期仍Beat", "monthly", "d"),
     ("e", "千張大戶週增前 20", "weekly", "e"),
 ]
+# 流出側（§6.1）：id 與流入側相同（位於頂層 out 之下，不會混淆），名稱寫明方向；A、B 同樣併「法人資金流」一組
+# （acc_out 保證近 5 日淨額 <0，與流入側同型的互相保證）。個股層逐對查過，沒有同檔同窗且互相保證的來源對。
+SECTOR_DEFS_OUT = [
+    ("A", "產業鏈資金流：近 5 日三大法人淨賣前 10", "daily", "flow"),
+    ("B", "籌碼雷達：近 5 日對近 20 日「加速流出」象限", "daily", "flow"),
+    ("C", "主動 ETF 次產業減碼前 10（上卷到產業）", "daily", "C"),
+    ("E", "日級輪動雷達：連續 3 日「轉弱」或「落後」", "daily", "E"),
+]
+STOCK_DEFS_OUT = [
+    ("a", "外資投信同步賣超 Top30", "daily", "a"),
+    ("b", "主動 ETF 跨 ETF 減碼共識（≥2 檔同賣）", "daily", "b"),
+    ("d", "月營收 Miss／低預期仍Miss", "monthly", "d"),
+    ("e", "千張大戶週減前 20", "weekly", "e"),
+]
+
+
+def _excluded(sid, name, note):
+    return {"id": sid, "name": name, "freq": "daily", "group": sid, "date": None, "ok": False, "stale": False,
+            "counted": False, "status": "excluded", "n": 0, "items": [], "note": note}
+
+
+EXCLUDED_D_OUT = _excluded("D", "連湧／新湧次產業的流出側對應", "不納入：morning.json 的 signals 只有連湧／新湧（湧入側），沒有退潮類訊號，無對應來源")
+EXCLUDED_C_OUT = _excluded("c", "選股二追蹤名單的流出側對應", "不納入：追蹤名單只有選入、沒有流出側名單，無對應來源")
+SIDE_DEFS = {"in": (SECTOR_DEFS, STOCK_DEFS), "out": (SECTOR_DEFS_OUT, STOCK_DEFS_OUT)}
 EXCLUDED_F = {"id": "f", "name": "彙總分析精華標的", "freq": "daily", "group": "f", "date": None, "ok": False, "stale": False,
               "counted": False, "status": "excluded", "n": 0, "items": [],
               "note": "不納入：彙總分析為 AI 自由文字，標題格式逐場不同，方向無法可靠解析"}
@@ -571,25 +630,45 @@ def build(inp: dict, gen: str) -> dict | None:
         except Exception as e:  # noqa: BLE001
             return e
 
-    sg = {"A": run(src_A, "sr"), "B": run(src_B, "sr"), "C": with_parents(src_C, "diff"),
-          "D": with_parents(src_D, "morning"), "E": run(src_E, "series")}
-    tg = {"a": run(src_a, "tf"), "b": run(src_b, "diff"), "c": run(src_c, "track"),
-          "d": run(src_d, "rev"), "e": run(src_e, "diag")}
-    sbase, ssrc = judge(SECTOR_DEFS, sg, "A", sector_valid)
-    tbase, tsrc = judge(STOCK_DEFS, tg, "a", stock_valid)
+    fns = {"A": (src_A, "sr"), "B": (src_B, "sr"), "C": (src_C, "diff"), "D": (src_D, "morning"), "E": (src_E, "series"),
+           "a": (src_a, "tf"), "b": (src_b, "diff"), "c": (src_c, "track"), "d": (src_d, "rev"), "e": (src_e, "diag")}
+
+    def layers(side):
+        """同一套抽取→judge→intersect，side 只決定方向參數與來源清單。回 (類股基準日, 個股基準日, sectors, stocks)"""
+        sdefs, tdefs = SIDE_DEFS[side]
+
+        def got(defs):
+            out = {}
+            for sid, *_ in defs:
+                fn, key = fns[sid]
+                if sid in ("C", "D"):
+                    out[sid] = with_parents(lambda a, p, fn=fn: fn(a, p, side), key)
+                else:
+                    out[sid] = run(lambda a, fn=fn: fn(a, side), key)
+            return out
+
+        sbase, ssrc = judge(sdefs, got(sdefs), "A", sector_valid)
+        tbase, tsrc = judge(tdefs, got(tdefs), "a", stock_valid)
+        srows, snote = intersect(ssrc, False)
+        trows, tnote = intersect(tsrc, True)
+        if side == "out":   # 無對應來源者以 excluded 列出（順序比照流入側的 A–E／a–f）
+            ssrc = ssrc[:3] + [dict(EXCLUDED_D_OUT)] + ssrc[3:]
+            tsrc = tsrc[:2] + [dict(EXCLUDED_C_OUT)] + tsrc[2:]
+        sectors = {"base_date": sbase, "sources": ssrc, "rows": srows}
+        stocks = {"base_date": tbase, "sources": tsrc + [dict(EXCLUDED_F)], "rows": trows}
+        if snote:
+            sectors["note"] = snote
+        if tnote:
+            stocks["note"] = tnote
+        return sbase, tbase, sectors, stocks
+
+    sbase, tbase, sectors, stocks = layers("in")
     date = tbase or sbase
     if not date:
         return None
-    srows, snote = intersect(ssrc, False)
-    trows, tnote = intersect(tsrc, True)
-    sectors = {"base_date": sbase, "sources": ssrc, "rows": srows}
-    stocks = {"base_date": tbase, "sources": tsrc + [dict(EXCLUDED_F)], "rows": trows}
-    if snote:
-        sectors["note"] = snote
-    if tnote:
-        stocks["note"] = tnote
+    _, _, osec, ostk = layers("out")
     return {"schema": SCHEMA, "date": date, "generated_at": gen, "label": LABEL, "side": "long",
-            "sectors": sectors, "stocks": stocks}
+            "sectors": sectors, "stocks": stocks, "out": {"sectors": osec, "stocks": ostk}}
 
 
 # ---------- 輸入／輸出 ----------
@@ -677,13 +756,15 @@ def main(argv=None) -> int:
     if out is None:
         print("::error::類股與個股兩層的基準來源（A 產業鏈資金流、a 同步買超）都讀不到，不寫檔")
         return 2
-    for layer in ("sectors", "stocks"):
-        for s in out[layer]["sources"]:
-            if s["status"] in ("fail", "stale", "listed"):
-                print(f"::warning::overview 來源 {s['id']}（{s['name']}）{s['status']}：資料日 {s['date']}／基準日 {out[layer]['base_date']}")
+    for tag, blk in (("", out), ("流出側 ", out["out"])):
+        for layer in ("sectors", "stocks"):
+            for s in blk[layer]["sources"]:
+                if s["status"] in ("fail", "stale", "listed"):
+                    print(f"::warning::overview {tag}來源 {s['id']}（{s['name']}）{s['status']}：資料日 {s['date']}／基準日 {blk[layer]['base_date']}")
     w1 = write_if_changed(root / "data/overview/latest.json", out)
     w2 = write_if_changed(root / f"data/overview/daily/{out['date']}.json", out)
     print(f"overview {out['date']}: 類股交集 {len(out['sectors']['rows'])} 列、個股交集 {len(out['stocks']['rows'])} 列；"
+          f"流出側 類股 {len(out['out']['sectors']['rows'])} 列、個股 {len(out['out']['stocks']['rows'])} 列；"
           f"latest {'已寫' if w1 else '內容相同未寫'}、daily {'已寫' if w2 else '內容相同未寫'}")
     return 0
 
