@@ -12,7 +12,7 @@ assert.ok(html.indexOf(B) > 0 && html.indexOf(E) > html.indexOf(B), "找不到 o
 const pure = html.slice(html.indexOf(B), html.indexOf(E));
 const sb = { console };
 vm.createContext(sb);
-new vm.Script(pure + "\nglobalThis.S = { OV_LABEL, OV_STATUS, OV_SUMFILE_RE, ovNum, ovDate, ovFmt, ovSigned, ovLabel, ovShapeOk, ovSide, OV_SIDES, ovSources, ovRows, ovSynthSection, ovTotals, ovFutOi, ovMktbal, ovYmd, ovHoldLayer, ovHoldMatch };").runInContext(sb);
+new vm.Script(pure + "\nglobalThis.S = { OV_LABEL, OV_STATUS, OV_SUMFILE_RE, ovNum, ovDate, ovFmt, ovSigned, ovLabel, ovShapeOk, ovSide, OV_SIDES, ovSources, ovRows, ovSynthSection, ovUsGateNote, ovSumBadge, ovTotals, ovFutOi, ovMktbal, ovYmd, ovHoldLayer, ovHoldMatch };").runInContext(sb);
 const S = sb.S;
 let n = 0;
 const ok = (name, fn) => { fn(); n++; console.log("ok - " + name); };
@@ -302,5 +302,41 @@ ok("持股對照（讀碼）：沿用 diagHoldings()＋HOLD_CODE_RE；零請求�
   assert.ok(!/OV\.side/.test(body));
   // 外來字串與持股字串都經 esc()
   for (const w of ["esc(r.code)", "esc(r.name)", "esc(a.join(", "esc(s.id)", "esc(s.name)", "esc(m.date"]) assert.ok(hh.includes(w), w);
+});
+// ---- 2026-11-18：卡 6 徽章帶產出時間＋美股資料日未達預期的說明句 ----
+const fmtTpe = x => { const t = Date.parse(x); return isNaN(t) ? String(x || "").slice(0, 16).replace("T", " ") : new Date(t).toLocaleString("sv-SE", { timeZone: "Asia/Taipei" }).slice(0, 16); };
+ok("ovUsGateNote：us_gate.fresh===false 才出說明句；舊場次／pm 場／形狀不合一律空字串", () => {
+  const run = { date: "2026-11-18", slot: "am", us_gate: { expected: "2026-11-17", got: "2026-11-16", fresh: false, waited_sec: 3600 } };
+  assert.equal(S.ovUsGateNote(run), "本場產出時美股資料尚未更新（資料日 2026-11-16，預期 2026-11-17），文中美股數字可能是前一個交易日的。");
+  assert.equal(S.ovUsGateNote({ us_gate: { expected: "2026-11-17", got: null, fresh: false } }), "本場產出時讀不到美股資料日（預期 2026-11-17），文中美股數字可能是前一個交易日的。");
+  assert.equal(S.ovUsGateNote({ us_gate: { expected: "2026-11-17", got: "<img src=x>", fresh: false } }), "本場產出時讀不到美股資料日（預期 2026-11-17），文中美股數字可能是前一個交易日的。");   // 外來字串不過日期白名單就不進句子
+  for (const c of [null, undefined, "x", {}, { us_gate: null }, { us_gate: "x" }, { us_gate: { expected: "2026-11-17", got: "2026-11-17", fresh: true } },
+    { us_gate: { expected: "2026-11-17", got: "2026-11-16" } }, { us_gate: { expected: "2026-11-17", got: "2026-11-16", fresh: 0 } },
+    { us_gate: { expected: "<b>", got: "2026-11-16", fresh: false } }, { us_gate: { got: "2026-11-16", fresh: false } }]) assert.equal(S.ovUsGateNote(c), "");
+});
+ok("ovSumBadge：資料日＋場次＋產出時間（台北）；同日只寫時分；generated_at 缺或壞掉不寫產出時間", () => {
+  assert.equal(S.ovSumBadge({ date: "2026-11-18", slot: "am", generated_at: "2026-11-18T07:05:12+08:00" }, fmtTpe), "2026-11-18 早場｜產出 07:05（台北）");
+  assert.equal(S.ovSumBadge({ date: "2026-11-18", slot: "am", generated_at: "2026-11-17T23:05:12Z" }, fmtTpe), "2026-11-18 早場｜產出 07:05（台北）");      // UTC 也轉台北
+  assert.equal(S.ovSumBadge({ date: "2026-11-17", slot: "pm", generated_at: "2026-11-18T00:12:00+08:00" }, fmtTpe), "2026-11-17 晚場｜產出 2026-11-18 00:12（台北）");   // 晚場跨午夜：寫完整日期
+  assert.equal(S.ovSumBadge({ date: "2026-11-18", slot: "am" }, fmtTpe), "2026-11-18 早場");
+  assert.equal(S.ovSumBadge({ date: "2026-11-18", slot: "am", generated_at: "<script>" }, fmtTpe), "2026-11-18 早場");
+  assert.equal(S.ovSumBadge({ date: "2026-11-18", slot: "am", generated_at: 123 }, fmtTpe), "2026-11-18 早場");
+  assert.equal(S.ovSumBadge({ date: "x", slot: "zz", generated_at: "2026-11-18T07:05:00+08:00" }, fmtTpe), "—｜產出 2026-11-18 07:05（台北）");
+  assert.equal(S.ovSumBadge({ date: "2026-11-18", slot: "am", generated_at: "2026-11-18T07:05:00+08:00" }), "2026-11-18 早場");     // 沒給格式函式
+  assert.equal(S.ovSumBadge(null, fmtTpe), ""); assert.equal(S.ovSumBadge(undefined, fmtTpe), "");
+});
+ok("卡 6（讀碼）：徽章走 ovSumBadge＋fmtGenTaipei；說明句經 esc()、排在研判內文之前；彙總分析自動產出同樣標示；三站同步碼只呼叫", () => {
+  const i = html.indexOf("function ovSumHtml("), b = html.slice(i, html.indexOf("function ovBriefHtml(", i));
+  assert.ok(i > 0 && b.includes("const usNote = ovUsGateNote(c);"));
+  assert.ok(b.includes('(usNote ? `<div class="ov-usnote">${esc(usNote)}</div>` : "")'));
+  assert.ok(b.indexOf("ov-usnote") < b.indexOf("mdToHtml(sec)"));
+  assert.ok(b.includes("return ovSumBadge(OV.d.sum, fmtGenTaipei);"));
+  assert.ok(html.includes('h += ovCard("6 盤勢綜合研判", "sumidx", ovSumDate(), ovSumHtml, { ai: true });'));
+  assert.ok(html.includes("+ (OV.d[key] !== undefined && dateText ? `<span class=\"ov-date\">${esc(dateText)}</span>` : \"\")"), "徽章文字經 esc()");
+  const sh = html.slice(html.indexOf("function summaryHtml("), html.indexOf("// ---------- 雲端歷史"));
+  assert.ok(sh.includes('if (usNote) h += `<div class="ov-usnote">${esc(usNote)}</div>`;'));
+  assert.equal(html.split("function mdToHtml(").length - 1, 1);
+  assert.ok(!/us_gate/.test(html.slice(html.indexOf("function sumCtxPostmkt("), html.indexOf("function sumCtxPostmkt(") + 200)));
+  for (const w of ["偏多", "偏空", "建議", "警告", "錯誤"]) assert.ok(!pure.slice(pure.indexOf("function ovUsGateNote("), pure.indexOf("function ovSynthSection(")).replace(/^\s*\/\/.*$/gm, "").includes(w), w);
 });
 console.log(`\n${n} passed`);

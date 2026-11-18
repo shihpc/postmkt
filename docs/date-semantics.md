@@ -28,11 +28,17 @@
 ### data/us.json（隔夜美股，每日台北清晨產）
 | 欄位 | 語意 | 時區 | 粒度 |
 |------|------|------|------|
-| `date` | 美股交易日（隔夜資料本質日） | — | 交易日 |
-| `generated_at` | 產出時刻 | P4 由另一 agent 改台北 +08:00（原 UTC） | 時刻 |
+| `date` | 美股交易日（隔夜資料本質日）。**取法自 2026-11-18 起（taiwan-flow-live-v2 `src/build_us.py` 對應 PR 合併後）＝各列資料日的眾數、平手取較舊者**；之前是各列資料日的 max，少數先入庫的列會把它往前推 | — | 交易日 |
+| `generated_at` | 產出時刻。**不代表資料日**：us 班每輪都會重寫它（溢價等欄位會動），資料日沒推進時它照樣是今日 | P4 由另一 agent 改台北 +08:00（原 UTC） | 時刻 |
 | `session` | 盤別文字（盤中/收盤等） | — | — |
 
 > 美股本質為隔夜資料；下游晨報/新聞段的「隔夜美股」資料日一律以 `us.date` 為準（P2 修正）。
+>
+> **2026-11-18 事故**：當日 06:37–06:58 三版 us.json 的 24 列中只有 1 列是 11-17、其餘 23 列（含費半、台積電 ADR）仍是 11-16，
+> 頂層 `date` 卻是 `2026-11-17`（max 口徑）。本站早場彙總 `20261118-am` 因此把 11-16 的數字寫成「隔夜美股（11/17）」。
+> 上游改眾數後，「多數列還沒到」時 `date` 會停在舊日。**判斷美股資料新不新，一律比 `date` 與最近預期美股交易日，不看 `generated_at`**
+> （本站 `build_summary.py` 的 `us_is_fresh()`／`last_expected_us_trading_date()`，後者是 Worker `lastExpectedUsTradingDate` 的移植）。
+> 眾數口徑以上游 PR 實際合併為準；本站閘門只依賴「`date` 是 `YYYY-MM-DD` 的美股資料日」，不依賴它怎麼算。
 
 ### data/aetf/latest.json（主動 ETF 每日快照）
 | 欄位 | 語意 | 時區 | 粒度 |
@@ -162,6 +168,9 @@
 | `dates` | P3 新增：三頁各自主資料日 `{頁面名: primary}` | — | 交易日 |
 | `six[].date` | 各份摘要對應頁面的主資料日 | — | 交易日 |
 | `slot` | 場次 `am`/`pm` | — | — |
+| `us_gate` | 2026-11-18 新增，**只有 am 場有**（pm 場與舊檔沒有此鍵）：`{expected, got, fresh, waited_sec}`＝該場組素材時 us.json 的資料日狀態。`expected`＝最近預期美股交易日、`got`＝us.json 的 `date`（讀不到為 `null`）、`fresh`＝`got ≥ expected`、`waited_sec`＝齊全閘門第二階段實際等待秒數 | — | 交易日／秒 |
+
+> `index.json` 的 `runs[]` 在該場 `us_gate.fresh` 為 `false` 時多帶 `us_stale: true`（精簡旗標；其餘場次沒有此鍵）。
 
 > `date`/`generated_at`（產出日）與 `dates`（三頁資料日）語意不同：前者是何時跑，後者是分析的是哪一交易日的資料。
 

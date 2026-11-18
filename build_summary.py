@@ -8,7 +8,7 @@
 # 皆與 JS 版等價；各頁 SYS prompt 原樣取自三站前端，彙總 SYS 取自規格書。
 #
 # 流程：資料齊全閘門（--slot am|pm 輪詢；pm 硬等 postmkt/news晚班/taiwan-flows
-# 三源皆今日，am 硬等 morning.json 後再軟等 us.json＋news早班，詳 wait_gate docstring）
+# 三源皆今日，am 硬等 morning.json 後再軟等 us.json（資料日達預期美股交易日）＋news早班，詳 wait_gate docstring）
 # → 構建 3 段 context → Message Batches 提交 3 份摘要（3 context × Sonnet 5 各 1 次，
 # 半價；超時/單筆失敗逐筆同步回退）→ ≥2 份成功才做 1 次 Opus 4.8 彙總（同樣 batch
 # 優先、回退同步）→ 輸出 data/summary/YYYYMMDD-{am|pm}.json ＋ 重建 index.json ＋
@@ -197,12 +197,46 @@ def news_fresh(generated_at, today: str, min_hour: int, next_day_before=None) ->
     return False
 
 
-def us_is_today(us, today: str) -> bool:
-    """us.json 是否為今日產出。實查（2026-07-14）us.json 有兩個日期欄：
-    date=美股交易日（美國休市/週末時不推進，拿來判「今日檔」會誤擋）、
-    generated_at=產出時間（us.yml 每交易日台北清晨重跑必更新）——故用
-    generated_at 的台北日判斷。"""
-    return taipei_day_of((us or {}).get("generated_at")) == today
+def last_expected_us_trading_date(today: str) -> str:
+    """最近預期美股交易日（台北視角，純函式）。today＝台北日 YYYY-MM-DD。
+    台北週二~週六＝台北昨日（美股前夜收盤）；週日＝上週五（-2）；週一＝上週五（-3）。
+    美國國定假日不處理：假日隔天（台北）us.json 的 date 不會推進，閘門會軟等到逾時後照跑，
+    並在該場 us_gate 記 fresh=false（那天屬誤標，美股其實沒有新資料）。
+    ⚠ 這是 taiwan-flow-live-v2 `worker/src/index.js` 的 `lastExpectedUsTradingDate` 的 Python 移植，
+    兩處口徑必須相同，改一處要改另一處（Worker 的 runUsCatchup／productFresh usDate／晨卡 usFresh 都用它）。"""
+    d = dt.datetime.strptime(today, "%Y-%m-%d").date()
+    wd = d.weekday()            # 週一=0 … 週日=6
+    back = 3 if wd == 0 else 2 if wd == 6 else 1
+    return (d - dt.timedelta(days=back)).strftime("%Y-%m-%d")
+
+
+_US_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def us_data_date(us):
+    """us.json 頂層 date（美股資料日）→ YYYY-MM-DD；缺、非字串或格式不合回 None。"""
+    v = (us or {}).get("date") if isinstance(us, dict) else None
+    v = norm_date(v)[:10] if isinstance(v, str) else ""
+    return v if _US_DATE_RE.match(v) else None
+
+
+def us_is_fresh(us, today: str) -> bool:
+    """us.json 的資料日是否已達最近預期美股交易日（2026-11-18 取代 us_is_today）。
+    舊判準只看 generated_at 是不是今日，但 us 班 05:05 起每輪都會刷新 generated_at
+    （溢價等欄位會動），對「資料日有沒有推進」沒有鑑別力——2026-11-18 早場因此在美股
+    入庫（常態約 07:40）前的 07:05 就放行，把 11-16 的數字當成隔夜美股。
+    現改比 us.json 頂層 date（上游自 2026-11-18 起取各列資料日的眾數）。
+    us 為 None／date 缺或格式不合 → False（不新鮮，續等）。"""
+    got = us_data_date(us)
+    return bool(got) and got >= last_expected_us_trading_date(today)
+
+
+def us_gate_info(us, today: str, waited_sec=0) -> dict:
+    """該場實際拿去組素材的 us.json 相對於預期美股交易日的狀態（寫進該場 JSON 的 us_gate）。
+    expected＝預期美股交易日、got＝us.json 的 date（讀不到為 None）、fresh＝got ≥ expected、
+    waited_sec＝齊全閘門第二階段為了等它實際等了幾秒（--no-wait 為 0）。"""
+    return {"expected": last_expected_us_trading_date(today), "got": us_data_date(us),
+            "fresh": us_is_fresh(us, today), "waited_sec": int(max(0, waited_sec or 0))}
 
 
 def http_json(url: str, timeout: int = 60, bust: bool = True):
@@ -970,7 +1004,7 @@ def is_twse_holiday(today: str) -> bool:
         return False
 
 
-def wait_gate(slot: str, today: str) -> None:
+def wait_gate(slot: str, today: str):
     """資料齊全閘門（2026-07-14 依審計改造）。每 5 分輪詢一次。
     today＝該場次的目標交易日（slot_trading_day 算，pm 延遲跨午夜也釘在觸發當晚），
     不可用 taipei_now()——pm 被延到隔日凌晨啟動時會把 today 滾成隔天而永久 skip。
@@ -981,9 +1015,13 @@ def wait_gate(slot: str, today: str) -> None:
     am：兩階段——
         第一階段硬等 morning.json generated_at 台北日==今日（最多 150 分，
         逾時 skip，沿用原邏輯）；
-        第二階段軟等 us.json 為今日檔（generated_at 台北日，見 us_is_today）
+        第二階段軟等 us.json 資料日已達最近預期美股交易日（date ≥
+        last_expected_us_trading_date(today)，見 us_is_fresh；2026-11-18 前只看
+        generated_at 是否今日，對資料日沒有鑑別力）
         AND news.json 早班（台北日==今日且時刻>=06:00）；兩者皆備即放行，
-        最多 60 分，逾時照跑（print 哪些源用舊檔，dlabel 機制會標資料日）。
+        最多 60 分，逾時照跑（print 哪些源用舊檔，dlabel 機制會標資料日；
+        美股未達預期另由 main() 寫進該場 JSON 的 us_gate，供前端標示）。
+    回傳：am 場回第二階段實際等待秒數（int）；pm 場回 None。
     進場先查 TWSE 休市行事曆：排定假日直接 skip——am 場必須靠這層（晨報管線假日仍會
     更新 generated_at，資料閘門擋不住）；pm 場本可由資料閘門擋住，此層省去長時空轉。"""
     # 週末防護：cron 只排週一至五，但手動觸發（workflow_dispatch）在週末會空轉
@@ -1053,22 +1091,24 @@ def wait_gate(slot: str, today: str) -> None:
 
     # ---- am 場：第二階段軟等 us.json＋news 早班（逾時照跑，不 skip） ----
     soft_min = 60
-    soft_deadline = time.time() + soft_min * 60
-    print(f"齊全閘門（am 第二階段·軟等）：等待 us.json 今日檔＋news.json 早班（>=06:00），"
+    soft_start = time.time()
+    soft_deadline = soft_start + soft_min * 60
+    us_expected = last_expected_us_trading_date(today)
+    print(f"齊全閘門（am 第二階段·軟等）：等待 us.json 資料日 >= {us_expected}＋news.json 早班（>=06:00），"
           f"最多 {soft_min} 分鐘，逾時照跑…", flush=True)
     while True:
         stale = []
         try:
             us = http_json(URL_US)
             nw = http_json(URL_NEWS)
-            us_ok = us_is_today(us, today)
+            us_ok = us_is_fresh(us, today)
             n_ok = news_fresh(nw.get("generated_at"), today, 6)
             if us_ok and n_ok:
-                print(f"  us.json generated_at={us.get('generated_at')}、"
-                      f"news.json generated_at={nw.get('generated_at')} 皆今日，軟等通過", flush=True)
-                return
+                print(f"  us.json date={us_data_date(us)}（預期 >= {us_expected}）、"
+                      f"news.json generated_at={nw.get('generated_at')} 今日早班，軟等通過", flush=True)
+                return int(time.time() - soft_start)
             if not us_ok:
-                stale.append(f"us.json generated_at={(us or {}).get('generated_at')}")
+                stale.append(f"us.json date={us_data_date(us)}（預期 >= {us_expected}）")
             if not n_ok:
                 stale.append(f"news.json generated_at={nw.get('generated_at')}"
                              f"（需今日且台北 06:00 後的早班）")
@@ -1077,7 +1117,7 @@ def wait_gate(slot: str, today: str) -> None:
         if time.time() >= soft_deadline:
             print(f"軟等逾時（{soft_min} 分），以下資料源將用舊檔照跑"
                   f"（dlabel 機制會標資料日）：{'；'.join(stale)}", flush=True)
-            return
+            return int(time.time() - soft_start)
         print(f"  軟等中（{'；'.join(stale)}），5 分鐘後重試…", flush=True)
         time.sleep(300)
 
@@ -1111,7 +1151,7 @@ def synthesis_field(synth: dict) -> dict:
 
 # ---------- 輸出與清理 ----------
 
-def write_output(slot: str, trading_day: str, six: list[dict], synthesis: dict) -> None:
+def write_output(slot: str, trading_day: str, six: list[dict], synthesis: dict, us_gate=None) -> None:
     now = taipei_now()  # 實際產生時刻（generated_at 用）；檔名與資料日改用 trading_day
     # 頂層 dates：三頁各自的主資料日（page→primary），由 six[] 彙整（同頁兩份 date 相同，後蓋前不影響）。
     # 供前端自動檔展開時顯示三頁資料日，與生成日（date/generated_at）區分。
@@ -1127,6 +1167,11 @@ def write_output(slot: str, trading_day: str, six: list[dict], synthesis: dict) 
         "six": six,
         "synthesis": synthesis,
     }
+    # us_gate（2026-11-18，只增不改）：am 場組素材時 us.json 的資料日是否達預期美股交易日。
+    # 軟等逾時照跑時 fresh=false——模型拿到的素材不變（gather_*／SYS 是三站同步碼，不為此改），
+    # 文中仍可能把前一個交易日的美股數字寫成隔夜，由前端（市場總覽卡 6、彙總分析自動產出）標示。
+    if us_gate is not None:
+        out["us_gate"] = us_gate
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     fname = f"{trading_day.replace('-', '')}-{slot}.json"
     dst = OUT_DIR / fname
@@ -1163,8 +1208,12 @@ def write_output(slot: str, trading_day: str, six: list[dict], synthesis: dict) 
             j = json.loads(f.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             continue
-        runs.append({"file": f.name, "date": j.get("date") or "",
-                     "slot": m.group(2), "generated_at": j.get("generated_at") or ""})
+        run = {"file": f.name, "date": j.get("date") or "",
+               "slot": m.group(2), "generated_at": j.get("generated_at") or ""}
+        ug = j.get("us_gate")
+        if isinstance(ug, dict) and ug.get("fresh") is False:
+            run["us_stale"] = True     # 精簡旗標：該場產出時美股資料日未達預期（細節在場次檔 us_gate）
+        runs.append(run)
     runs.sort(key=lambda r: (r["date"], r["slot"] == "pm", r["generated_at"]), reverse=True)
     idx = OUT_DIR / "index.json"
     idx.write_text(json.dumps({"runs": runs}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
@@ -1259,10 +1308,16 @@ def main() -> None:
     if not args.dry_run and done.exists():
         print(f"{done.name} 已存在（主場已產出）→ 備援 run 跳過", flush=True)
         return
+    us_waited = 0
     if not args.no_wait and not args.dry_run:
-        wait_gate(args.slot, trading_day)
+        us_waited = wait_gate(args.slot, trading_day) or 0
 
     src = load_sources()
+    # am 場：以「實際拿去組素材的那份 us.json」記錄美股資料日是否達預期（pm 場不記，行為不變）
+    us_gate = us_gate_info(src.get("us"), trading_day, us_waited) if args.slot == "am" else None
+    if us_gate and not us_gate["fresh"]:
+        print(f"⚠ 美股資料日未達預期（us.json date={us_gate['got']}、預期 >= {us_gate['expected']}），"
+              f"本場照跑並在輸出記 us_gate.fresh=false", flush=True)
     pages = build_contexts(src)
 
     if args.dry_run:
@@ -1323,7 +1378,7 @@ def main() -> None:
         print("彙總失敗，本場失敗", flush=True)
         sys.exit(1)
 
-    write_output(args.slot, trading_day, six, synthesis_field(synth))
+    write_output(args.slot, trading_day, six, synthesis_field(synth), us_gate)
 
 
 if __name__ == "__main__":
