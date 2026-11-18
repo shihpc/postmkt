@@ -427,6 +427,7 @@
   .ov-pad{margin:10px 2px}
   .ov-note{color:var(--muted);font-size:.72rem;line-height:1.7;margin:6px 2px}
   .ov-card .ov-note{margin:6px 0 0;border-top:1px solid var(--line);padding-top:6px}
+  .ov-usnote{color:var(--muted);font-size:.76rem;line-height:1.6;margin:2px 0 6px;padding:4px 8px;border-left:2px solid var(--line)}
   .ov-ol,.ov-ul{margin:2px 0 6px;padding-left:20px}
   .ov-ol li,.ov-ul li{margin:3px 0}
   .ov-md{font-size:.82rem}
@@ -2121,6 +2122,28 @@ function ovRows(layer){
   }
   return out;
 }
+// 自動彙總場次檔的 us_gate（2026-11-18，build_summary.py 的 am 場才寫）：該場組素材時美股資料日未達預期
+// （軟等逾時照跑）→ 回一句中性說明；沒有該欄位（舊場次／pm 場）、fresh 不是 false 或形狀不合 → ""。
+// 回純文字，呼叫端必須 esc()。
+function ovUsGateNote(c){
+  const g = c && typeof c === "object" ? c.us_gate : null;
+  if (!g || typeof g !== "object" || g.fresh !== false) return "";
+  const exp = ovDate(g.expected), got = ovDate(g.got);
+  if (!exp) return "";
+  return got
+    ? `本場產出時美股資料尚未更新（資料日 ${got}，預期 ${exp}），文中美股數字可能是前一個交易日的。`
+    : `本場產出時讀不到美股資料日（預期 ${exp}），文中美股數字可能是前一個交易日的。`;
+}
+// 卡 6 徽章：資料日＋場次＋該場產出時間（台北；fmt＝fmtGenTaipei，由呼叫端傳入以維持純函式）。
+// 產出日與資料日同一天時只寫時分；generated_at 缺或解析不了就不寫產出時間。
+function ovSumBadge(c, fmt){
+  if (!c || typeof c !== "object") return "";
+  const d = ovDate(c.date), slot = c.slot === "am" ? "早場" : c.slot === "pm" ? "晚場" : "";
+  let t = `${d || "—"} ${slot}`.trim();
+  const g = typeof c.generated_at === "string" && !isNaN(Date.parse(c.generated_at)) && typeof fmt === "function" ? String(fmt(c.generated_at)) : "";
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(g)) t += `｜產出 ${g.slice(0, 10) === d ? g.slice(11) : g}（台北）`;
+  return t;
+}
 // 彙總分析全文中抽「## 盤勢綜合研判」一節（到下一個 ## 標題或 --- 分隔線為止）；找不到回 ""
 function ovSynthSection(text){
   if (typeof text !== "string") return "";
@@ -2293,13 +2316,13 @@ function ovSumHtml(){
   if (c === undefined) return `<div class="ov-na">${(OV.err.sum || !OV.d.sumidx.runs.length) ? "尚無自動彙總或讀取失敗" : "載入中…"}</div>`;
   const sec = ovSynthSection(c.synthesis && c.synthesis.text);
   if (!sec) return `<div class="ov-na">最新一場彙總沒有「盤勢綜合研判」一節</div>`;
-  return `<div class="ov-md insight-md">${mdToHtml(sec)}</div>`
+  const usNote = ovUsGateNote(c);
+  return (usNote ? `<div class="ov-usnote">${esc(usNote)}</div>` : "")
+    + `<div class="ov-md insight-md">${mdToHtml(sec)}</div>`
     + `<div class="ov-note">AI 研判：取自「彙總分析」自動場的「盤勢綜合研判」一節（多模型彙總之即時研判、未經歷史回測、非保證）；全文見「彙總分析」tab。</div>`;
 }
 function ovSumDate(){
-  const c = OV.d.sum;
-  if (!c) return "";
-  return `${ovDate(c.date) || "—"} ${c.slot === "am" ? "早場" : c.slot === "pm" ? "晚場" : ""}`.trim();
+  return ovSumBadge(OV.d.sum, fmtGenTaipei);
 }
 function ovBriefHtml(){
   const j = OV.d.brief, t3 = Array.isArray(j.top3) ? j.top3.filter(x => x && typeof x === "object").slice(0, 3) : [],
@@ -4892,7 +4915,8 @@ function summaryHtml(){
       const c = SUM_AUTO_CACHE[state.sumAutoOpen];
       if (!c || c === "loading") h += `<div class="empty">載入 ${esc(state.sumAutoOpen)}…</div>`;
       else if (c.err) h += `<div class="empty">讀取失敗：${esc(c.err)}</div>`;
-      else { const pd = sumPageDates(c);
+      else { const pd = sumPageDates(c), usNote = ovUsGateNote(c);
+        if (usNote) h += `<div class="ov-usnote">${esc(usNote)}</div>`;
         h += sumResultHtml(c, `自動產出 ${esc(c.date||"")} ${c.slot==="am"?"早場":c.slot==="pm"?"晚場":esc(String(c.slot||""))} · 生成 ${esc(String(c.generated_at||"").slice(0,19).replace("T"," "))} · 資料日 盤後 ${esc(pd.postmkt)}／即時 ${esc(pd.live)}／新聞 ${esc(pd.news)}`); }
     }
   } else {

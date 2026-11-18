@@ -262,7 +262,10 @@
     ①**盤勢七項**（描述性，前端直接讀既有同源檔、每項自帶資料日、缺哪項只灰掉那項）：當日總結（`../taiwan-flow-live-v2/data/daysummary/latest.json`）、
     三大法人（`../taiwan-flows/data/totals.json`）、外資台指期（`../taiwan-flows/data/futures/<YYYYMMDD>.json` 兩檔，日期取 totals 最末兩個交易日）、
     市場情緒（`sentiment.json`，沿用 `sent-pure`）、大盤餘額（`data/market_balance_history.json`）、盤勢綜合研判（`data/summary/index.json` 最新一場的
-    `synthesis.text` 抽「## 盤勢綜合研判」一節，經 `mdToHtml` 顯示——**三站同步碼只呼叫不修改**）、晨報三件事＋開盤前定位（`../taiwan-stock-news/daily-brief-card.json`）；
+    `synthesis.text` 抽「## 盤勢綜合研判」一節，經 `mdToHtml` 顯示——**三站同步碼只呼叫不修改**；**2026-11-18 起**徽章另帶該場產出時間
+    「｜產出 HH:MM（台北）」（產出日≠資料日時寫完整日期；純函式 `ovSumBadge`，時間走 `fmtGenTaipei`），該場 `us_gate.fresh===false` 時在研判內文之前
+    顯示一句中性說明「本場產出時美股資料尚未更新（資料日 X，預期 Y），文中美股數字可能是前一個交易日的。」（`ovUsGateNote`，X／Y 過日期白名單、整句經 `esc()`；
+    舊場次／pm 場沒有 `us_gate` 就不顯示）；「彙總分析」tab 自動產出展開時同一句。未加請求、未加 hash key）、晨報三件事＋開盤前定位（`../taiwan-stock-news/daily-brief-card.json`）；
     6、7 標「AI 研判」。②**類股交集**③**個股交集**：後端 `src/build_overview.py` → `data/overview/latest.json`，**前端只渲染、不重算**。
     **鐵律 8（使用者 2026-11-12 裁定：無回測依據、標示後先上線）**：交集表依「出現在幾個來源清單」排序是新的候選排序；載入中／讀取失敗／正常三種狀態
     都逐字顯示「AI 研判，未經回測，非保證」（`OV_LABEL`／`ovLabel()`），每日快照 `data/overview/daily/<date>.json` 留存供事後驗證，結論出來前不得拿掉標示；
@@ -284,7 +287,7 @@
     **隱私硬約束（約定 6）**：本段零新增網路請求、不寫 localStorage／sessionStorage、持股代號不進任何 URL／hash／history／請求；
     **個股欄不得放 `stkBtn`／`nameCell`**（開側欄會把代號寫進網址 `stock=`）、不得產生連結；「前往持股診斷」鈕（`data-ovgo="diag"`）只改 `state.tab`。
     `build_overview.py` 與資料檔 schema 未動。
-    測試 `tests/test_overview_frontend.mjs`（31 項，pytest 由 `tests/test_overview_frontend.py` 代跑）＋`tests/test_overview_build.py`（39 項）。
+    測試 `tests/test_overview_frontend.mjs`（34 項，pytest 由 `tests/test_overview_frontend.py` 代跑）＋`tests/test_overview_build.py`（39 項）。
     本機驗證同籌碼雷達（http.server 起在上一層）。
   - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
     `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／
@@ -308,6 +311,15 @@
     的結構與型別檢查，壞檔整包拒收、不半套。
 - `build_postmkt.py` → `data/postmkt.json`（主資料，五個盤後 tab）
 - `build_summary.py` → `data/summary/`（AI 彙總自動場；含資料齊全輪詢閘門與假日判斷）。
+  **am 場美股新鮮度（2026-11-18，事故與已知限制見 CHANGELOG 同日節）**：閘門第二階段（軟等、最多 60 分、逾時照跑）對 us.json 的判準由
+  「`generated_at` 是今日」改為「**`date` ≥ 最近預期美股交易日**」（grep `def us_is_fresh`／`def last_expected_us_trading_date`；
+  後者是 taiwan-flow-live-v2 Worker `lastExpectedUsTradingDate` 的 Python 移植——台北二~六＝昨日、日／一＝上週五、美國假日不處理，
+  **兩處要同步**，`tests/test_summary_us_gate.py` 在同層有該 repo checkout 時以 node 逐日對跑）。舊判準沒有鑑別力：us 班每輪都重寫
+  `generated_at`。`wait_gate()` am 場回傳第二階段等待秒數（pm 回 `None`、**pm 路徑未動、不讀 us.json**）；`main()` 以
+  **實際拿去組素材的那份** us.json 算 `us_gate_info()`，am 場寫進該場 JSON 頂層 `us_gate: {expected, got, fresh, waited_sec}`
+  （只增不改；`fresh=false` 時 `index.json` 該筆 run 另帶 `us_stale: true`）。**模型素材不變**——`gather_*`／`SYS_*` 是三站同步碼的移植副本，
+  本批一字未動；逾時那場文中仍可能把前一個交易日的美股數字寫成隔夜，只由前端標示（市場總覽卡 6 與「彙總分析」自動產出區，
+  純函式 `ovUsGateNote`）。美國假日隔天 am 場會白等 60 分並被標成未達預期（誤標，已知限制）。
   **2026-08-29 起：每頁 1 份共 3 份摘要（原 6 份）、`MIN_OK_FOR_SYNTH=2` 才彙總、共振強度口徑 N/3；
   自動場摘要與彙總改走 Anthropic Message Batches（半價，逾時或單筆失敗逐筆同步回退）**。
   **pm 期限 2026-09-10 改走牌鐘截止點**（`build_summary.py` grep `PM_BATCH_CUTOFF_HM`＝台北 23:00；

@@ -470,7 +470,8 @@
   被當晚一包實跑 104 分鐘、成功落在台北 22:58 的 batch 推翻（見 CHANGELOG）。
   （2026-07-14 依審計改造：pm 硬等 postmkt/news晚班(>=21:00)/taiwan-flows 三源皆今日、最多 170 分，
   逾時=假日 skip；am 先硬等 morning.json 最多 150 分，通過後軟等 us.json＋news早班(>=06:00)
-  最多 60 分、逾時照跑），輸出 `data/summary/YYYYMMDD-{am|pm}.json` 保留近 3 日，前端列表點閱。
+  最多 60 分、逾時照跑；**2026-11-18 起 us.json 的判準由「generated_at 是今日」改為「date ≥ 最近預期美股交易日」**，
+  逾時照跑時該場 JSON 記 `us_gate.fresh=false`、前端標示，見 CHANGELOG），輸出 `data/summary/YYYYMMDD-{am|pm}.json` 保留近 3 日，前端列表點閱。
   **假日/颱風假**（2026-07-12 補強）：閘門進場先查 TWSE 休市行事曆 API（免金鑰）擋排定
   假日——am 場必須靠這層（晨報管線假日仍會更新 generated_at，資料閘門擋不住）；行事曆
   混有「開始交易日」等交易日標記，過濾規則見 `is_twse_holiday()` 註解；API 失敗
