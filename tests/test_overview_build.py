@@ -238,7 +238,7 @@ def test_base_missing():
 
 
 def test_rollup_unique_parent_only_and_downgrade():
-    o = bo.build(base_inp(), "G")
+    o = strip_s8(bo.build(base_inp(), "G"))   # §8 的附加欄位另測；這裡只比成員與 via
     c = src(o, "sectors", "C")
     assert c["status"] == "valid" and c["items"] == [{"key": "乙", "via": ["乙子"]}, {"key": "甲", "via": ["甲子"]}]
     assert c["unmapped"] == ["共用", "沒對映"] and c["subs"] == ["甲子", "共用", "乙子", "沒對映"]
@@ -459,12 +459,34 @@ def dumps(o):
     return json.dumps(o, ensure_ascii=False, separators=(",", ":"))
 
 
+S8_SRC, S8_ITEM, S8_ROW = ("metrics",), ("m", "rank", "tag", "viam", "px"), ("px",)
+
+
+def strip_s8(o):
+    """去掉 §8（2026-11-28）新增的欄位：來源 metrics、項目 m／rank／tag／viam／px、交集列 px。其餘鍵與順序原樣保留。"""
+    o = copy.deepcopy(o)
+    for blk in [o] + ([o["out"]] if isinstance(o.get("out"), dict) else []):
+        for layer in ("sectors", "stocks"):
+            for sc in blk[layer]["sources"]:
+                for k in S8_SRC:
+                    sc.pop(k, None)
+                for it in sc["items"]:
+                    for k in S8_ITEM:
+                        it.pop(k, None)
+            for r in blk[layer]["rows"]:
+                for k in S8_ROW:
+                    r.pop(k, None)
+    return o
+
+
 def test_inflow_output_bit_identical_to_pre_out_golden():
     """流入側輸出逐位不變：golden＝加流出側之前（commit 23a2cbf）的 build() 對同一份輸入的輸出，含鍵的順序。"""
     g = load(FIX / "overview_inflow_golden.json")
     for name, inp in (("base", base_inp()), ("rich", rich_inp())):
         o = bo.build(inp, "G")
         assert list(o) == list(g[name]) + ["out"], name          # 只在最後新增 out
+        assert dumps(o) != dumps(strip_s8(o)), name               # §8 的欄位確實存在（否則下面的比對是空話）
+        o = strip_s8(o)                                           # §8（2026-11-28）只增欄位：去掉後須與舊 golden 逐位相同（golden 未重產）
         out = o.pop("out")
         assert dumps(o) == dumps(g[name]), name
         assert set(out) == {"sectors", "stocks"}
@@ -526,7 +548,7 @@ def test_out_shape_sources_and_excluded():
 
 
 def test_out_count_sort_and_groups():
-    o = bo.build(out_inp(), "G")
+    o = strip_s8(bo.build(out_inp(), "G"))    # §8 的附加欄位另測
     out = o["out"]
     assert [x["key"] for x in src(out, "sectors", "A")["items"]] == ["乙", "丙", "丁", "己"]      # 淨賣金額（絕對值）遞減；正值不收
     assert {x["key"] for x in src(out, "sectors", "B")["items"]} == {"乙", "丙", "丁"}            # 只有 acc_out；己是 slow_out、甲戊是流入
@@ -634,3 +656,210 @@ def test_out_real_sibling_key_names():
     assert all(r["t_amt_k"] > 0 and r["f_amt_k"] > 0 for r in tf["pages"]["sync"]["sync_buy"])
     m = load(SIB / "taiwan-flow-live-v2/data/morning.json")
     assert set(m["signals"]) == {"cont_subs", "new_subs", "dual"}     # 沒有退潮類訊號 → D′ 無對應來源；多了鍵就要回頭檢討
+
+
+# ====================== §8：各來源的實際數值、名次、個股收盤與漲跌（2026-11-28） ======================
+
+def s8_inp():
+    """帶實際數值欄位的合成輸入（兩側都有交集列）。金額刻意取到四捨五入邊界與千倍差看得出來的量級。"""
+    i = out_inp()
+    i["tf"]["pages"]["sync"]["sync_buy"] = [
+        {"code": "2330", "name": "台積電", "f_amt_k": 1234567, "t_amt_k": 250000, "strength_k": 250000},
+        {"code": "<bad>", "name": "壞代號", "f_amt_k": 1, "t_amt_k": 1, "strength_k": 1},
+        {"code": "2454", "name": "聯發科", "f_amt_k": 500, "t_amt_k": "x", "strength_k": float("nan")},
+        {"code": "1101", "name": "台泥"}]
+    i["tf"]["pages"]["sync"]["sync_sell"] = [
+        {"code": "1101", "name": "台泥", "f_amt_k": -300000, "t_amt_k": -100000, "strength_k": 100000},
+        {"code": "2603", "name": "長榮", "f_amt_k": -200000, "t_amt_k": -50000, "strength_k": 50000},
+        {"code": "2317", "name": "鴻海", "f_amt_k": -1, "t_amt_k": -1, "strength_k": 1}]
+    i["diff"]["stocks"] = [
+        {"c": "2603", "n": "長榮", "val": -350000000, "by": {"A": -1, "B": -2, "C": 5}},
+        {"c": "2330", "n": "台積電", "val": 1234500000, "by": {"A": 1, "B": 2, "C": 3, "D": -1}},
+        {"c": "2454", "n": "聯發科", "val": None, "by": {"A": 1, "B": 2}}]
+    i["diff"]["subs"] = [{"name": "甲子", "val": 950000000}, {"name": "甲丑", "val": 125000000}, {"name": "乙子", "val": 1500000000},
+                         {"name": "己子", "val": -400000000}, {"name": "共用", "val": -300000000}]
+    i["classify"]["map"]["4"] = {"p": [["甲", "甲丑"]]}
+    i["track"]["tracking"] = [{"code": "2454", "name": "聯發科", "last_score": 83.25}, {"code": "2330", "name": "台積電", "last_score": None}]
+    i["rev"]["rows"] += [{"code": "2382", "name": "廣達", "cls": "Beat", "sur": 20.84, "yoy": -3.25},
+                         {"code": "2357", "name": "華碩", "cls": "Miss", "sur": -18.0, "yoy": "x"}]
+    i["diag"] = {"date": "2026-11-11", "stocks": {
+        "2603": {"hdw": -0.3, "hdd": "2026-11-06", "n": "長榮", "c": 249.0, "d1": -1.25},
+        "1101": {"hdw": -0.1, "hdd": "2026-11-06", "n": "台泥", "c": 33.335, "d1": None},
+        "2317": {"hdw": 0.5, "hdd": "2026-11-06", "n": "鴻海", "c": None, "d1": 1.0},
+        "2330": {"hdw": 0.125, "hdd": "2026-11-06", "n": "台積電", "c": 2180.0, "d1": 1.63}}}
+    return i
+
+
+def items(o, layer, sid):
+    return {x["key"]: x for x in src(o, layer, sid)["items"]}
+
+
+def test_s8_metrics_meta_shape():
+    o = bo.build(s8_inp(), "G")
+    want = {("sectors", "A"): ["net"], ("sectors", "B"): ["a5", "a20"], ("sectors", "C"): ["val"], ("sectors", "D"): [],
+            ("stocks", "a"): ["f", "t", "str"], ("stocks", "b"): ["n", "val"], ("stocks", "c"): ["score"],
+            ("stocks", "d"): ["sur", "yoy"], ("stocks", "e"): ["hdw"]}
+    for blk in (o, o["out"]):
+        for layer in ("sectors", "stocks"):
+            for s in blk[layer]["sources"]:
+                if s["status"] in ("fail", "excluded"):
+                    assert "metrics" not in s
+                    continue
+                assert [m["k"] for m in s["metrics"]] == want[(layer, s["id"])], s["id"]
+                for m in s["metrics"]:
+                    assert set(m) == {"k", "label", "unit", "digits", "signed"} and isinstance(m["label"], str) and m["label"]
+                    assert isinstance(m["unit"], str) and isinstance(m["digits"], int) and isinstance(m["signed"], bool)
+                for it in s["items"]:        # 每個項目的 m 的鍵＝該來源 metrics 的鍵；值為有限數或 None
+                    assert list(it.get("m", {})) == [m["k"] for m in s["metrics"]], (s["id"], it)
+                    assert all(v is None or bo.fin(v) for v in it.get("m", {}).values())
+    unit = {m["k"]: m["unit"] for m in src(o, "stocks", "a")["metrics"]}
+    assert unit == {"f": "億", "t": "億", "str": "億"} and src(o, "sectors", "B")["metrics"][0]["unit"] == "億/日"
+
+
+def test_s8_sector_values_and_ranks():
+    o = bo.build(s8_inp(), "G")
+    # A：net_amt_k（千元）÷1e5＝億；流入側 甲 100000k＝1 億 第 1、戊 0.5 億 第 2
+    a = items(o, "sectors", "A")
+    assert {k: (v["m"], v["rank"]) for k, v in a.items()} == {"甲": ({"net": 1.0}, 1), "戊": ({"net": 0.5}, 2)}
+    ao = items(o["out"], "sectors", "A")    # 流出側：負值、依淨賣金額遞減排名
+    assert [(k, v["m"]["net"], v["rank"]) for k, v in ao.items()] == [("乙", -1.0, 1), ("丙", -0.9, 2), ("丁", -0.8, 3), ("己", 0.0, 4)]
+    # B：a5＝近 5 日淨額（億）÷5、a20＝近 20 日淨額（億）÷20——兩者不可對調
+    assert items(o, "sectors", "B")["甲"]["m"] == {"a5": 0.2, "a20": 0.05}
+    assert items(o["out"], "sectors", "B")["乙"]["m"] == {"a5": -0.2, "a20": -0.05}
+    # C：元 ÷1e8＝億；上卷後合計＋各次產業金額＋依合計排名（甲＝9.5+1.25、乙＝15）
+    c = items(o, "sectors", "C")
+    assert c["甲"] == {"key": "甲", "via": ["甲子", "甲丑"], "m": {"val": 10.75}, "rank": 2, "viam": {"甲子": 9.5, "甲丑": 1.25}}
+    assert c["乙"] == {"key": "乙", "via": ["乙子"], "m": {"val": 15.0}, "rank": 1, "viam": {"乙子": 15.0}}
+    co = items(o["out"], "sectors", "C")
+    assert co == {"己": {"key": "己", "via": ["己子"], "m": {"val": -4.0}, "rank": 1, "viam": {"己子": -4.0}}}
+    # D：來源檔只有次產業名 → 沒有數值欄
+    assert all("m" not in x and "rank" not in x for x in src(o, "sectors", "D")["items"]) and src(o, "sectors", "D")["metrics"] == []
+
+
+def test_s8_stock_values_ranks_and_tag():
+    o = bo.build(s8_inp(), "G")
+    a = items(o, "stocks", "a")
+    assert a["2330"]["m"] == {"f": 12.35, "t": 2.5, "str": 2.5} and a["2330"]["rank"] == 1       # 1234567k＝12.34567 億 → 12.35
+    assert a["2454"]["m"] == {"f": 0.01, "t": None, "str": None} and a["2454"]["rank"] == 3       # 字串／NaN → None；名次＝來源檔位置（壞代號那列仍佔第 2）
+    assert a["1101"]["m"] == {"f": None, "t": None, "str": None} and a["1101"]["rank"] == 4
+    ao = items(o["out"], "stocks", "a")
+    assert ao["1101"]["m"] == {"f": -3.0, "t": -1.0, "str": 1.0} and [v["rank"] for v in ao.values()] == [1, 2, 3]
+    b = items(o, "stocks", "b")
+    assert b["2330"]["m"] == {"n": 3, "val": 12.35} and b["2454"]["m"] == {"n": 2, "val": None}  # n＝同向（買）的 ETF 數，不含反向那一檔
+    assert items(o["out"], "stocks", "b")["2603"]["m"] == {"n": 2, "val": -3.5}
+    c = items(o, "stocks", "c")
+    assert c["2454"]["m"] == {"score": 83.3} and c["2330"]["m"] == {"score": None}               # 83.25 → 83.3（JS 四捨五入，非銀行家捨入）
+    d = items(o, "stocks", "d")
+    assert d["2382"]["tag"] == "Beat" and d["2382"]["m"] == {"sur": 20.8, "yoy": -3.2}   # -3.25 → -3.2（JS Math.round：.5 往 +∞）
+    assert d["2330"]["tag"] == "高預期仍Beat" and d["2330"]["m"] == {"sur": None, "yoy": None}
+    do = items(o["out"], "stocks", "d")
+    assert do["2357"]["tag"] == "Miss" and do["2357"]["m"] == {"sur": -18.0, "yoy": None} and do["2603"]["tag"] == "低預期仍Miss"
+    e = items(o, "stocks", "e")
+    assert [(k, v["m"]["hdw"], v["rank"]) for k, v in e.items()] == [("2317", 0.5, 1), ("2330", 0.13, 2)]   # 0.125 → 0.13
+    eo = items(o["out"], "stocks", "e")
+    assert [(k, v["m"]["hdw"], v["rank"]) for k, v in eo.items()] == [("2603", -0.3, 1), ("1101", -0.1, 2)]
+
+
+def test_s8_px_on_rows_and_items():
+    o = bo.build(s8_inp(), "G")
+    px = {"2330": {"close": 2180.0, "chg_pct": 1.63, "date": "2026-11-11"}, "2603": {"close": 249.0, "chg_pct": -1.25, "date": "2026-11-11"},
+          "1101": {"close": 33.34, "chg_pct": None, "date": "2026-11-11"}, "2317": None, "2454": None, "2382": None, "2357": None}
+    n = 0
+    for blk in (o, o["out"]):
+        assert blk["stocks"]["rows"]
+        for r in blk["stocks"]["rows"]:
+            assert r["px"] == px[r["key"]], r
+            n += 1
+        for s in blk["stocks"]["sources"]:
+            for it in s["items"]:
+                assert "px" in it and it["px"] == px[it["key"]], it
+        for s in blk["sectors"]["sources"]:      # 類股層沒有價格
+            assert all("px" not in it for it in s["items"])
+        assert all("px" not in r for r in blk["sectors"]["rows"])
+    assert n >= 3
+    # diag 讀不到 → px 一律 None，交集列與成員不受影響（e 來源 fail 本來就會少一票，故只比 a–d）
+    i = s8_inp()
+    i["diag"] = {"date": "不是日期", "stocks": i["diag"]["stocks"]}
+    p = bo.build(i, "G")
+    assert all(r["px"] is None for r in p["stocks"]["rows"]) and dumps(strip_s8(p)) == dumps(strip_s8(o))
+
+
+def test_s8_does_not_change_membership_or_rows_and_is_valid_json():
+    for inp in (base_inp(), rich_inp(), out_inp(), s8_inp()):
+        o = bo.build(inp, "G")
+        json.dumps(o, allow_nan=False)                      # 無 NaN／inf
+        st = strip_s8(o)
+        for blk, sblk in ((o, st), (o["out"], st["out"])):
+            for layer in ("sectors", "stocks"):
+                assert [(r["key"], r["count"], r["hits"]) for r in blk[layer]["rows"]] == [(r["key"], r["count"], r["hits"]) for r in sblk[layer]["rows"]]
+                for a, b in zip(blk[layer]["sources"], sblk[layer]["sources"]):
+                    assert [x["key"] for x in a["items"]] == [x["key"] for x in b["items"]]
+                    assert all(set(x) <= {"key", "name", "via"} for x in b["items"])    # 去掉 §8 欄位後只剩既有欄位
+
+
+def test_s8_rnd_is_js_round_not_bankers():
+    assert bo.rnd(0.125, 2) == 0.13 and bo.rnd(2.5, 0) == 3.0 and bo.rnd(-2.5, 0) == -2.0 and bo.rnd(83.25, 1) == 83.3
+    assert round(2.5) == 2                                  # Python round() 是銀行家捨入——所以不能用
+    for bad in (None, "1", True, float("nan"), float("inf"), [1]):
+        assert bo.rnd(bad, 2) is None
+    assert bo.js_round(-0.5) == 0.0 and bo.js_round(0.5) == 1.0
+
+
+def test_s8_values_match_frontend_ported_functions():
+    """B／E／e／b 的數值取自 Python 移植函式的中間值：與前端純函式（node 抽 index.html）的結果對得上。"""
+    i = rich_inp()
+    i["diag"] = load(ROOT / "data/diag/diag.json")
+    i["tf"]["date"] = i["diag"]["date"]
+    js = node({"sr": i["sr"], "series": i["series"], "diff": i["diff"], "diag": i["diag"]})
+    d5, d20 = i["sr"]["windows"]["r5"]["trading_days"], i["sr"]["windows"]["r20"]["trading_days"]
+    pts = {p["sector"]: p for p in js["points"]}
+    hol = {r["code"]: (k + 1, r["hdw"]) for k, r in enumerate(js["holders"]["up"])}
+    hol_o = {r["code"]: (k + 1, r["hdw"]) for k, r in enumerate(js["holders"]["down"])}
+    o = bo.build(i, "G")
+    nb = 0
+    for blk, quad, h, cn in ((o, "acc_in", hol, js["cobuyN"]), (o["out"], "acc_out", hol_o, js["cosellN"])):
+        b = items(blk, "sectors", "B")
+        assert b and set(b) == {k for k, p in pts.items() if p["q"] == quad}
+        for k, it in b.items():
+            assert it["m"] == {"a5": bo.rnd(pts[k]["v5"] / d5, 2), "a20": bo.rnd(pts[k]["x"], 2)}
+            assert same(pts[k]["x"], pts[k]["v20"] / d20)                        # a20＝近 20 日淨額（億）÷ r20 交易日數
+            assert abs(it["m"]["a5"] - (pts[k]["x"] + pts[k]["y"])) < 0.006      # 前端的 y＝近 5 日日均 − 近 20 日日均
+        for k, it in items(blk, "sectors", "E").items():
+            assert it["m"] == {"rs": bo.rnd(js["rrgd"]["coords"][k][0], 2), "mom": bo.rnd(js["rrgd"]["coords"][k][1], 2)}
+            nb += 1
+        e = items(blk, "stocks", "e")
+        assert len(e) == 20 and {k: (v["rank"], v["m"]["hdw"]) for k, v in e.items()} == {k: (r, bo.rnd(w, 2)) for k, (r, w) in h.items()}
+        bb = items(blk, "stocks", "b")
+        assert bb and {k: v["m"]["n"] for k, v in bb.items()} == {k: n for k, n in cn.items() if bo.CODE_RE.match(k)}
+    assert nb >= 2
+
+
+@pytest.mark.skipif(not (SIB / "taiwan-flows/data/latest.json").exists() or not (SIB / "taiwan-flow-live-v2/data/aetf/diff.json").exists(),
+                    reason="無姊妹 repo 本機 checkout")
+def test_s8_real_sibling_field_names_and_units():
+    """實檔欄位仍在（改名會讓數值全變 None）：同步買賣超的金額欄、diff.stocks 的 val、強度＝min(|外資|,|投信|)。"""
+    tf = load(SIB / "taiwan-flows/data/latest.json")
+    for k in ("sync_buy", "sync_sell"):
+        rows = tf["pages"]["sync"][k]
+        assert rows and all(bo.fin(r["f_amt_k"]) and bo.fin(r["t_amt_k"]) and r["strength_k"] == min(abs(r["f_amt_k"]), abs(r["t_amt_k"])) for r in rows)
+        assert [r["strength_k"] for r in rows] == sorted((r["strength_k"] for r in rows), reverse=True)   # 名次＝來源檔順序＝依強度遞減
+    d = load(SIB / "taiwan-flow-live-v2/data/aetf/diff.json")
+    assert any(bo.fin(s.get("val")) for s in d["stocks"]) and all(bo.fin(s["val"]) for s in d["subs"])
+    assert all(sum(s["by"].values()) == s["zh"] for s in d["stocks"] if isinstance(s.get("by"), dict) and s["by"])
+
+
+def test_s8_committed_snapshot_has_values_matching_local_sources():
+    """repo 內的 latest.json 已帶 §8 欄位，且個股 px／c／d／e 的數值可由本 repo 的來源檔獨立重算（僅在資料日一致時比）。"""
+    o = load(ROOT / "data/overview/latest.json")
+    json.dumps(o, allow_nan=False)
+    assert any("metrics" in s for s in o["sectors"]["sources"]) and all("px" in r for r in o["stocks"]["rows"])
+    diag = load(ROOT / "data/diag/diag.json")
+    if diag.get("date") != o["date"]:
+        pytest.skip("diag.json 已比快照新（排程產物各自更新），不比數值")
+    for blk in [o] + ([o["out"]] if "out" in o else []):
+        for r in blk["stocks"]["rows"]:
+            s = diag["stocks"].get(r["key"])
+            if s and bo.fin(s.get("c")):
+                assert r["px"] == {"close": bo.rnd(s["c"], 2), "chg_pct": bo.rnd(s.get("d1"), 2), "date": diag["date"]}
+            else:
+                assert r["px"] is None

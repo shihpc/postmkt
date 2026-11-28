@@ -27,6 +27,10 @@
 #     e 千張大戶週增前 20：data/diag/diag.json，index.html radarHolders(diag,"all").up（週頻，容許窗 HOLDER_MAX_AGE_DAYS）
 #     f 彙總分析精華標的：**不納入**（標題格式逐場不同，方向無法可靠解析；見 docs/market-overview.md §3.2）
 #
+# §8（2026-11-28，只增欄位、不改任何判定）：每個來源帶 metrics（數值欄的 label／單位／小數位／是否帶正負），
+# 項目帶 m（該來源用來入選的實際數值）、rank、tag、viam；個股層的項目與交集列帶 px（diag 的收盤與漲跌）。
+# 各欄取自哪個實檔欄位、單位與取不到者，見 docs/market-overview.md §8.1 定案表。
+#
 # B／E／e／b 為前端口徑的 Python 移植，tests/test_overview_build.py 以 node 抽 index.html 對跑、逐位比對。
 #
 # 冪等：generated_at 以外內容相同時不重寫檔（不產生 commit 噪音）。
@@ -97,6 +101,26 @@ def _s(v) -> str:
     return v if isinstance(v, str) else ""
 
 
+def js_round(x: float) -> float:
+    """JS Math.round：最接近的整數，.5 往 +∞（half-up）。與 src/build_pick2.py 的 js_round 同一定義。"""
+    f = math.floor(x)
+    return float(f + 1) if x - f >= 0.5 else float(f)
+
+
+def rnd(v, dp: int):
+    """有限數 → JS `Math.round(v * 10**dp) / 10**dp`；其餘（None／字串／bool／NaN／inf）一律 None。輸出因此必為合法 JSON。"""
+    if not fin(v):
+        return None
+    k = 10 ** dp
+    r = js_round(v * k) / k
+    return r if math.isfinite(r) else None
+
+
+def _mt(k, label, unit, digits, signed=False):
+    """來源的數值中繼資料一欄：前端依此通用渲染（label／unit 視為外來字串、一律 esc）。"""
+    return {"k": k, "label": label, "unit": unit, "digits": digits, "signed": signed}
+
+
 # ---------- 口徑移植：籌碼雷達（index.html radarQuad／radarPoints） ----------
 
 def radar_quad(x: float, y: float) -> str:
@@ -134,7 +158,8 @@ def radar_points(r5, r20, classify: str, inv: str) -> list[dict]:
         v20, v5 = b["net_amt_k"] / 1e5, a["net_amt_k"] / 1e5
         x = v20 / d20
         y = v5 / d5 - x
-        out.append({"sector": b["sector"], "n": b["n"], "v20": v20, "v5": v5, "x": x, "y": y, "q": radar_quad(x, y)})
+        out.append({"sector": b["sector"], "n": b["n"], "v20": v20, "v5": v5, "x": x, "y": y, "q": radar_quad(x, y),
+                    "a5": v5 / d5})   # a5＝近 5 日日均（億／日；§8 顯示用，前端 radarPoints 沒有這一欄，等於 y + x 的未相減版）
     out.sort(key=lambda p: (-p["v20"], p["sector"]))
     return out
 
@@ -294,8 +319,10 @@ def sub_parents(classify) -> dict[str, list[str]] | None:
     return {k: sorted(v) for k, v in out.items()} or None
 
 
-def roll_up(subs: list[str], parents: dict[str, list[str]]):
-    """回 (items=[{key, via:[次產業…]}], unmapped=[次產業…])。只收**唯一**對到一個產業的次產業。"""
+def roll_up(subs: list[str], parents: dict[str, list[str]], vals: dict | None = None, sign: int = 1):
+    """回 (items=[{key, via:[次產業…]}], unmapped=[次產業…])。只收**唯一**對到一個產業的次產業。
+    vals（§8，選填）＝{次產業: 金額（元）}：給了就在每個 item 附 m.val（上卷後合計，億）、viam（各次產業金額，億）、
+    rank（依合計金額×sign 遞減、同值依產業名的名次）。只附加欄位，items 的成員與順序不變。"""
     via: dict[str, list[str]] = {}
     unmapped = []
     for s in subs:
@@ -304,7 +331,15 @@ def roll_up(subs: list[str], parents: dict[str, list[str]]):
             via.setdefault(ps[0], []).append(s)
         else:
             unmapped.append(s)
-    return [{"key": k, "via": v} for k, v in sorted(via.items())], unmapped
+    items = [{"key": k, "via": v} for k, v in sorted(via.items())]
+    if vals is not None:
+        tot = {it["key"]: sum(vals[s] for s in it["via"]) for it in items}
+        order = sorted(tot, key=lambda k: (-sign * tot[k], k))
+        for it in items:
+            it["m"] = {"val": rnd(tot[it["key"]] / 1e8, 2)}
+            it["rank"] = order.index(it["key"]) + 1
+            it["viam"] = {s: rnd(vals[s] / 1e8, 2) for s in it["via"]}
+    return items, unmapped
 
 
 # ---------- 容許窗 ----------
@@ -356,7 +391,8 @@ def src_A(sr, side="in"):
     pos = [r for r in rows if isinstance(r, dict) and isinstance(r.get("sector"), str)
            and fin(r.get("net_amt_k")) and sg * r["net_amt_k"] > 0]
     pos.sort(key=lambda r: (-sg * r["net_amt_k"], r["sector"]))
-    return {"date": date, "items": [{"key": r["sector"]} for r in pos[:TOP_A]]}
+    return {"date": date, "metrics": [_mt("net", "近5日淨額", "億", 2, True)],
+            "items": [{"key": r["sector"], "m": {"net": rnd(r["net_amt_k"] / 1e5, 2)}, "rank": i + 1} for i, r in enumerate(pos[:TOP_A])]}
 
 
 def src_B(sr, side="in"):
@@ -368,7 +404,9 @@ def src_B(sr, side="in"):
     pts = radar_points(w["r5"], w["r20"], "chain", "total")
     if not pts:
         raise ValueError("r5／r20 無可比類股")
-    return {"date": date, "items": [{"key": p["sector"]} for p in sorted(pts, key=lambda p: p["sector"]) if p["q"] == quad]}
+    return {"date": date, "metrics": [_mt("a5", "近5日日均", "億/日", 2, True), _mt("a20", "近20日日均", "億/日", 2, True)],
+            "items": [{"key": p["sector"], "m": {"a5": rnd(p["a5"], 2), "a20": rnd(p["x"], 2)}}
+                      for p in sorted(pts, key=lambda p: p["sector"]) if p["q"] == quad]}
 
 
 def src_C(diff, parents, side="in"):
@@ -380,11 +418,15 @@ def src_C(diff, parents, side="in"):
     pos = [s for s in subs if isinstance(s, dict) and isinstance(s.get("name"), str) and fin(s.get("val")) and sg * s["val"] > 0]
     pos.sort(key=lambda s: (-sg * s["val"], s["name"]))
     names = [s["name"] for s in pos[:TOP_C]]
+    mts = [_mt("val", "主動淨額合計", "億", 2, True)]
     if parents is None:
-        return {"date": date, "items": [], "subs": names, "listed": True,
+        return {"date": date, "items": [], "subs": names, "listed": True, "metrics": mts,
                 "note": "次產業對映檔（classify.json）讀不到，無法上卷到產業：另列、不計入交集"}
-    items, unmapped = roll_up(names, parents)
-    return {"date": date, "items": items, "subs": names, "unmapped": unmapped}
+    vals = {}
+    for s in pos[:TOP_C]:
+        vals.setdefault(s["name"], s["val"])    # 同名只取第一筆（實檔次產業名不重複）
+    items, unmapped = roll_up(names, parents, vals, sg)
+    return {"date": date, "items": items, "subs": names, "unmapped": unmapped, "metrics": mts}
 
 
 def src_D(morning, parents, side="in"):
@@ -403,7 +445,7 @@ def src_D(morning, parents, side="in"):
         return {"date": date, "items": [], "subs": names, "listed": True,
                 "note": "次產業對映檔（classify.json）讀不到，無法上卷到產業：另列、不計入交集"}
     items, unmapped = roll_up(names, parents)
-    return {"date": date, "items": items, "subs": names, "unmapped": unmapped,
+    return {"date": date, "items": items, "subs": names, "unmapped": unmapped, "metrics": [],   # 來源檔只有次產業名、沒有數值
             "stale_note": "資料日為前一交易日（morning.json 的連湧／新湧由前一交易日的資料算出），與基準日不同：另列、不計入"}
 
 
@@ -415,14 +457,22 @@ def src_E(series, side="in"):
         raise ValueError("日期不合")
     items = []
     for q, sort_key in SIDES[side]["rrgd"]:
-        items += [{"key": k, "via": [q]} for k in rrgd_persist_list(p["coords"], t, q, RRGD_PERSIST, sort_key)]
-    return {"date": date, "items": sorted(items, key=lambda x: x["key"])}
+        items += [{"key": k, "via": [q], "m": {"rs": rnd(p["coords"][k][t][0], 2), "mom": rnd(p["coords"][k][t][1], 2)}}
+                  for k in rrgd_persist_list(p["coords"], t, q, RRGD_PERSIST, sort_key)]
+    return {"date": date, "metrics": [_mt("rs", "RS-Ratio", "", 2), _mt("mom", "RS-Momentum", "", 2)],
+            "items": sorted(items, key=lambda x: x["key"])}
 
 
-def _stock_item(code, name):
+def _stock_item(code, name, **extra):
+    """extra（§8）：m／rank／tag 等附加欄位，接在 key、name 之後；值為 None 的不寫。"""
     if not isinstance(code, str) or not CODE_RE.match(code):
         return None
-    return {"key": code, "name": _s(name)}
+    return {"key": code, "name": _s(name), **{k: v for k, v in extra.items() if v is not None}}
+
+
+def _yi_k(v):
+    """千元 → 億（兩位小數）"""
+    return rnd(v / 1e5, 2) if fin(v) else None
 
 
 def src_a(tf, side="in"):
@@ -430,16 +480,24 @@ def src_a(tf, side="in"):
     rows = tf["pages"]["sync"][SIDES[side]["sync"]]
     if not date or not isinstance(rows, list):
         raise ValueError("形狀不合")
-    items = [x for x in (_stock_item(r.get("code"), r.get("name")) for r in rows if isinstance(r, dict)) if x]
-    return {"date": date, "items": items}
+    # rank＝在來源檔該清單中的位置（1 起算；實檔依強度 strength_k 遞減排好）
+    items = [x for x in (_stock_item(r.get("code"), r.get("name"), rank=i + 1,
+                                     m={"f": _yi_k(r.get("f_amt_k")), "t": _yi_k(r.get("t_amt_k")), "str": _yi_k(r.get("strength_k"))})
+                         for i, r in enumerate(rows) if isinstance(r, dict)) if x]
+    return {"date": date, "items": items,
+            "metrics": [_mt("f", "外資", "億", 2, True), _mt("t", "投信", "億", 2, True), _mt("str", "強度", "億", 2)]}
 
 
 def src_b(diff, side="in"):
     date = norm_date(diff.get("primary_date"))
     if not date or not isinstance(diff.get("stocks"), list):
         raise ValueError("形狀不合")
-    items = [x for x in (_stock_item(s.get("c"), s.get("n")) for s in aetf_co_buy(diff, SIDES[side]["sign"])) if x]
-    return {"date": date, "items": items}
+    sg = SIDES[side]["sign"]
+    items = [x for x in (_stock_item(s.get("c"), s.get("n"),
+                                     m={"n": aetf_n_buyers(s, sg), "val": rnd(s["val"] / 1e8, 2) if fin(s.get("val")) else None})
+                         for s in aetf_co_buy(diff, sg)) if x]
+    return {"date": date, "items": items,
+            "metrics": [_mt("n", "同向ETF", "檔", 0), _mt("val", "主動淨額", "億", 2, True)]}
 
 
 def src_c(track, side="in"):
@@ -449,8 +507,9 @@ def src_c(track, side="in"):
     rows = track.get("tracking")
     if track.get("schema") != 1 or not date or not isinstance(rows, list):
         raise ValueError("形狀不合")
-    items = [x for x in (_stock_item(r.get("code"), r.get("name")) for r in rows if isinstance(r, dict)) if x]
-    return {"date": date, "items": items}
+    items = [x for x in (_stock_item(r.get("code"), r.get("name"), m={"score": rnd(r.get("last_score"), 1)})
+                         for r in rows if isinstance(r, dict)) if x]
+    return {"date": date, "items": items, "metrics": [_mt("score", "多空總分", "分", 1)]}
 
 
 def src_d(rev, side="in"):
@@ -458,17 +517,20 @@ def src_d(rev, side="in"):
     rows = rev.get("rows")
     if not isinstance(month, str) or not MONTH_RE.match(month) or not isinstance(rows, list):
         raise ValueError("形狀不合")
-    items = [x for x in (_stock_item(r.get("code"), r.get("name")) for r in rows
-                         if isinstance(r, dict) and r.get("cls") in SIDES[side]["rev_cls"]) if x]
-    return {"date": month, "items": items}
+    items = [x for x in (_stock_item(r.get("code"), r.get("name"), tag=r.get("cls"),
+                                     m={"sur": rnd(r.get("sur"), 1), "yoy": rnd(r.get("yoy"), 1)})
+                         for r in rows if isinstance(r, dict) and r.get("cls") in SIDES[side]["rev_cls"]) if x]
+    return {"date": month, "items": items,
+            "metrics": [_mt("sur", "驚喜", "%", 1, True), _mt("yoy", "年增", "%", 1, True)]}
 
 
 def src_e(diag, side="in"):
     h = radar_holders(diag)
     if not h["cover"] or not h["hdd"] or not DATE_RE.match(h["hdd"]):
         raise ValueError("無大戶資料或集保資料日不合")
-    items = [x for x in (_stock_item(r["code"], r["name"]) for r in h[SIDES[side]["holders"]]) if x]
-    return {"date": h["hdd"], "items": items}
+    items = [x for x in (_stock_item(r["code"], r["name"], m={"hdw": rnd(r["hdw"], 2)}, rank=i + 1)
+                         for i, r in enumerate(h[SIDES[side]["holders"]])) if x]
+    return {"date": h["hdd"], "items": items, "metrics": [_mt("hdw", "大戶持股比率週變化", "百分點", 2, True)]}
 
 
 # ---------- 交集 ----------
@@ -538,6 +600,8 @@ def judge(defs, got: dict, base_id: str, valid_fn) -> tuple[str | None, list[dic
         for k in ("subs", "unmapped", "note"):
             if g.get(k):
                 s[k] = g[k]
+        if isinstance(g.get("metrics"), list):
+            s["metrics"] = g["metrics"]   # §8：items[].m 各欄的說明（只增欄位，不影響任何判定）
         if g.get("listed"):
             s["status"] = "listed"
         elif base is None:
@@ -606,6 +670,22 @@ def intersect(sources: list[dict], with_name: bool) -> tuple[list[dict], str | N
     return rows, None
 
 
+def px_map(diag):
+    """§8.4：個股收盤與漲跌%，取自本站 data/diag/diag.json（c＝收盤、d1＝當日漲跌%、頂層 date＝該價格的資料日）。
+    回 code → {close, chg_pct, date}｜None 的查詢函式；diag 讀不到、該檔不在 diag（涵蓋約 1200 檔）或收盤不是有限數 → None。純描述，不影響任何判定。"""
+    st = diag.get("stocks") if isinstance(diag, dict) else None
+    st = st if isinstance(st, dict) else {}
+    date = norm_date(diag.get("date")) if isinstance(diag, dict) else None
+
+    def px(code):
+        r = st.get(code)
+        close = rnd(r.get("c"), 2) if isinstance(r, dict) else None
+        if close is None or not date:
+            return None
+        return {"close": close, "chg_pct": rnd(r.get("d1"), 2), "date": date}
+    return px
+
+
 def build(inp: dict, gen: str) -> dict | None:
     """inp＝{sr, tf, diff, morning, series, classify, track, rev, diag}，值為已解析 JSON 或 Exception／None。"""
     def run(fn, *keys):
@@ -618,6 +698,7 @@ def build(inp: dict, gen: str) -> dict | None:
         except Exception as e:  # noqa: BLE001
             return e
 
+    px = px_map(inp.get("diag"))
     cl = inp.get("classify")
     parents = sub_parents(cl) if isinstance(cl, dict) else None
 
@@ -651,6 +732,11 @@ def build(inp: dict, gen: str) -> dict | None:
         tbase, tsrc = judge(tdefs, got(tdefs), "a", stock_valid)
         srows, snote = intersect(ssrc, False)
         trows, tnote = intersect(tsrc, True)
+        for s in tsrc:                       # §8.4：個股附收盤與漲跌（intersect 之後才附，不參與任何判定）
+            for it in s["items"]:
+                it["px"] = px(it["key"])
+        for r in trows:
+            r["px"] = px(r["key"])
         if side == "out":   # 無對應來源者以 excluded 列出（順序比照流入側的 A–E／a–f）
             ssrc = ssrc[:3] + [dict(EXCLUDED_D_OUT)] + ssrc[3:]
             tsrc = tsrc[:2] + [dict(EXCLUDED_C_OUT)] + tsrc[2:]

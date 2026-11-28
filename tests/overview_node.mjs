@@ -28,7 +28,9 @@ if (INPUT.series){
     weak: rrgdPersistList(p.coords, t, "轉弱", RRGD_PERSIST, RRGD_SORT_MOM), lag: rrgdPersistList(p.coords, t, "落後", RRGD_PERSIST, RRGD_SORT_RATIO),
     coords: Object.fromEntries(p.names.map(n => [n, p.coords[n][t]])), valid: p.valid.length };
 }
-if (INPUT.diff){ out.cobuy = (INPUT.diff.stocks || []).filter(s => nBuyers(s) >= 2).map(s => s.c); out.cosell = (INPUT.diff.stocks || []).filter(s => nSellers(s) >= 2).map(s => s.c); }
+if (INPUT.diff){ out.cobuy = (INPUT.diff.stocks || []).filter(s => nBuyers(s) >= 2).map(s => s.c); out.cosell = (INPUT.diff.stocks || []).filter(s => nSellers(s) >= 2).map(s => s.c);
+  out.cobuyN = Object.fromEntries((INPUT.diff.stocks || []).filter(s => nBuyers(s) >= 2).map(s => [s.c, nBuyers(s)]));
+  out.cosellN = Object.fromEntries((INPUT.diff.stocks || []).filter(s => nSellers(s) >= 2).map(s => [s.c, nSellers(s)])); }
 OUT = JSON.stringify(out);
 `).runInContext(sb);
 process.stdout.write(sb.OUT);
