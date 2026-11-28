@@ -61,402 +61,285 @@
 <!-- CANON:END v1 -->
 
 台股盤後靜態儀表板：**單一 `index.html`（無 build 工具，這是刻意的專案定位，勿拆檔）**
-＋ 4 支 Python 管線 ＋ GitHub Actions 排程產資料進 `data/`，GitHub Pages 從 main root 服務。
+＋ Python 管線 ＋ GitHub Actions 排程產資料進 `data/`，GitHub Pages 從 main root 服務。
 詳細架構與各 tab 口徑見 README.md；歷次變更見 CHANGELOG.md；日期欄語意見 docs/date-semantics.md。
+
+> **本檔只寫現況。** 事故經過、更正史、量測數字、驗收過程與各節完整細節在
+> `docs/handoff-archive.md`（2026-11-28 瘦身前的全文存檔；節標題與本檔對應，內容可能已過期）。
 
 ## 佈局
 
-- `index.html`：20 個 tab 全部前端（CSS/JS 內嵌；2026-11-12 加第 20 個「市場總覽」（排在最前、預設 tab 仍是 `insight`），見下方同名節；2026-09-28 由 14 加到 16，見下方「籌碼雷達／社群聲量」；2026-09-29 加第 17 個「市場情緒」、2026-10-14 加第 18 個「選股二」、2026-11-12 加第 19 個「月營收」，見下方同名節）。`render()` 分派各 tab；共用表格框架 `tbl()`
-  （排序/分組表頭/凍結欄/虛擬捲動，sticky 的坑記在 `<style>` 註解）。
-  - **hash 路由（2026-09-07）**：`#tab=&code=&sub=`（2026-09-28 另加 `rcls`／`rinv`／`sd`，僅限各自 tab，見下方籌碼雷達／社群聲量；2026-11-12 另加 `rm`，僅限 `tab=revenue`，見下方月營收），只放非預設值。`parseHash()`／`applyHash()`
-    （grep `function parseHash`／`function applyHash`）於 `load()` 套用，`syncHash()`
-    （grep `function syncHash`）掛在 `render()` 結尾以 `history.replaceState` 寫回
-    （**不塞歷史、不觸發 hashchange**），外部改網址走 `hashchange`
-    （grep `addEventListener("hashchange"`）。讀入一律白名單＋型別檢查，非法值靜默退回預設。
-    **唯一刻意例外（2026-09-09）**：「持股異動」列點個股跳「持股診斷」走 `location.hash = …`
-    ——**全站唯一的「賦值」是它**。位置＝`renderMyChg()` **之後**那個 document 級委派 listener
-    ——錨點 grep `closest(".clk[data-mychg]")`，在 `index.html` **2 處**：hash 路由那段的說明
-    註解 1 處＋實作 1 處。**它不在 `myChgHtml()` 內**（`myChgHtml()` 只吐出帶 `data-mychg`
-    屬性的字串，2026-09-09 更正原本寫錯的位置）。但
-    `grep 'location.hash = '` 在 `index.html` 有 **3 處命中**（兩行註解＋這一處賦值）：
-    **「唯一賦值」為真、「唯一命中」為假**，兩者不可混講。同理 `grep data-mychg` 在
-    `index.html` 有 **5 處**（不是 4）：註解 3 行（`:477` 「入口站改連」那句／`:490` 計數說明本身
-    ——現行措辭是「`grep -o` … `wc -l` ＝ 5 處（舊版寫 4）」，**宣稱句自己也算一次命中**，
-    那正是上一版少算的那一次／`:491` 拆解裡的 handler 錨點）＋`myChgHtml()` 表格欄的屬性（`:1455`）
-    ＋handler 本體（`:1499`）。**引用時只寫現行措辭**——舊版那句「則有 4 處」已隨本批改寫、
-    現在 grep 不到了。
-    **`index.html` 那段註解的舊數字已於 2026-09-13 改正並結案**（原寫「唯一命中」與「4 處」，
-    現已改成上述的 3 處／5 處，並把「怎麼數的」寫進註解；CHANGELOG 對應待辦條目同批結案）。
-    此處**會塞一筆歷史**——那是使用者主動的下鑽導覽、不是 `render()`
-    的狀態寫回，Back 要能退回持股異動。除此之外全站 hash 寫出一律 `replaceState`。
-  - **個股摘要側欄（2026-09-07 批次三 #15 後半）**：`index.html` grep `// ---------- 個股摘要側欄`
-    起，至該節末尾兩個 document 級 listener（`[data-stk]` 委派點擊與 grep `Escape" && state.stkOpen`
-    的 ESC 關閉）止。代號旁 `▤` 鈕（grep `const stkBtn`，掛在共用 `nameCell`（grep `const nameCell`）、
-    選股 tab 代號欄、分點「單點」結果的名稱欄、持股診斷卡標題）開側欄；`renderStockDrawer()`／
-    `stkOpen()`／`stkClose()`（grep `function renderStockDrawer`／`function stkOpen`／
-    `function stkClose`），DOM 是 `.wrap` 外的 `#stkMask`／`#stkPanel`
-    （grep `id="stkMask"`／`id="stkPanel"`，position:fixed）。
-    **硬約束：開側欄不發任何網路請求**——只讀已在記憶體的 `state.pm`／`diag`／`screen`／`aetf`／
-    `diagLive`，未載入的資料集整段不出現；`stkOpen()` 刻意只呼叫 `renderStockDrawer()` 而非
-    `render()`（後者會替當前 tab 觸發 `ensure*()`）。**每段自帶自己的資料日**（`stkSec()`），
-    因為各 dataset 的 date 本來就會不同（見 `date_mismatch`）。跨站一律純導覽 `<a target="_blank"
-    rel="noopener">`，**不 fetch → 不需新增 CSP `connect-src`**；深連結只用實查確認支援的格式
-    （grep `function stkSecLinks`）：taiwan-stock-news `#tab=track&code=`／`#tab=news&q=` 可用，
-    **taiwan-flows 與 taiwan-flow-live-v2 只連首頁**，並在說明列註明需自行搜尋，不得編造深連結格式。
-    **理由 2026-09-13 更正**：原寫「兩站都沒有 hash 路由（09-07 curl grep `location.hash` 零命中）」
-    ——**對 taiwan-flows 是錯的**，實查 `origin/main` 得 `location.hash` **3 處**、`function parseHash`
-    **1 處**（live-v2 才是兩者皆 0）。flows 的 hash 路由**就是 09-07 當天**（批次三 #15）加的，
-    量測當下為真、同日即過期。真正的理由是 **flows 的 hash key 沒有逐檔代號**
-    （`#tab=&mode=&d1=&d2=&side=&rank=&etype=&inv=&sec=&sub=`，`sec`／`sub` 是類股／次產業），
-    所以仍給不出個股深連結。**結論不變、依據換掉**；畫面文案寫「沒有個股網址參數」本來就正確。
-    hash key 用 **`stock=`**（處理該 key 的三行 grep `q.get("stock")`／`state.stkOpen = h.stock`／
-    `p.push("stock="`，分別位於 `parseHash`／`applyHash`／`currentHash` 內），
-    **刻意與 `code=` 分家**——`code=` 已被 lending／broker／diag 三個 tab 各自佔用，側欄跨 tab 都能開；
-    兩者可並存。ESC 與點遮罩關閉、走 `history.replaceState` 不塞歷史。持股清單不進 hash（約定 6 不變）。
-  - **持股異動 tab（2026-09-09）**：`index.html` grep `function myChgHtml`／`function renderMyChg`／
-    `const MYCHG_MIN_ROWS`（**裸名 `MYCHG_MIN_ROWS` 有 4 處命中，宣告式才唯一**）／
-    `function myChgDateInfo`。資料源＝`state.pm.market_daily`（走既有 `ensurePm()`，
-    **零新增網路請求**，持股代號不進任何 URL／header／body——畫面承諾只能寫「持股代號不進任何網路
-    請求」，**不可寫「本 tab 不發任何網路請求」**，`ensurePm()` 自己就會抓 `data/postmkt.json`）。
-    **六種「說錯話」不可混講**（正本＝README「前端消費 `market_daily` 的必要條件」的六軸，
-    與 `index.html` 該段註解的 ①–⑥ 是**同一組六項**：三方的**集合**與**序號**現已一致
-    ——2026-09-13 以 README 的軸序為準，把 `index.html` 原本互換的 ③④ 對調回來
-    （③＝三欄全 `null`、④＝整表殘缺；**六軸的規範內容一字未改，只動序號與敘述順序**），
-    CHANGELOG「待下批同步」該條同批結案）：
-    本表不涵蓋（權證／偽代號，**不可說成「查無此代號」**）／該資料日法人資料未到（`f`／`t` 為
-    `null`，不得讀成 0；**同列 `chg` 只有在它自己不是 `null` 時才仍然有效**——`chg` 也可能是
-    `null`，**不得無條件宣稱「同列漲跌% 仍然有效」**）／該資料日完全沒有資料（`chg`／`f`／`t`
-    三欄全 `null`，**不是**「未達門檻」）／**整表殘缺**（`rows` 空或 <2000 列）整段顯示
-    「無法取得異動資料」、**不得逐檔說成「查無此代號」**、也不得靜默當成沒有異動／
-    **資料日不是「今天」**（第五軸）／**整表不可用時頂列徽章不得報成「N 檔涵蓋」**
-    （第六軸；徽章與內文共用 `myChgUnusable()`）。
-    **「查無此代號」不另計為一軸**：它是第一軸與整表殘缺軸的**對照項**（代號在涵蓋範圍內、
-    確實不在 `rows` 裡才是它），三方都把它寫成「不可說錯成這個」而不是獨立一軸——
-    `index.html` 的 ①③④ 與 README 的軸1／軸4 皆然。
-    （**2026-09-09 二次更正**：`26e3a73` 那版把「查無此代號」提成六項之一、又把「整表殘缺」
-    踢出六軸另立一層，與 `index.html` 的「整表殘缺」那一軸（**當時編號 ③，2026-09-13 重編號後為 ④**）
-    和 README「前四軸／另外三軸」直接相反，
-    把原本三方一致的清單改成互相矛盾，本批已改回。教訓見 CHANGELOG。）
-    資料日徽章取 **`market_daily.date`，不是 `pm.date`**（前者＝**價格／法人資料日**，後者＝全檔基準日
-    ＝`build_postmkt.py` grep `dates = [d for d in (d_margin` 那行——**七支 FinMind dataset**
-    （margin／lend／short／dt／block／inst／hold）**的日期取 max，不含兩支 TWSE 零股日**
-    `d_oddi`／`d_odda`；原寫「各段 date 取 max」是過寬的，2026-09-13 更正）。
-    **頂列與本區塊是兩個不同的軸，刻意不統一**（2026-09-13 使用者裁決：`pmStatus` 維持用
-    `pm.date`、不改程式）：頂列答的是「**這份檔整體走到哪一天**」，本區塊答的是「**這張表是哪一天**」。
-    要頂列跟隨單一區塊就得挑一個區塊當代表，而本檔有 20 個 tab、各自吃不同的 dataset，
-    綁 `market_daily.date` 會讓其餘 19 個 tab 的頂列變得不準（例：借券 tab 走 `lend_date`，
-    法人日領先短賣日那天頂列就會比借券 tab 自己的資料日新）。所以正解是**每段自帶自己的資料日**
-    （同個股摘要側欄的立場），並在兩者不同時明講，而不是把頂列改成某一段的日期。**2026-09-09 起本區塊基準日改綁法人日 `d_inst`、與借券 tab 的 `lend_date`
-    脫鉤**（`build_postmkt.py` grep `md_date = d_inst or lend_date`）：原本共用 `lend_date`
-    ＝`d_short or latest`，而短賣餘額是全批最慢的一支，晚場那班常落後一天，於是
-    `build_market_daily()` 的「法人資料日 ≠ 基準日」守門必然觸發、**f/t 整欄變 null**
-    （線上實證：generated_at `2026-09-09T20:55:42+08:00` 那版 `date_mismatch` 四項全 `2026-09-09`、
-    `market_daily.date` 停在 `2026-09-08`、2,757 檔的 `f`／`t` 非 null 各 0 檔）。脫鉤後常態下
-    本區塊資料日與 `pm.date` 應相同，**但仍不保證**——法人日落後、或 `d_inst` 為空退回 `lend_date`
-    時兩者會不同，所以「兩個資料日並存要明講」那條不變（**脫鉤後尚無線上樣本，此段為程式碼依據**）。**第五軸（2026-09-09）**：畫面主語一律寫出實際日期，
-    **不得用「今天／今日／當日」代稱**；落後 ≥`MYCHG_STALE_LAG`（2）個交易日、晚於今日或缺失時
-    另出一段與免責卡同重量的說明，且**不新增紅黃綠判級**。比照個股摘要側欄「每段自帶自己的資料日」。
-    **股名在本 tab 刻意不完整**：`stkName()` 的 `diag`／`screen`／`aetf` 三個來源在本 tab 都沒載，
-    只剩 `BK_NM`（只由 `oddlot`／`lending` 三張表建），查不到就顯示代號——那是「零新增網路請求」的
-    代價，**不得為了補股名而新增請求**；細節與量級見 README 同節。
-  - **籌碼雷達 `chipradar`／社群聲量 `social`（2026-09-28 由 taiwan-flows `radar`、taiwan-stock-news `social` 搬來，
-    原站已移除；驗收條件 `docs/move-radar-social.md`）**：`index.html` grep `// ================= 籌碼雷達 tab`
-    與 `// ==== 社群聲量` 兩段（接在「日期 tab」之前）。**搬家不改口徑**——規格正本仍是
-    `taiwan-flows/docs/radar-tab.md` 與 `taiwan-stock-news/docs/social-display.md`（含 §1b，紅綠／排行／雙確認建議／
-    參考價位是使用者 2026-09-28 裁決、**未經回測**，畫面標「AI 研判，未經回測，非保證」）；純函式
-    （`radarQuad`／`radarPoints`／`radarHolders`／`radarSvg` 與 `social-pure:begin`～`end` 區段）與原站逐字相同。
-    **資料不搬、改讀同源相對路徑**（CSP `connect-src 'self'` 已涵蓋、未改）：`../taiwan-flows/data/sector_ranges_lite.json`
-    （`CR_SECT_URL`）、`../taiwan-stock-news/data/social/`（`SOCIAL_BASE`）；大戶／價位讀本站 `data/diag/diag.json`
-    ——**沿用既有 `ensureDiag()`／`state.diag`**（與持股診斷共用一份，`ensureDiag` 載完後在 diag／chipradar／social
-    三個 tab 都會重繪）。副作用：先開過這兩個 tab 後，`stkName()` 的 diag 來源會變成可用（同「先開過持股診斷」）。
-    **兩個 tab 的資料都只在切到該 tab 時才抓，首屏請求清單不變**。本站變成**另兩個 repo 資料檔的前端消費者**：
-    taiwan-flows `sector_ranges_lite.json` 的 `windows.r5/r20.classifications`、taiwan-stock-news `data/social/*.json`
-    的 schema 改名或改語意＝跨站變更。**hash 新 key**：`rcls`（`exchange`｜`chain`）／`rinv`（`total`｜`foreign`｜
-    `trust`｜`dealer`）只在 `tab=chipradar` 讀寫（產業下拉不進 hash），`sd`（YYYY-MM-DD，須在非 fixture 日期清單內）
-    只在 `tab=social` 讀寫；白名單在 `HASH_CR`／`HASH_SD_RE`，非法值靜默丟棄。搬來時為避撞名改的東西：`tbl()` 多了
-    選填 opts `sortI`／`sortD`／`tie`（不帶時行為逐字不變）、CSS 一律 `.cr-*`／`.soc-*` 前綴、原站 `.row/.lbl/.chip/.meta/.tblwrap`
-    → `.soc-row/.soc-lbl/.soc-chip/.soc-meta/.soc-tblwrap`。大戶兩表在本站版心（880px）改上下疊放（原站並排）。手機窄寬（≤480px）為滿足下方手機驗收條件②改藏次要欄、關鍵欄全留：大戶表藏產業／外資5日張／投信5日張（外資／投信改成名稱下方兩行小字 `.cr-nw`），社群表藏推／噓／作者態度分布（點代號展開的依據段仍列出）、股名併入代號欄第二行（`.soc-nm2`）；量測見 docs/move-radar-social.md §3。
-    測試：`tests/test_chipradar.mjs`（17 項，pytest 由 `tests/test_frontend_moved.py` 代跑，上半用
-    `tests/fixtures/chipradar_sector_ranges_r5r20.json` 快照）、`tests/test_social_display.py`（13 案）、
-    `tests/test_frontend_moved.py`（hash 白名單＋首屏）。本機驗證 http.server 要起在三個 repo 的**上一層**
-    （例 `/home/user`），以 `/postmkt/` 開頁，`../taiwan-flows/`、`../taiwan-stock-news/` 才可達。
-  - **市場情緒 `sentiment`（2026-09-29 新增，第 17 個 tab，排在 `social` 之後、`dates` 之前；規格正本
-    `taiwan-flows/docs/sentiment-tab.md` §3，硬約束 M4–M7）**：`index.html` grep `// ================= 市場情緒 tab`
-    （接在社群聲量之後、「日期 tab」之前）。資料＝`const SENT_URL = "../taiwan-flows/data/sentiment.json"`（**同源相對路徑、
-    CSP 未改**），**只在切到本 tab 時才抓**（`sentRender()` 內呼叫 `sentEnsure()`：in-flight 以 `SENT.loading` 去重、失敗記
-    `SENT.err` 不重試，比照 `crEnsureSr`），首屏請求清單不變。三張卡：臺指 VIX／Put-Call（未平倉比為主含折線、成交量比為輔）／
-    小台散戶多空比（另列最新一列的法人多／空、散戶淨部位、全市場未平倉「全部契約」與「僅月契約」兩種口徑；**2026-10-18 使用者裁定主值維持「全部契約」**（taiwan-flows `MTX_OI_MAIN="all"`），「口徑比對中」徽章已拿掉、改寫「僅月契約數字並列僅供參考」）。
-    每卡＝最新值＋**自帶資料日**（該欄最後一個非 null 的列；最新列該欄缺值時明講）、與前一筆有值的差、近 N 筆有值資料第 P 百分位
-    （N＝min(60, 實有筆數)，不足 60 註明；P＝窗內 ≤ 最新值的筆數 ÷ N，四捨五入）、均值、全部歷史 inline SVG 折線＋
-    60 筆有值資料均線（不足 60 筆不畫）——**窗是「筆」不是「日」**：序列跳過 null 的日子，含缺值時跨度多於 N 個交易日，
-    畫面措辭因此一律寫「近 N 筆有值資料」（2026-09-29 更正，演算法未改）。免責句前半「情緒指標為現況描述，非買賣訊號；無回測依據。」逐字固定（`SENT_DISCLAIMER`），後半「VIX 歷史自 YYYY-MM-DD 起。」**不寫死**——由 `sentDisclaimer(rows)` 取資料中第一個有 `vix` 值的列日期（先過 `SENT_DATE_RE`），無值時整個後半句省略（2026-09-30；原寫死 2026-03-02，實際資料自 2026-03-11 起）。`generated_at` 徽章先過 `sentGenOk()`
-    （`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}` 開頭才顯示，否則「產出 —」；它是產出時刻、不代表資料新鮮度）、一行口徑說明。**純描述（M6）**：畫面除免責句外不得出現偏多／偏空／建議／訊號等字樣，
-    線條與字色一律中性（`var(--txt)`／`var(--muted)`，不用紅綠）。**M7**：日期白名單 `SENT_DATE_RE`（`^\d{4}-\d{2}-\d{2}$`，
-    不合的列整列丟棄）、數值 `sentNum()`（typeof number＋isFinite，字串數字一律當 null）後 `toFixed`、外來字串插值一律 `esc()`。
-    降級：某欄全 null／缺欄 → 該卡灰字「目前無資料」、其餘卡照常；整檔 404／壞 JSON／`rows` 非陣列或空 → 整段一句
-    「資料尚未產生或讀取失敗」（不報錯）。**不接休市行事曆、不做「今天」判斷**。CSS 一律 `.sent-*` 前綴；**不加新 hash key**
-    （`#tab=sentiment` 由 `HASH_TABS`＝`TABS` 自動白名單）；頂列 stats 列比照籌碼雷達清空（頁內自帶資料日）。
-    **本站因此也是 taiwan-flows `data/sentiment.json` 的前端消費者**：`rows[].date`／`vix`／`pc_oi`／`pc_vol`／`put_oi`／`call_oi`／
-    `put_vol`／`call_vol`／`inst_long`／`inst_short`／`retail_net`／`retail_ratio`／`mtx_oi`／`mtx_oi_monthly_only` 與頂層
-    `generated_at` 改名或改語意＝跨站變更（日期語意見 `docs/date-semantics.md`）。**P/C 卡與小台卡的口徑說明另註「未平倉不含當日到期契約」**（2026-09-30，對應 taiwan-flows 規格 §0b；後端每列附加 `cv`（計算版本，2＝排除當日到期契約），前端不讀、形狀相容，演算法未改）。純函式集中在 `sent-pure:begin`～`end` 區段；
-    測試 `tests/test_sentiment_frontend.mjs`（pytest 由 `tests/test_sentiment_frontend.py` 代跑；樣本
-    `tests/fixtures/sentiment_sample.json`＝80 列，最末列 2026-09-24 的 VIX／P/C／法人口數取規格 §0 實測，其餘與 `mtx_oi` 為合成值），
-    另含 M6 字樣／色票、M4/M5 lazy、M7 插值 `esc()` 的讀碼檢查與整段內嵌 script 可編譯檢查。本機驗證同籌碼雷達（http.server 起在上一層）。
-  - **選股二 `pick2`（2026-10-14 新增，第 18 個 tab，排在 `screen` 之後、`mychg` 之前）**：`index.html` grep
-    `// ================= 選股二 tab`（接在 `renderScreen()` 之後、「持股診斷 tab（子期1）」之前）；渲染 `function renderPick2`、
-    載入 `function pk2Ensure`、純函式 `pick2-pure:begin`～`end`（`pk2ParseCsv`／`pk2Universe`／`pk2ParsePrefs`／`pk2Apply`／
-    `pk2Add`／`pk2Remove`／`pk2NormCode`／`pk2Rating`）。名單＝taiwan-backtest aisc 候選池＋使用者個人增刪。
-    **資料（全部同源相對路徑、CSP 未改；只在切到本 tab 時才抓，首屏請求清單不變）**：`PK2_UNI_URL`＝`../taiwan-backtest/aisc/universe.json`
-    （`TW`／`US` 的 `{code,name}`＋`version`／`tw_refreshed_at`／`frozen_at`，預設名單）、`PK2_CSV_URL`＝`../taiwan-backtest/output/aisc/daily/latest.csv`
-    （aisc 每日表，取 `close`／`r5`／`r20`／`above60`／`ext`／`slope60`／`date`；手寫逗號切欄解析、容忍 CRLF 與空欄，數值 `Number`＋`isFinite`
-    否則 null）；兩者 in-flight 以 `PK2.*Loading` 去重、失敗記 `PK2.*Err` 不重試。台股欄位沿用 `ensureDiag()`／`state.diag`（diag.json）
-    與 `ensureScreen()`／`state.screen`（明年預估 EPS＝`scrEstMean(r, scrYear+1)`、目標價空間＝`tp.median/px−1`、評等五鍵分布）——
-    兩者載完後的重繪清單都已加 `pick2`。台股價格欄優先 diag，diag 沒有該檔才退 aisc 表；美股只有收盤／5日／20日／MA60（above60）／
-    ext／slope60，其餘「—」。**本站因此是 taiwan-backtest `aisc/universe.json` 與 `output/aisc/daily/latest.csv` 的前端消費者**：
-    兩檔的路徑、`TW`／`US` 結構或 CSV 欄名（`market,code,name,date,close,ext,r5,r20,above60,slope60,…`）改名或改語意＝跨站變更。
-    **個人增刪**：localStorage key `pm_pick2`＝`{v:1, added:[{m,code}], removed:[{m,code}]}`（相對預設名單的**差異**，月度換池照常反映：
-    被刪的預設股若不在新池自然消失、自加的永遠保留直到使用者刪除）；讀寫全部 try/catch、壞資料當空；**不進任何網路請求、URL、hash**
-    （約定 6 精神；`tests/test_pick2.mjs` 讀碼守門）。代號白名單：台股 `^\d{4}[0-9A-Z]{0,2}$`、美股 `^[A-Z]{1,5}$`（先 trim 轉大寫）。
-    **多空總分（2026-10-18 使用者裁定：無回測依據、可先上線；畫面標「AI 研判，未經回測，非保證」、列入事後驗證；規格正本
-    `docs/pick2-score.md`）**：純函式 `pk2Score`（grep `function pk2Score(`）依 `PK2_SCORE_SPEC`（12 項、權重 1／2，與文件規格表逐列一致，
-    測試比對）算 `50＋50×Σ(w·s)÷Σw`，缺值不計入分母、全缺 null；表格「排序分數」欄群組＝多空總分＋易經短線／波段／中期，
-    **預設依多空總分高→低、同分依代號、null 最後**（`pk2ScoreCmp`＋`tbl` opts `sortI:1, sortD:-1`）。**美股不計總分**（2026-10-18 使用者裁定，資料項不足；`pk2Score` 對 `m==="US"` 回 null，顯示「—」、排在最後）。
-    易經三欄＝`PK2_ICH_URL`＝`../taiwan-stock-iching/data/web/latest.json`（同源、CSP 未改、約 1.4MB、只在切到本 tab 才抓）的
-    `stocks[code].short|swing|mid.bs`，僅供參考、**不進總分**，附固定說明句 `PK2_ICH_NOTE`；**本站因此也是 taiwan-stock-iching
-    `data/web/latest.json` 的前端消費者**（`stocks[].short|swing|mid.bs`／`date` 改名或改語意＝跨站變更）。改門檻或權重＝改文件＋常數＋CHANGELOG 記版本，
-    驗證結論出來前不得拿掉「未經回測」標示。
-    **硬約束**：各欄為描述性顯示——除多空總分外不新增任何判級／燈號／紅綠訊號；總分欄中性色；
-    漲跌著色只用在今日漲跌％／5日／20日漲幅（沿用 `sgn()`），其餘欄中性色；免責句逐字固定（`PK2_DISCLAIMER`）；頁頂列各資料源**各自**的
-    資料日（diag.date／screen.date／aisc 表 date 欄分市場最大值），讀取失敗該來源寫「讀取失敗」、欄位「—」、不拋錯；universe 讀不到時名單只剩自加股並明講。
-    頂列 stats 比照籌碼雷達清空；CSS 一律 `.pk2-*`；**不加新 hash key**（`#tab=pick2` 由 `HASH_TABS` 自動白名單）。
-    手機：表格 37 欄（2026-10-18 加排序分數 4 欄，原 33）在 `.tblbox` 內橫捲（同整合排行），未藏欄；375／390／1280 實測整頁無水平捲軸、逐格零裁切（2026-10-18 Playwright 重量）。
-    **追蹤名單（2026-10-19 使用者裁定：無回測依據、先上線；畫面標「AI 研判，未經回測，非保證」、列入事後驗證；規格與介面契約正本
-    `docs/pick2-score.md` §7）**：自動選入＝台股多空總分 ≥80 且有值項 ≥9（不含易經）、**無自動移出**；被刪除的股不再自動選回，
-    手動加入可解除（`since`＝加入後第一次建置日）。後端 `src/build_pick2.py`（`diag.yml` 的 screen 之後、`continue-on-error`，
-    commit 帶 `data/pick2/`）寫 `data/pick2/daily/<date>.json`＋`data/pick2/track.json`（2026-10-25 起另帶 `inputs.screen_stale`：screen 本次未更新只標示、不改分數，見 docs §7.2）；`pk2Score` 的 Python 移植與 JS **逐位相同**
-    （`tests/test_pick2_build.py` 以 node 抽 `pick2-pure`＋`pk2Rows()` 對跑；四捨五入 `js_round`，**不可用 Python `round()`**）。
-    前端（grep `// ---- 追蹤名單`／`function pk2TrackHtml`／`async function pk2UserWrite`）切到本 tab 才讀 `data/pick2/track.json`／
-    `user.json`；「加入追蹤／停止追蹤」（2026-10-23 由「刪除」改名）以記憶體 `CRED.gh`（`ghToken()`）對 Contents API 追加寫 `data/pick2/user.json`（帶 sha、409 重試、
-    壞檔拒寫），**新寫的函式，三站同步碼 `ghSaveAnalysis` 未動**；PAT 只進 header。**本站因此有一個外部消費者**：taiwan-flow-live-v2 Worker
-    讀 raw main `data/pick2/track.json` 推 LINE——`track.json`／`user.json`／`daily/*.json` 欄位改名或改語意＝跨站變更。
-    測試 `tests/test_pick2.mjs`（40 項；pytest 由 `tests/test_pick2.py` 代跑；若同層有 taiwan-backtest／taiwan-stock-iching checkout 另驗真實 universe（檔數每月浮動、不寫死；驗檔內合法代號全收、美股 24 檔凍結）、latest.csv 與易經 latest.json）＋`tests/test_pick2_build.py`（20 項）。
-    本機驗證同籌碼雷達（http.server 起在上一層，`../taiwan-backtest/` 才可達）。
-  - **月營收 `revenue`（2026-11-12 階段二新增，第 19 個 tab，排在 `sentiment` 之後、`dates` 之前；規格與驗收條件正本
-    `docs/revenue-beatmiss.md` §5）**：`index.html` grep `// ================= 月營收 tab`（接在市場情緒之後、「日期 tab」之前）；
-    渲染 `function revRender`、載入 `function revEnsure`／`function revLoadMonth`、純函式 `rev-pure:begin`～`end`
-    （`revLabel`／`revIndex`／`revPickMonth`／`revMonthOk`／`revRows`／`revFilter`／`revFmt`／`revPct`／`revDir`／`revGenOk`／`revThText`／`revSrcText`）。
-    資料＝`REV_BASE`＝`data/revenue/`（**本站同源相對路徑、CSP 未改**）：先 `index.json`（`months`／`latest`）再選定月份檔，
-    **只在切到本 tab 時才抓**，首屏請求清單不變；index 以 `REV.idxLoading`、月份檔以 `REV.loading[m]` 去重，失敗記
-    `REV.idxErr`／`REV.err[m]` 不重試、畫面一句話、不拋錯；`months` 空或 `latest` 不在 `months` 內＝「尚無資料」；
-    月份檔的 `month` 與要求月份不符視為讀取失敗。**鐵律 8（使用者 2026-11-12 裁定：無回測依據、先上線）**：三種畫面狀態
-    都逐字顯示「AI 研判，未經回測，非保證」（`revLabel()`：取資料檔 `label`，缺值或不含該句時退回常數 `REV_LABEL`），
-    階段三回測結論出來前不得拿掉。畫面三區：四類摘要（高預期仍Beat／低預期仍Miss 置前，「符合」只列檔數）、
-    次產業表（`tbl()`，並列 `tsmc_yoy`）、個股表（`tbl()` 15 欄、**未動 `tbl()`**，預設順序＝資料檔順序，分類／次產業兩個下拉篩選
-    ——篩選狀態不進 hash）。
-    **階段二之二（2026-11-12，驗收條件 `docs/revenue-beatmiss.md` §6）**：①個股表欄序＝代號、名稱、分類、次產業…（只把分類移到名稱之後），
-    **第一欄（`tbl()` 凍結欄）是代號**；②**來源欄畫面上去掉網址**——純函式 `revSrcText()`（在 `rev-pure` 區段；`https?://` 起至下一個空白或結尾
-    整段去掉後 trim，空字串由 `revTxt()` 顯示「—」），仍經 `esc()`、不產生連結，**資料檔不改**（網址仍在 `data/revenue/*.json` 與 `expect.json`）；
-    ③**月份改變時篩選重設**：`REV.month` 只在 `function revSetMonth` 內賦值（下拉 listener 與 `revEnsure()` 套用 hash `rm`／`hashchange`／首次選月都走它），
-    月份真的變了才把 `REV.fCls`／`REV.fSec` 退回 `"all"`，同月份內重繪（含 hash 帶同一個月）不重設；
-    ④**晚到的請求不亂重繪**：`revLoadMonth()` 的 `.finally` 只有「仍在本 tab 且 `REV.month === m`」才 `render()`（資料照樣進 `REV.cache`），
-    `index.json` 的 `.finally` 只有仍在本 tab 才 `render()`。**刻意不做**：畫面另列 `fetch_failed`、月份檔 `month` 不符的訊息區分（理由見 §6.5）。**hash 新 key `rm`**（`HASH_RM_RE`＝`^\d{4}-\d{2}$`，只在 `tab=revenue` 讀寫；清單到手後由
-    `revEnsure()` 以 `revPickMonth()` 比對 `months` 白名單，非法值靜默退回最新月；最新月不寫入 hash；清單未到前保留網址原值，同 `sd`）。
-    **硬約束**：分類與加速／減速一律中性色文字（`.rev-cls`），不新增燈號；漲跌著色只經 `revSgn()`→`sgn()`，只用在月增%／年增%／驚喜%
-    （含摘要的驚喜%與台積電年增基準；上月年增%／變化／預期季增%／預期年增%為中性色）；外來字串一律 `esc()`／`revTxt()`，
-    數值一律 `revNum()`（typeof number＋isFinite）後格式化、否則「—」；**來源欄為純文字、不轉連結**（網址在畫面上已由 `revSrcText()` 去掉）。CSS 一律 `.rev-*`；
-    頂列 stats 比照籌碼雷達清空（頁內自帶營收月份與產出時刻）。手機：個股表 15 欄與次產業表 6 欄都在 `.tblbox` 內橫捲、未藏欄
-    （375／390／1280 實測整頁無水平捲軸、逐格零裁切、無換行，2026-11-12 Playwright，階段二之二改欄序後重量）。**個股表第一欄（凍結欄）是「代號」**
-    （階段二原為「分類」，2026-11-12 使用者裁示改）。
-    測試 `tests/test_revenue_frontend.mjs`（21 項：階段二之二加來源去網址、切月重設篩選、晚到請求三項——後兩項把 `revLoadMonth`／`revSetMonth`／`revEnsure`
-    原始碼抽出、配假 `loadJSON`／`render` 實跑；pytest 由 `tests/test_revenue_frontend.py` 代跑；樣本
-    `tests/fixtures/revenue_sample.json`＝`data/revenue/2026-10.json` 的 12 檔子集）＋`tests/test_frontend_moved.py` 的 `rm` 白名單。
-    本 tab 只讀本站資料，本機驗證 http.server 起在 repo 根目錄或上一層皆可。
-  - **市場總覽 `overview`（2026-11-12 新增，第 20 個 tab，`TABS` 第一個、**預設 tab 不變**；規格、定案口徑與驗收條件正本
-    `docs/market-overview.md`）**：`index.html` grep `// ================= 市場總覽 tab`（接在 `renderTabs()` 之後、籌碼雷達之前）；
-    渲染 `function ovRender`、載入 `function ovEnsure`／`function ovLoad`、純函式 `ov-pure:begin`～`end`。三段：
-    ①**盤勢七項**（描述性，前端直接讀既有同源檔、每項自帶資料日、缺哪項只灰掉那項）：當日總結（`../taiwan-flow-live-v2/data/daysummary/latest.json`）、
-    三大法人（`../taiwan-flows/data/totals.json`）、外資台指期（`../taiwan-flows/data/futures/<YYYYMMDD>.json` 兩檔，日期取 totals 最末兩個交易日）、
-    市場情緒（`sentiment.json`，沿用 `sent-pure`）、大盤餘額（`data/market_balance_history.json`）、盤勢綜合研判（`data/summary/index.json` 最新一場的
-    `synthesis.text` 抽「## 盤勢綜合研判」一節，經 `mdToHtml` 顯示——**三站同步碼只呼叫不修改**；**2026-11-18 起**徽章另帶該場產出時間
-    「｜產出 HH:MM（台北）」（產出日≠資料日時寫完整日期；純函式 `ovSumBadge`，時間走 `fmtGenTaipei`），該場 `us_gate.fresh===false` 時在研判內文之前
-    顯示一句中性說明「本場產出時美股資料尚未更新（資料日 X，預期 Y），文中美股數字可能是前一個交易日的。」（`ovUsGateNote`，X／Y 過日期白名單、整句經 `esc()`；
-    舊場次／pm 場沒有 `us_gate` 就不顯示）；「彙總分析」tab 自動產出展開時同一句。未加請求、未加 hash key）、晨報三件事＋開盤前定位（`../taiwan-stock-news/daily-brief-card.json`）；
-    6、7 標「AI 研判」。②**類股交集**③**個股交集**：後端 `src/build_overview.py` → `data/overview/latest.json`，**前端只渲染、不重算**。
-    **鐵律 8（使用者 2026-11-12 裁定：無回測依據、標示後先上線）**：交集表依「出現在幾個來源清單」排序是新的候選排序；載入中／讀取失敗／正常三種狀態
-    都逐字顯示「AI 研判，未經回測，非保證」（`OV_LABEL`／`ovLabel()`），每日快照 `data/overview/daily/<date>.json` 留存供事後驗證，結論出來前不得拿掉標示；
-    **兩側（2026-11-13 起）**：資金流入側（資料檔頂層 `sectors`／`stocks`，A–E／a–f）＋**資金流出側**（頂層 `out:{sectors,stocks}`，流入側各來源的鏡像，定案見 `docs/market-overview.md` §6.1：A′ 淨賣前 10、B′ `acc_out`（與 A′ 同組）、C′ 次產業減碼前 10、E′ 連續 3 日「轉弱」或「落後」、a′ `sync_sell`、b′ `nSellers>=2`、d′ Miss 類、e′ `radarHolders().down`；D′（`signals` 無退潮類訊號）與 c′（追蹤名單只有選入）無對應來源、以 `excluded` 列出）。後端是**同一份實作換方向參數**（`SIDES`，來源函式的 `side` 參數），schema 仍為 1、只增不改，流入側輸出逐位不變由 `tests/fixtures/overview_inflow_golden.json` 守門。前端交集區有「資金流入側／資金流出側」切換（`OV.side`，預設流入側，**只存記憶體、不進 hash／localStorage**，切換不發請求；純函式 `ovSide()`）；資料檔沒有 `out`（舊檔）時流出側顯示「尚無資料」、流入側照常。**用語一律「資金流出側」，畫面與文件不得寫成放空／賣出建議**（測試讀碼守門）；兩側、三種狀態都顯示標示句。**計票群組**：「出現清單數」以群組計——類股來源 A（r5 淨買前 10）與 B（籌碼雷達加速流入）讀同檔同窗、不獨立，
-    併為「法人資金流」一組只算 1 票（後端 `GROUP_NAMES`／來源的 `group` 欄；畫面來源欄仍分別標 A、B）；連湧／新湧（D）晚間建置時資料日是前一交易日 → 另列不計入；**隔天早上 `morning.json` 更新後若再建置則計入**（2026-11-13 線上實證，類股列 4→6；原寫「恆為另列」已更正），故同一基準日的每日快照以最後一次寫入為準、可能前後不同（`docs/market-overview.md` §3.4）。
-    **硬約束**：盤勢 1–5 的渲染函式不得出現偏多／偏空／建議等字樣（來源檔自帶文字原樣顯示並標來源；測試讀碼守門）；
-    著色只經 `sgn()` 用在漲跌與買賣超正負；出現清單數中性色、不加燈號；外來字串一律 `esc()`、數值一律 `ovNum()`；彙總檔名過 `OV_SUMFILE_RE`。
-    全部同源相對路徑、CSP 未改、**只在切到本 tab 時才抓**（每支檔以 `OV.loading[key]` 去重、失敗記 `OV.err[key]` 不重試），首屏請求清單不變；
-    CSS 一律 `.ov-*`；不加新 hash key；頂列 stats 清空。**未動 `tbl()`**。
-    **本站因此新增為下列檔案的消費者（改名或改語意＝跨站變更）**：前端讀 taiwan-flow-live-v2 `data/daysummary/latest.json`（`index`／`breadth`／`subs_top5`／`subs_bot3`／`tone`／`date`）、
-    taiwan-flows `data/totals.json`（`dates`／`rows[d].tse|otc.*_k`）與 `data/futures/<日>.json`（`cols`／`rows`）、taiwan-stock-news `daily-brief-card.json`（`top3`／`positioning`／`date`）；
-    後端讀 taiwan-flows `sector_ranges_lite.json`（r5／r20 chain total）與 `latest.json`（`pages.sync.sync_buy`／`sync_sell`）、taiwan-flow-live-v2 `aetf/diff.json`（`stocks[].by`／`subs`／`primary_date`）、
-    `morning.json`（`signals`／`recap.baseline_date`）、`chain_daily/series.json`、`classify.json`（`map[].p`）。
-    **我的持股對照（2026-11-13，使用者裁定「暫以最小作法」；規格與實作定案 `docs/market-overview.md` §7）**：個股交集表之後的一段（`.ov-myhold`），
-    列出持股清單中出現在流入側／流出側**個股層**來源的個股（兩側並列、不受上方切換影響；列順序＝持股清單原順序，**不排序、不計分、不加燈號**；
-    未命中只計數；類股層未做）。純函式 `ovHoldLayer`／`ovHoldMatch`（grep `function ovHoldMatch(`，在 `ov-pure` 區段），渲染 `function ovHoldHtml`，
-    持股讀取 `function ovHoldCodes`＝沿用 `diagHoldings()`＋`HOLD_CODE_RE`。只用計入的來源（`stale`／失敗／另列／不納入者不對照）；
-    「在交集表內」直接取資料檔該側 `stocks.rows`（群組數 ≥2，前端不重算）；`out` 缺時只對照流入側。四種狀態（未設定持股／資料檔讀不到／全部未命中／正常）都逐字顯示標示句。
-    **隱私硬約束（約定 6）**：本段零新增網路請求、不寫 localStorage／sessionStorage、持股代號不進任何 URL／hash／history／請求；
-    **個股欄不得放 `stkBtn`／`nameCell`**（開側欄會把代號寫進網址 `stock=`）、不得產生連結；「前往持股診斷」鈕（`data-ovgo="diag"`）只改 `state.tab`。
-    `build_overview.py` 與資料檔 schema 未動。
-    測試 `tests/test_overview_frontend.mjs`（34 項，pytest 由 `tests/test_overview_frontend.py` 代跑）＋`tests/test_overview_build.py`（39 項）。
-    本機驗證同籌碼雷達（http.server 起在上一層）。
-  - **休市行事曆（2026-09-29 家族批次二，規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b）**：
-    `index.html` grep `// ---------- 家族休市行事曆` 起（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／
-    `prevTradingDay`／`holLoad`）。`load()` 末尾 `holLoad()` 以**同源相對路徑** `../taiwan-flow-live-v2/data/twse_holidays.json`
-    非阻塞讀取（CSP `connect-src 'self'` 已涵蓋、未改 CSP；首屏多這一支小檔）；載入成功才重繪頂列＋`dates`／`mychg`／`rrgd`
-    三個 tab 一次。**休市日比照週末**：`pmStatus`（休市日＝「休市定格」、上一交易日跳過休市日）、`dayDiff`（日期 tab
-    `dateStatus` 與持股異動第五軸 `myChgDateInfo` 的交易日差）、`rrgdLagDays`。資料日≠今日且 `lag`＝0（今日為休市日或週末）時第五軸文案寫
-    「今日 X（假日名休市／非交易日），此為最近交易日」而非「即今日」（**週末同型的舊錯誤同批於 `7e244f4` 一併修正**；
-    代價：無行事曆時的週末文案與改動前不再逐字相同）。
-    **fail-open**：讀不到／非 2xx／壞檔／`schema` 不是整數 1（`true` 不收）／`years` 無合法年度 → `HOL=null`
-    ＝只排週末＝改動前行為（Playwright 以行事曆 404 對跑 origin/main，16 tab `#topbar`＋`#main` 逐字相同）；某年不在
-    `years`＝該年未知、只排週末。**不新增判級／門檻、不改資料欄位**；`MYCHG_STALE_LAG` 仍為 2。颱風臨時停市仍會誤報。
-    刻意不改：`twDayList`（雲端歷史近 3 個**日曆日**，休市日檔案本來就 404 靜默略過）、`diagNewsFor`（用 news.json 自帶
-    `trading_days`）、大盤餘額「異動」（跟陣列前一筆比，不做日期推算）。同規則在 taiwan-flows／taiwan-backtest 前端與
-    Worker `parseHolidayCal` 各一份（前端無共用模組）。測試 `tests/test_holidays_frontend.mjs`（pytest 由
-    `tests/test_holidays_frontend.py` 代跑；fixture `tests/fixtures/twse_holidays_2026.json` 為 2026-09-29 快照）。
-  - **持股清單匯出／匯入／清除（2026-09-07）**：`holdExportPayload`／`holdParseImport`／
-    `holdExport`／`holdImportFile`（grep `const HOLD_SCHEMA` 起至 `async function holdImportFile`
-    該函式結尾止）。**仍只走 localStorage `pm_holdings` 與使用者本機檔案，不進任何網路 payload**
-    （約定 6 不變）；匯入走 `holdParseImport`
-    的結構與型別檢查，壞檔整包拒收、不半套。
-- `build_postmkt.py` → `data/postmkt.json`（主資料，五個盤後 tab）
-- `build_summary.py` → `data/summary/`（AI 彙總自動場；含資料齊全輪詢閘門與假日判斷）。
-  **am 場美股新鮮度（2026-11-18，事故與已知限制見 CHANGELOG 同日節）**：閘門第二階段（軟等、最多 60 分、逾時照跑）對 us.json 的判準由
-  「`generated_at` 是今日」改為「**`date` ≥ 最近預期美股交易日**」（grep `def us_is_fresh`／`def last_expected_us_trading_date`；
-  後者是 taiwan-flow-live-v2 Worker `lastExpectedUsTradingDate` 的 Python 移植——台北二~六＝昨日、日／一＝上週五、美國假日不處理，
-  **兩處要同步**，`tests/test_summary_us_gate.py` 在同層有該 repo checkout 時以 node 逐日對跑）。舊判準沒有鑑別力：us 班每輪都重寫
-  `generated_at`。`wait_gate()` am 場回傳第二階段等待秒數（pm 回 `None`、**pm 路徑未動、不讀 us.json**）；`main()` 以
-  **實際拿去組素材的那份** us.json 算 `us_gate_info()`，am 場寫進該場 JSON 頂層 `us_gate: {expected, got, fresh, waited_sec}`
-  （只增不改；`fresh=false` 時 `index.json` 該筆 run 另帶 `us_stale: true`）。**模型素材不變**——`gather_*`／`SYS_*` 是三站同步碼的移植副本，
-  本批一字未動；逾時那場文中仍可能把前一個交易日的美股數字寫成隔夜，只由前端標示（市場總覽卡 6 與「彙總分析」自動產出區，
-  純函式 `ovUsGateNote`）。美國假日隔天 am 場會白等 60 分並被標成未達預期（誤標，已知限制）。
-  **2026-08-29 起：每頁 1 份共 3 份摘要（原 6 份）、`MIN_OK_FOR_SYNTH=2` 才彙總、共振強度口徑 N/3；
-  自動場摘要與彙總改走 Anthropic Message Batches（半價，逾時或單筆失敗逐筆同步回退）**。
-  **pm 期限 2026-09-10 改走牌鐘截止點**（`build_summary.py` grep `PM_BATCH_CUTOFF_HM`＝台北 23:00；
-  am 維持固定 25 分、**刻意不掛牌鐘**）：`batch_deadline(slot, t_start, now=None)` 取
-  min(場次期限, 全場剩餘預算−同步保留, 距截止點剩餘)，已過截止＝回 0＝整包跳過 batch 直接同步。
-  `BATCH_DEADLINE_SEC["pm"]` 為 **180 分，但那只是上界**，實際綁住 pm 的是牌鐘。
-  **同日第一版「砍成固定 30 分」已作廢**：那版的理由寫「那包 batch 本來就沒成功過，所以沒有代價」，
-  **被當晚 run 34481046459 推翻**——摘要那包實跑約 **104 分鐘**後 `via` 全 batch 成功、產物台北 22:58
-  落地（早於健檢），30 分會把它 cancel 掉、白付原價。**五天**實際分布＝**三失敗兩成功**
-  （09-07／08／09 逾 180 分未 ended 全 sync 回退；09-10 約 104 分成功；09-11 整場僅
-  **7 分 32 秒**、摘要 batch 上界約 5 分）。**2026-09-13 補 09-11，原寫「四天三失敗一成功」已過期。**
-  完成時間橫跨約 5 分 ~ 104 分 ~ >180 分，**分布極寬**——任何固定分鐘數都是在賭它。
-  **23:00 是餘裕的選擇、不是量出來的最適值**（截止後最壞還要摘要同步回退 4 分 17 秒＋彙總，
-  留 50 分給 23:50 健檢；沒有足夠天數的完成時間分布可算最適值，**不可寫成實測結論**）。
-  逐行 log 證據寫在 `build_summary.py` 的 `BATCH_DEADLINE_SEC` 上方；**要調整之前，先看幾天
-  `-pm.json` 的 `via` 欄**（`sync`＝那包 batch 又沒趕上牌鐘）。**場次期限與牌鐘都是 per-slot、
-  摘要與彙總共用**，改它會同時改到彙總那包的上限。`summary.yml` 另有 `workflow_dispatch` 輸入 `no_wait`（跳過資料齊全閘門，
-  測試／補跑用）
-- `src/build_diag.py` → `data/diag/diag.json`（持股診斷素材庫；cache.json 走 actions/cache 不進 git）
-- `src/build_mktbal.py` → `data/market_balance_history.json`（大盤餘額）
-- `src/build_revenue.py` → `data/revenue/`（月營收 Beat／Miss；2026-11-12 階段一產資料、階段二起由「月營收」tab 讀取（見上方同名節）；規格 `docs/revenue-beatmiss.md`。
-  輸入 `data/revenue/universe.json`（次產業股票池）與 `expect.json`（A／B 層預期，人工維護、須附來源；**不得填彭博數值**）。
-  分類無回測依據，使用者 2026-11-12 裁定標示「未經回測」先上線、階段三回測前不得拿掉標示；`revenue.yml`＝taiwan-flow-live-v2 Worker 主觸發（2026-11-13 起，台北每月 11–16 日 07:13 看 `index.json` 的 `latest` 是否已到上個月、未到才 dispatch；規格在該 repo `docs/revenue-trigger.md`）＋GitHub cron 每月 11–16 日 07:30 台北兜底（上個月已產出後的晚報／更正重算只靠它））
-- `src/backtest_revenue.py` → `data/revenue/backtest/`（`summary.json`＋`events.csv`；月營收 Beat／Miss 回測，2026-11-13 階段三；規格與**預先登錄判準**
-  `docs/revenue-beatmiss.md` §7——設計與判準已定案，跑出結果後不得回頭改。分類只呼叫 `build_revenue` 的純函式、只回測 C 層、**不讀 `expect.json`**；
-  門檻格點以 `th_override()` 暫時覆寫 `build_revenue.TH_C`／`TH_C_LUMPY` 後還原，**不改 `build_revenue.py`**。`revenue-backtest.yml` 只有 `workflow_dispatch`。
-  **沒有任何 tab 讀這份產出**；**2026-11-13 已實跑（run 43267484432）：依預先登錄判準機械判定為「有回測支持」，但只限 20 日的 Beat 類合計對 Miss 類合計；高預期／低預期兩子類各自未達顯著。報告 `docs/revenue-backtest.md`。**（實跑確認取得到 `TaiwanStockPriceAdj` 與報酬指數）；
-  **使用者 2026-11-13 裁定：畫面標示維持「AI 研判，未經回測，非保證」不動、門檻維持 15／25**——要改須使用者另行裁定。本機驗證用 `--cache-dir <目錄> --out-dir <暫存目錄> [--offline]`，不要把合成結果寫進 repo）
-- `src/build_overview.py` → `data/overview/latest.json`＋`data/overview/daily/<date>.json`（市場總覽的類股／個股交集表，2026-11-12；口徑與各來源
-  納入／降級／不納入的定案見 `docs/market-overview.md` §3。掛在 `diag.yml`（pick2 之後）與 `mktbal.yml`（最後一棒）各一次，`continue-on-error`、
-  commit 後才轉紅；跨 repo 檔走 raw main（免 token），本機用 `--src-root /home/user`。**B／E／e／b 是前端口徑的 Python 移植**
-  （`radarPoints`／RRGD 純函式／`radarHolders`／`nBuyers`，流出側另用到 `radarQuad` 的 `acc_out`、`radarHolders().down`、`nSellers` 與 `rrgdPersistList` 的「轉弱」「落後」）：改前端這幾支要同步改本檔，`tests/test_overview_build.py` 以 node 對跑逐位守門。
-  `generated_at` 以外內容沒變就不重寫檔）
-- `src/build_pick2.py` → `data/pick2/`（選股二追蹤名單；掛在 diag workflow 的 screen 之後，`continue-on-error`；見上方「選股二」節）
-- `src/build_screen.py` → `data/screen/screen.json`（選股：TradingView 初篩＋鉅亨 FactSet 預估
-  EPS/目標價/評等＋diag 合併；掛在 diag workflow 後段，`continue-on-error` 失敗不擋 diag）
-- 共用模組：`src/fmclient.py`（FinMind client＋token/台北時區）、`src/twseclient.py`（TWSE 節流）
-- workflows：build/diag/mktbal/summary（各自 cron＋v2 Worker 哨兵 dispatch）＋ revenue（月營收，Worker 主觸發＋GitHub cron 兜底）＋ revenue-backtest（月營收回測，只有手動 `workflow_dispatch`）＋ test.yml；
-  commit/push 與失敗告警在 `.github/actions/` composite
+### index.html 共用機制
+
+- **20 個 tab** 全部前端，CSS/JS 內嵌。`render()` 分派各 tab；`TABS` 第一個是 `overview`，**預設 tab 是 `insight`**。
+  共用表格框架 `tbl()`（排序／分組表頭／凍結欄／虛擬捲動，sticky 的坑記在 `<style>` 註解；
+  選填 opts `sortI`／`sortD`／`tie`，不帶時行為不變）。
+- **hash 路由**：`#tab=&code=&sub=&stock=`，另有只在各自 tab 讀寫的 `rcls`／`rinv`（chipradar）、`sd`（social）、
+  `rm`（revenue）；只放非預設值。錨點 `function parseHash`／`function applyHash`（`load()` 套用）／
+  `function syncHash`（掛在 `render()` 結尾，`history.replaceState`，不塞歷史、不觸發 hashchange）／
+  `addEventListener("hashchange"`。**讀入一律白名單＋型別檢查**（`HASH_TABS`＝`TABS` 自動白名單、`HASH_CR`、
+  `HASH_SD_RE`、`HASH_RM_RE`），非法值靜默退回預設。**全站唯一的 `location.hash = …` 賦值**是持股異動列點個股
+  跳持股診斷的 document 級委派 listener（grep `closest(".clk[data-mychg]")`，在 `renderMyChg()` 之後、
+  不在 `myChgHtml()` 內），刻意塞一筆歷史（Back 要能退回）；其餘寫出一律 `replaceState`。
+  持股清單、篩選狀態、`OV.side`、pick2 個人增刪都不進 hash。
+- **個股摘要側欄**：grep `// ---------- 個股摘要側欄`；▤ 鈕 `const stkBtn`（掛在 `const nameCell`、選股代號欄、
+  分點「單點」名稱欄、持股診斷卡標題）；`function renderStockDrawer`／`function stkOpen`／`function stkClose`；
+  DOM `id="stkMask"`／`id="stkPanel"`。**硬約束：開側欄不發任何網路請求**（只讀記憶體的 `state.pm`／`diag`／
+  `screen`／`aetf`／`diagLive`；`stkOpen()` 只呼叫 `renderStockDrawer()`、不呼叫 `render()`）；每段自帶資料日
+  （`stkSec()`）；跨站一律純導覽 `<a target="_blank" rel="noopener">`、不 fetch。深連結（`function stkSecLinks`）
+  只用實查支援的格式：taiwan-stock-news `#tab=track&code=`／`#tab=news&q=`；taiwan-flows 與 taiwan-flow-live-v2
+  只連首頁並註明需自行搜尋（flows 的 hash key 沒有逐檔代號），**不得編造深連結格式**。hash key `stock=`
+  刻意與 `code=`（lending／broker／diag 各自佔用）分家；ESC／點遮罩關閉。
+- **休市行事曆**：grep `// ---------- 家族休市行事曆`（`HOL_URL`／`holParse`／`holClosed`／`isTradingDay`／
+  `prevTradingDay`／`holLoad`）。`load()` 末尾非阻塞讀同源 `../taiwan-flow-live-v2/data/twse_holidays.json`
+  （首屏多這一支小檔），成功才重繪頂列＋`dates`／`mychg`／`rrgd`。休市日比照週末：`pmStatus`、`dayDiff`
+  （`dateStatus`、`myChgDateInfo`）、`rrgdLagDays`。**fail-open**：讀不到／壞檔／`schema` 不是整數 1／`years`
+  無合法年度 → `HOL=null`＝只排週末。不新增判級、不改資料欄位；颱風臨時停市仍會誤報。刻意不改 `twDayList`／
+  `diagNewsFor`／大盤餘額「異動」。同規則在 taiwan-flows／taiwan-backtest 前端與 Worker `parseHolidayCal` 各一份。
+  規格正本 `taiwan-flow-live-v2/docs/holiday-calendar.md` §5b；測試 `tests/test_holidays_frontend.mjs`。
+- **持股清單匯出／匯入／清除**：grep `const HOLD_SCHEMA` 起至 `async function holdImportFile` 結尾
+  （`holdExportPayload`／`holdParseImport`／`holdExport`）。只走 localStorage `pm_holdings` 與使用者本機檔案，
+  不進任何網路 payload；匯入壞檔整包拒收。
+- **頂列資料日**：`pmStatus` 用 `pm.date`（全檔基準日＝七支 FinMind dataset 日期取 max，不含兩支 TWSE 零股日；
+  `build_postmkt.py` grep `dates = [d for d in (d_margin`），使用者裁決不改。各區塊**自帶自己的資料日**，
+  與頂列不同時要明講。
+
+存檔對應：「佈局」節 `index.html` 項下各子項。
+
+### 各 tab（錨點／資料／規格正本／硬約束）
+
+共通：新 tab 的資料都是**同源相對路徑、CSP 未改、只在切到該 tab 時才抓**（首屏請求清單不變），in-flight 去重、
+失敗記錯不重試、畫面一句話不拋錯；外來字串一律 `esc()`；頂列 stats 清空（頁內自帶資料日）；CSS 各用自己的前綴。
+未立專節的 tab（預設的 `insight`、`screen`、`diag`、`dates`、`rrgd`、`lending`、`broker`、彙總分析、
+大盤餘額等）口徑見 README.md。
+
+- **市場總覽 `overview`**（規格正本 `docs/market-overview.md`）：grep `// ================= 市場總覽 tab`；
+  `function ovRender`／`function ovEnsure`／`function ovLoad`；純函式 `ov-pure:begin`～`end`。
+  - 盤勢七項（描述性；每項自帶資料日、缺哪項只灰那項）：當日總結、三大法人、外資台指期、市場情緒（沿用
+    `sent-pure`）、大盤餘額、盤勢綜合研判（`data/summary/index.json` 最新一場 `synthesis.text` 的
+    「## 盤勢綜合研判」節經 `mdToHtml`——只呼叫不修改；徽章 `ovSumBadge` 帶產出時間；該場 `us_gate.fresh===false`
+    時顯示中性說明 `ovUsGateNote`，「彙總分析」tab 同句）、晨報三件事＋開盤前定位；6、7 標「AI 研判」。
+  - 類股／個股交集：後端 `src/build_overview.py`，**前端只渲染、不重算**。資金流入側（頂層 `sectors`／`stocks`）
+    ＋資金流出側（頂層 `out`，流入側各來源的鏡像；舊檔無 `out` 時顯示「尚無資料」），切換 `OV.side` 只存記憶體
+    （`ovSide()`）。「出現清單數」以群組計（來源 A、B 併為「法人資金流」一票）；來源 D 依建置時點可能另列不計入，
+    同一基準日的每日快照以最後一次寫入為準。**用語一律「資金流出側」，不得寫成放空／賣出建議**。
+  - 我的持股對照（`.ov-myhold`；`function ovHoldMatch(`／`ovHoldLayer`／`function ovHoldHtml`／
+    `function ovHoldCodes`）：列順序＝持股清單原順序，不排序、不計分、不加燈號；**隱私硬約束**：零新增網路請求、
+    不寫 storage、持股代號不進 URL／hash／history；個股欄不得放 `stkBtn`／`nameCell`、不得產生連結；
+    `data-ovgo="diag"` 鈕只改 `state.tab`。
+  - 硬約束：盤勢 1–5 的渲染函式不得出現偏多／偏空／建議等字樣（來源檔自帶文字原樣顯示並標來源）；著色只經
+    `sgn()`；出現清單數中性色、不加燈號；數值一律 `ovNum()`；彙總檔名過 `OV_SUMFILE_RE`；CSS `.ov-*`；
+    不加 hash key；未動 `tbl()`。載入中／失敗／正常與兩側都顯示標示句（`OV_LABEL`／`ovLabel()`）。
+  - 測試 `tests/test_overview_frontend.mjs`、`tests/test_overview_build.py`。
+- **籌碼雷達 `chipradar`／社群聲量 `social`**（由 taiwan-flows `radar`、taiwan-stock-news `social` 搬來，
+  原站已移除；驗收條件 `docs/move-radar-social.md`）：grep `// ================= 籌碼雷達 tab`、`// ==== 社群聲量`。
+  - **搬家不改口徑**：規格正本仍是 `taiwan-flows/docs/radar-tab.md` 與 `taiwan-stock-news/docs/social-display.md`
+    （含 §1b）；純函式（`radarQuad`／`radarPoints`／`radarHolders`／`radarSvg` 與 `social-pure:begin`～`end`）
+    與原站逐字相同。
+  - 資料：`CR_SECT_URL`＝`../taiwan-flows/data/sector_ranges_lite.json`、`SOCIAL_BASE`＝
+    `../taiwan-stock-news/data/social/`；大戶／價位沿用 `ensureDiag()`／`state.diag`（與持股診斷共用）。
+  - hash：`rcls`（`exchange`｜`chain`）／`rinv`（`total`｜`foreign`｜`trust`｜`dealer`）只在 chipradar，產業下拉
+    不進 hash；`sd`（YYYY-MM-DD，須在非 fixture 日期清單內）只在 social。
+  - CSS `.cr-*`／`.soc-*`。手機 ≤480px 藏次要欄、關鍵欄全留（大戶表外資／投信改名稱下方小字 `.cr-nw`；
+    社群表股名併入代號欄 `.soc-nm2`）；
+  - 測試 `tests/test_chipradar.mjs`、`tests/test_social_display.py`、`tests/test_frontend_moved.py`。
+- **市場情緒 `sentiment`**（規格正本 `taiwan-flows/docs/sentiment-tab.md` §3，硬約束 M4–M7）：grep
+  `// ================= 市場情緒 tab`；`sentRender()`／`sentEnsure()`；純函式 `sent-pure:begin`～`end`。
+  - 資料 `const SENT_URL = "../taiwan-flows/data/sentiment.json"`。三張卡：臺指 VIX／Put-Call／小台散戶多空比
+    （主值口徑「全部契約」為使用者裁定，「僅月契約」並列僅供參考）。每卡自帶資料日（該欄最後一個非 null 的列）；
+    百分位與均值的窗是「近 N **筆**有值資料」（N＝min(60, 實有筆數)），不是日。
+  - **純描述（M6）**：除免責句外不得出現偏多／偏空／建議／訊號等字樣，線條與字色中性、不用紅綠。免責句前半
+    `SENT_DISCLAIMER`「情緒指標為現況描述，非買賣訊號；無回測依據。」逐字固定；後半 VIX 起始日由
+    `sentDisclaimer(rows)` 取資料、不寫死。
+  - **M7**：日期白名單 `SENT_DATE_RE`、數值 `sentNum()`、`generated_at` 過 `sentGenOk()`。降級：某欄無資料只灰
+    該卡；整檔失敗一句「資料尚未產生或讀取失敗」。不接休市行事曆、不做「今天」判斷；CSS `.sent-*`；不加 hash key。
+  - 測試 `tests/test_sentiment_frontend.mjs`（樣本 `tests/fixtures/sentiment_sample.json`）。
+- **選股二 `pick2`**（規格與介面契約正本 `docs/pick2-score.md`）：grep `// ================= 選股二 tab`；
+  `function renderPick2`／`function pk2Ensure`；純函式 `pick2-pure:begin`～`end`。
+  - 名單＝taiwan-backtest aisc 候選池＋個人增刪。資料：`PK2_UNI_URL`（`../taiwan-backtest/aisc/universe.json`）、
+    `PK2_CSV_URL`（`../taiwan-backtest/output/aisc/daily/latest.csv`）、`PK2_ICH_URL`
+    （`../taiwan-stock-iching/data/web/latest.json`）；台股欄位沿用 `ensureDiag()`、`ensureScreen()`。
+    台股價格優先 diag、沒有才退 aisc 表；
+  - 個人增刪：localStorage `pm_pick2`＝`{v:1, added, removed}`（相對預設名單的差異），**不進任何網路請求、URL、
+    hash**。代號白名單：台股 `^\d{4}[0-9A-Z]{0,2}$`、美股 `^[A-Z]{1,5}$`。
+  - **多空總分**：`function pk2Score(` 依 `PK2_SCORE_SPEC`（與文件規格表逐列一致）；預設依總分高→低
+    （`pk2ScoreCmp`）；**美股不計總分**。易經三欄僅供參考、**不進總分**（固定說明句 `PK2_ICH_NOTE`）。
+    改門檻或權重＝改文件＋常數＋CHANGELOG 記版本。
+  - **追蹤名單**（`docs/pick2-score.md` §7）：自動選入＝台股總分 ≥80 且有值項 ≥9，無自動移出；後端
+    `src/build_pick2.py` 的 `pk2Score` 移植與 JS **逐位相同**（四捨五入 `js_round`，不可用 Python `round()`）。
+    前端 grep `// ---- 追蹤名單`／`function pk2TrackHtml`／`async function pk2UserWrite`：以記憶體 `CRED.gh`
+    對 Contents API 寫 `data/pick2/user.json`（帶 sha、409 重試、壞檔拒寫；PAT 只進 header；三站同步碼
+    `ghSaveAnalysis` 未動）。
+  - 硬約束：除多空總分外不新增判級／燈號／紅綠訊號，總分欄中性色；漲跌著色只用在今日漲跌％／5日／20日
+    （`sgn()`）；免責句 `PK2_DISCLAIMER` 逐字固定；頁頂列各資料源各自的資料日；表格在 `.tblbox` 內橫捲、未藏欄；
+    CSS `.pk2-*`；不加 hash key。
+  - 測試 `tests/test_pick2.mjs`、`tests/test_pick2_build.py`。
+- **持股異動 `mychg`**：grep `function myChgHtml`／`function renderMyChg`／`const MYCHG_MIN_ROWS`／
+  `function myChgDateInfo`。資料＝`state.pm.market_daily`（既有 `ensurePm()`，零新增請求）。
+  - 畫面承諾只能寫「持股代號不進任何網路請求」，**不可寫「本 tab 不發任何網路請求」**。
+  - **六種「說錯話」不可混講**（正本＝README「前端消費 `market_daily` 的必要條件」六軸，與 `index.html` 註解
+    ①–⑥ 同序）：①本表不涵蓋（權證／偽代號，不可說成「查無此代號」）②法人資料未到（`f`／`t` 為 `null` 不得讀成 0；
+    同列 `chg` 只有自己不是 `null` 才有效）③該日完全沒資料（三欄全 `null`，不是「未達門檻」）④整表殘缺（`rows`
+    空或 <2000 列 → 整段「無法取得異動資料」，不得逐檔說成查無、不得靜默當成沒有異動）⑤資料日不是「今天」
+    （主語一律寫實際日期，不用「今天／今日／當日」；落後 ≥`MYCHG_STALE_LAG`（2）個交易日、晚於今日或缺失另出
+    說明，不新增紅黃綠）⑥整表不可用時頂列徽章不得報「N 檔涵蓋」（共用 `myChgUnusable()`）。「查無此代號」
+    是對照項、不另計一軸。
+  - 資料日徽章取 **`market_daily.date`**（價格／法人資料日；`build_postmkt.py` grep
+    `md_date = d_inst or lend_date`），不是 `pm.date`；兩者可能不同，要明講。
+  - 股名刻意不完整（查不到顯示代號），**不得為了補股名新增請求**。
+- **月營收 `revenue`**（規格與驗收條件正本 `docs/revenue-beatmiss.md` §5、§6）：grep
+  `// ================= 月營收 tab`；`function revRender`／`function revEnsure`／`function revLoadMonth`／
+  `function revSetMonth`；純函式 `rev-pure:begin`～`end`。
+  - 資料 `REV_BASE`＝`data/revenue/`：先 `index.json`（`months`／`latest`）再月份檔；`months` 空或 `latest`
+    不在 `months`＝「尚無資料」；月份檔 `month` 與要求不符視為讀取失敗。
+  - 畫面：四類摘要、次產業表、個股表（15 欄，**凍結欄是代號**；分類／次產業下拉篩選不進 hash）。來源欄純文字、
+    畫面去網址（`revSrcText()`，資料檔不改）、不轉連結。`REV.month` 只在 `revSetMonth` 內賦值，月份真的變了
+    才重設篩選；晚到的請求只有仍在本 tab 且月份相符才 `render()`。
+  - hash `rm`（`^\d{4}-\d{2}$`；`revPickMonth()` 比對 `months`，非法退回最新月，最新月不寫入）。
+  - 硬約束：分類與加速／減速中性色（`.rev-cls`）、不加燈號；漲跌著色只經 `revSgn()`，只用在月增%／年增%／
+    驚喜%；數值 `revNum()`、字串 `revTxt()`；CSS `.rev-*`；未動 `tbl()`；表格在 `.tblbox` 內橫捲、未藏欄。
+    三種畫面狀態都顯示標示句（`revLabel()`，退回常數 `REV_LABEL`）。
+  - 測試 `tests/test_revenue_frontend.mjs`（樣本 `tests/fixtures/revenue_sample.json`）。
+
+存檔對應：「佈局」節同名各 tab 段（含口徑細節、實測與更正史）。
+
+### Python 管線與產物
+
+- `build_postmkt.py` → `data/postmkt.json`（主資料，五個盤後 tab）。
+- `build_summary.py` → `data/summary/`（AI 彙總自動場；含資料齊全輪詢閘門與假日判斷）。每頁 1 份共 3 份摘要、
+  `MIN_OK_FOR_SYNTH=2` 才彙總、共振強度口徑 N/3；摘要與彙總走 Anthropic Message Batches，逾時或單筆失敗逐筆
+  同步回退。
+  - **期限**：`batch_deadline(slot, t_start, now=None)` 取 min(場次期限, 全場剩餘預算−同步保留, 距截止點剩餘)；
+    pm 綁牌鐘 `PM_BATCH_CUTOFF_HM`（台北 23:00，是餘裕的選擇、不是量出來的最適值），`BATCH_DEADLINE_SEC["pm"]`
+    只是上界；am 固定 25 分、刻意不掛牌鐘。場次期限與牌鐘都是 per-slot、摘要與彙總共用。**調整前先看幾天
+    `-pm.json` 的 `via` 欄**（`sync`＝batch 沒趕上）；依據寫在 `BATCH_DEADLINE_SEC` 上方註解。
+  - **am 場美股新鮮度**：閘門第二階段（軟等、最多 60 分、逾時照跑）判準＝us.json 的 `date` ≥ 最近預期美股交易日
+    （grep `def us_is_fresh`／`def last_expected_us_trading_date`；後者是 taiwan-flow-live-v2 Worker
+    `lastExpectedUsTradingDate` 的 Python 移植，**兩處要同步**，`tests/test_summary_us_gate.py`）。am 場 JSON
+    頂層寫 `us_gate: {expected, got, fresh, waited_sec}`，`fresh=false` 時 `index.json` 該 run 帶
+    `us_stale: true`；pm 路徑不讀 us.json。模型素材不變，逾時那場只由前端標示。已知限制：美國假日隔天 am 場
+    會白等並被誤標。
+  - `summary.yml` 另有 `workflow_dispatch` 輸入 `no_wait`（跳過資料齊全閘門，測試／補跑用）。
+- `src/build_diag.py` → `data/diag/diag.json`（持股診斷素材庫；cache.json 走 actions/cache 不進 git）。
+- `src/build_mktbal.py` → `data/market_balance_history.json`（大盤餘額）。
+- `src/build_screen.py` → `data/screen/screen.json`（選股：TradingView 初篩＋鉅亨 FactSet 預估 EPS／目標價／
+  評等＋diag 合併；掛在 diag workflow 後段，`continue-on-error`）。
+- `src/build_pick2.py` → `data/pick2/daily/<date>.json`＋`data/pick2/track.json`（`diag.yml` 的 screen 之後，
+  `continue-on-error`；`inputs.screen_stale` 只標示、不改分數）。
+- `src/build_overview.py` → `data/overview/latest.json`＋`data/overview/daily/<date>.json`（口徑定案
+  `docs/market-overview.md` §3、§6.1；掛在 `diag.yml`（pick2 之後）與 `mktbal.yml`（最後一棒），
+  `continue-on-error`、commit 後才轉紅；跨 repo 檔走 raw main，本機 `--src-root /home/user`）。流入／流出側是同一份實作換方向參數（`SIDES`），schema 1、只增不改；
+  流入側輸出由 `tests/fixtures/overview_inflow_golden.json` 守門。**B／E／e／b 是前端口徑的 Python 移植**
+  （`radarPoints`／`radarQuad`／`radarHolders`／RRGD 純函式（`rrgdPersistList`）／`nBuyers`／`nSellers`）：
+  改前端這幾支要同步改本檔，`tests/test_overview_build.py` 以 node 對跑守門。
+- `src/build_revenue.py` → `data/revenue/`（月營收 Beat／Miss；規格 `docs/revenue-beatmiss.md`）。輸入
+  `data/revenue/universe.json`（次產業股票池）與 `expect.json`（A／B 層預期，人工維護、須附來源；
+  **不得填彭博數值**）。
+- `src/backtest_revenue.py` → `data/revenue/backtest/`（`summary.json`＋`events.csv`；設計與**預先登錄判準**
+  `docs/revenue-beatmiss.md` §7 已定案，不得回頭改）。只回測 C 層、不讀 `expect.json`、不改 `build_revenue.py`
+  （`th_override()` 暫時覆寫後還原）。**沒有任何 tab 讀這份產出**；結論與報告見 `docs/revenue-backtest.md`
+  （只限 20 日的 Beat 類合計對 Miss 類合計有支持）。本機用 `--cache-dir … --out-dir <暫存目錄> [--offline]`，
+  不要把合成結果寫進 repo。
+- 共用模組：`src/fmclient.py`（FinMind client＋token／台北時區）、`src/twseclient.py`（TWSE 節流）。
+
+### workflows
+
+build／diag／mktbal／summary（各自 cron＋taiwan-flow-live-v2 Worker 哨兵 dispatch）；`revenue.yml`（Worker 主觸發：
+台北每月 11–16 日 07:13 看 `data/revenue/index.json` 的 `latest` 是否已到上個月、未到才 dispatch，規格在
+`taiwan-flow-live-v2/docs/revenue-trigger.md`；GitHub cron 每月 11–16 日 07:30 台北兜底，晚報／更正重算只靠它）；
+`revenue-backtest.yml`（只有 `workflow_dispatch`）；`test.yml`；`canon.yml`（守本檔頂端區塊）。
+commit／push 與失敗告警在 `.github/actions/` composite。
+
+存檔對應：「佈局」節 `build_*`／workflows 各項。
+
+## 未經回測而上線的功能（鐵律 8）
+
+以下皆為使用者裁定「無回測依據、標示後先上線」，畫面須逐字顯示 **「AI 研判，未經回測，非保證」**，
+驗證結論出來前（或使用者另行裁定前）不得拿掉：
+
+| 功能 | 裁定 | 文件 |
+|---|---|---|
+| 籌碼雷達／社群聲量的紅綠、排行、雙確認建議、參考價位 | 2026-09-28 | `taiwan-stock-news/docs/social-display.md` §1b、`taiwan-flows/docs/radar-tab.md` |
+| 選股二多空總分（預設排序） | 2026-10-18 | `docs/pick2-score.md` |
+| 選股二追蹤名單（含 Worker LINE 推播） | 2026-10-19 | `docs/pick2-score.md` §7 |
+| 月營收 Beat／Miss 分類 | 2026-11-12；2026-11-13 回測實跑後裁定標示不動、門檻維持 15／25 | `docs/revenue-beatmiss.md`、`docs/revenue-backtest.md` |
+| 市場總覽類股／個股交集排序（兩側）與我的持股對照 | 2026-11-12、11-13 | `docs/market-overview.md` |
+
+市場情緒為純描述（另有固定免責句，見該 tab）；盤勢綜合研判與晨報卡標「AI 研判」。
+
+## 跨 repo 依賴
+
+**本站是下列檔案的消費者**（對方改名、搬家或改語意＝跨站變更）：
+
+| 來源 repo | 檔案（用到的欄位） | 本站用途 |
+|---|---|---|
+| taiwan-flows | `data/sector_ranges_lite.json`（`windows.r5/r20.classifications`） | chipradar；`build_overview.py`（r5／r20 chain total） |
+| taiwan-flows | `data/sentiment.json`（`rows[].date`／`vix`／`pc_oi`／`pc_vol`／`put_oi`／`call_oi`／`put_vol`／`call_vol`／`inst_long`／`inst_short`／`retail_net`／`retail_ratio`／`mtx_oi`／`mtx_oi_monthly_only`、`generated_at`） | sentiment、overview |
+| taiwan-flows | `data/totals.json`（`dates`／`rows[d].tse\|otc.*_k`）、`data/futures/<YYYYMMDD>.json`（`cols`／`rows`） | overview |
+| taiwan-flows | `latest.json`（`pages.sync.sync_buy`／`sync_sell`） | `build_overview.py` |
+| taiwan-stock-news | `data/social/index.json`＋單日檔 | social |
+| taiwan-stock-news | `daily-brief-card.json`（`top3`／`positioning`／`date`） | overview |
+| taiwan-flow-live-v2 | `data/twse_holidays.json` | 休市行事曆 |
+| taiwan-flow-live-v2 | `data/daysummary/latest.json`（`index`／`breadth`／`subs_top5`／`subs_bot3`／`tone`／`date`） | overview |
+| taiwan-flow-live-v2 | `aetf/diff.json`（`stocks[].by`／`subs`／`primary_date`）、`morning.json`（`signals`／`recap.baseline_date`）、`chain_daily/series.json`、`classify.json`（`map[].p`） | `build_overview.py` |
+| taiwan-backtest | `aisc/universe.json`（`TW`／`US` 的 `{code,name}`、`version`／`tw_refreshed_at`／`frozen_at`）、`output/aisc/daily/latest.csv`（欄名 `market,code,name,date,close,ext,r5,r20,above60,slope60,…`） | pick2 |
+| taiwan-stock-iching | `data/web/latest.json`（`stocks[code].short\|swing\|mid.bs`、`date`） | pick2 |
+
+**外部消費者讀本站檔案**（位置／欄位大改前先確認）：
+- taiwan-flow-live-v2 Worker 輪詢 raw main 的 `data/postmkt.json`／`data/diag/diag.json` 鏈式觸發下游。
+- 同一 Worker 讀 raw main `data/pick2/track.json` 推 LINE；`track.json`／`user.json`／`daily/*.json` 欄位契約
+  正本 `docs/pick2-score.md` §7。
+- 同一 Worker 讀 `data/revenue/index.json` 的 `latest` 決定是否 dispatch `revenue.yml`。
+
+本機驗證跨站 tab：http.server 要起在各 repo 的**上一層**（例 `/home/user`），以 `/postmkt/` 開頁，
+`../taiwan-flows/` 等才可達；若同層有對應 checkout，部分測試會另驗真實檔。
 
 ## 不可破壞的約定（踩過坑的）
 
-1. **TWSE 全域節流**：所有 TWSE HTTP 呼叫必須走 `twseclient.throttled_get()`。連發 ~6 次就被
-   IP 限流且不自動解除（README「已知教訓」）。不要為了加速拿掉。
-2. **三站同步函式**：`callClaude`/`mdToHtml`/`linkifyStocks`/`ghSaveAnalysis` 與 `sumCtx*`（gather）
-   在 taiwan-flow-live-v2、taiwan-stock-news 有逐字副本，改動需三站同步；`build_summary.py` 的
-   `gather_*` 是 index.html gather 的 Python 移植副本。SYS prompt 唯一事實來源＝index.html
-   `SUM_SYS_POSTMKT`，`build_summary.py SYS_POSTMKT` 為移植複本需逐字同步。
-   **第五組（2026-08-27 起）**：費用估算 `insightCostText`／`INSIGHT_PRICES`／`USD_TWD`
-   （`index.html` grep `// ---- 本次費用估算` 起至 `function insightCostText` 該函式結尾止）三站亦為
-   逐字副本，改價或改算式需三站同步。
-   **另有一組「四站同步但非逐字」的 `loadSiteVer()`＋footer `#siteVer`**（`index.html` grep
-   `async function loadSiteVer`／`id="siteVer"`）：postmkt／taiwan-flow-live-v2／taiwan-flows／
-   taiwan-stock-news 四站都有
-   （入口站 shihpc.github.io 沒有），刻意不同的三處＝①各站打自己 repo 的 commits 端點
-   ②sessionStorage key 各站獨立（`pm_site_ver`／`tf2_site_ver`／`tf_site_ver`／`news_site_ver`）
-   ③時間格式 postmkt 走 `fmtGenTaipei`、另三站內嵌 `toLocaleString("sv-SE")`。
-   改行為要四站一起改，但**不要**強求逐字。它帶來一個對外依賴
-   `api.github.com/repos/shihpc/<repo>/commits/main`（免金鑰、限 60 req/hr/IP，失敗或超限
-   一律靜默隱藏版本列）；本站 CSP 的 `connect-src` 早已含 `https://api.github.com`
-   （`index.html` grep `Content-Security-Policy`），無須再加，其餘三站無 CSP meta。
-3. **lending 衍生欄重建公式三處一致**：postmkt.json 的 lending.rows 只存基礎量＋px，
-   衍生欄由 `index.html augmentLending()` 與 `build_summary.py _augment_lending()` 重建，
-   改公式要同步（有 parity 測試守著）。
-4. **XSS**：innerHTML 拼字串一律過 `esc()`；CSP meta 的 connect-src 白名單新增資料源時要同步。
-5. **日期閘門**：`slot_trading_day`/`news_fresh`/`is_twse_holiday` 的跨午夜與民國年邏輯都是
-   修過的生產事故，改動前先看 tests/test_summary_gates.py。
-6. **金鑰**：FINMIND_TOKEN/ANTHROPIC_API_KEY 走 Actions secret。**前端金鑰 2026-10-01 起改存瀏覽器密碼管理器，
-   不再存 localStorage**。使用者 2026-10-01 裁定（方案草案只存在當日 session scratchpad、不在任何 repo，
-   **以本節為準**）：
-   - D1 方案 B：純表單＋按鈕讀值（不用 Credential Management API——Safari／Firefox 不支援 `PasswordCredential`，
-     且 `get()` 無法依帳號名過濾）；保留 `anthKey`／`ghToken`／`fmToken` 函式名改讀記憶體。
-   - D2 提供「只在本分頁記住」（sessionStorage），預設不勾。
-   - D3 密碼欄 `autocomplete="current-password"`（`new-password` 可能跳強密碼建議干擾貼上，此為推論、未實測）。
-   - D4 入口站密碼門補 username 欄 `hub`（舊的空帳號名項目要重存一次）。
-   - D5 存入前打一次免費唯讀驗證，失敗當場拒收；只用既有 `connect-src` origin、token 放 header；做不到就不驗並說明。
-   - D6 `tflive2_usw_sync`（美股自選同步碼）不搬。
-   - D7 搬移期 2 週（至 2026-10-15）：舊 key 只提示＋按鈕刪除，期滿後載入即刪；新版不讀舊 key 當金鑰。
-     **期滿後現況（2026-10-18）**：提示卡已移除，載入即無條件刪除四把舊 key（見下方「搬移（D7）」實作段）。
-   - D8 四站＋入口站同批上線（只要舊版頁面還在線上，按舊版「儲存」就會把金鑰寫回 localStorage）。
-   實作細節：
-   - 四站（postmkt／taiwan-flow-live-v2／taiwan-stock-news／taiwan-flows）同一套寫法，`index.html` grep
-     `// ---------- 前端憑證` 起至 `// ---------- 前端憑證結束` 止；**刻意不要求逐字**（`CRED`／`CRED_SPEC`／
-     `credRerender` 與 escape 函式名各站不同），但行為改一站要四站一起改。
-   - 每種憑證一個 `<form data-cred="<kind>">`：`type="text"` **readonly** 且預填固定帳號名的 username 欄
-     （`autocomplete="username"`；不用 `type=hidden`——Firefox 不認）＋`autocomplete="current-password"` 密碼欄
-     （**不可 readonly**——Chrome／Firefox 不填唯讀欄）＋submit。submit handler `preventDefault()` 後才讀 `.value`
-     （Chrome 自動填入值在使用者手勢前 JS 讀不到），先打一次**免費唯讀**驗證、通過才收進記憶體物件 `CRED` 並重繪
-     （表單消失＝密碼管理器判定已送出），失敗當場顯示錯誤、不採用。
-   - 驗證（D5）只打各站 CSP `connect-src` 既有 origin、token 一律放 header：Anthropic `GET /v1/models?limit=1`；
-     GitHub `GET /repos/shihpc/postmkt`（flows 為 `/repos/shihpc/taiwan-flows`）。
-     - 「`/v1/models` 不計費」是**推論**（依據：Anthropic 依 token 計費、列模型不產生 token 用量），**沒查到官方明文**。
-     - CORS：2026-10-01 雲端 session 以 curl 對 `https://api.anthropic.com/v1/models` 送 OPTIONS 預檢
-       （`Origin: https://shihpc.github.io`，請求標頭 `x-api-key,anthropic-version,anthropic-dangerous-direct-browser-access`），
-       回 200、`access-control-allow-origin: *`、`access-control-allow-headers` 列出這三個（回應 `date: Thu, 01 Oct 2026 00:20:19 GMT`）。
-       **只量了預檢**，帶真 key 的實際 GET 未在瀏覽器實測（測試全用 `page.route` 模擬）。
-     - **GitHub 驗證的鑑別力有限**：兩個 repo 都是 public，`GET /repos/...` 回 200 只證明 PAT **有效**，
-       **不證明**它有 Contents 寫入（postmkt）或 Actions 寫入（taiwan-flows）權限——權限不足要到實際存雲端／觸發時
-       才會看到 403。UI 說明文字已明講這點。
-     **FinMind 不驗證**：本站只以 query 帶 token，header 版的 CORS 預檢本沙箱連不到 FinMind 無法實測，token 又不得進 URL
-     ——存入時不打請求，第一次查詢失敗才會知道 token 有誤。
-   - 家族統一 username（**改名＝使用者要在密碼管理器重存**）：`anthropic-api-key`（三站共用一筆）、
-     `github-pat-postmkt-analyses`（三站共用）、`finmind-token`（本站）、`github-pat-flows-dispatch`（taiwan-flows）、
-     入口站密碼門 `hub`。
-   - 「只在本分頁記住」（D2，預設不勾）：勾了才寫 sessionStorage `cred_tab_<kind>`（重新整理仍在、關分頁即清）。
-     **任何路徑都不得再把金鑰 `setItem` 進 localStorage**；值不進 DOM 屬性、URL、hash。
-   - `anthKey()`／`ghToken()`／`fmToken()` 保留原名、改讀 `CRED`，所以逐字同步碼 `ghSaveAnalysis`／`callClaude`
-     **位元組不變**（`check_sync.py` PASS）。`saveAnalysisCloud`（不在 check_sync 範圍，三站同步改）在 PAT 未載入時
-     記 `cloud="nokey"`，畫面顯示「GitHub PAT 本分頁未載入，未存雲端」。
-   - 搬移（D7）：舊 localStorage key `anthropic_key`／`gh_token`／`fm_token`／`tf_gh_token`（四站每站都處理全部四把）
-     **新版不讀作金鑰**。搬移期（至 2026-10-15 台北）原有頁頂提示卡 `#credMigrate`＋「刪除本機舊副本」按鈕；
-     **2026-10-18 四站同批移除提示卡、按鈕與 handler，連同 `CRED_MIGRATE_UNTIL` 與日期比較一併拿掉**，
-     現在 `credInit()` 載入頁面即**無條件**（不看日期）`removeItem` 四把舊 key（`credLegacyPurge()`，各包 try/catch）；
-     只刪不寫，其他 localStorage key（`pm_holdings`／`insight_model`／`tflive2_usw_sync` 等）不動。
-     `tflive2_usw_sync`（美股自選同步碼）**不搬**（D6）。
-   - **實機驗證（2026-10-01 使用者回報）**：上線後使用者線上確認四站＋入口站表單正常，並以手機實測回報「沒問題」
-     （範圍＝密碼管理器的儲存提示、自動填入、同 origin 多筆不互蓋、長 token 不被截斷）。**這是使用者整體回報，未逐項記錄
-     瀏覽器／版本**；Android 底部選單是否依 username 過濾、iOS／Firefox 行為未個別確認。Playwright 無法模擬瀏覽器內建
-     密碼管理器，日後換瀏覽器或改表單結構需重新實機確認。
-   持股清單只存 localStorage、不進任何網路 payload。
-7. **外部消費者**：taiwan-flow-live-v2 的 Cloudflare Worker 會輪詢本 repo raw main 的
-   postmkt.json/diag.json 來鏈式觸發下游；資料檔位置/欄位大改前先確認跨 repo 影響。
+1. **TWSE 全域節流**：所有 TWSE HTTP 呼叫必須走 `twseclient.throttled_get()`。連發約 6 次就被 IP 限流且不自動
+   解除（README「已知教訓」）。不要為了加速拿掉。
+2. **跨站同步碼**：
+   - **三站逐字同步**（postmkt／taiwan-flow-live-v2／taiwan-stock-news）：`callClaude`／`mdToHtml`／
+     `linkifyStocks`／`ghSaveAnalysis`／`sumCtx*`（gather）；費用估算 `insightCostText`／`INSIGHT_PRICES`／`USD_TWD`（grep
+     `// ---- 本次費用估算`）。改動需三站同步。
+   - **Python 移植副本**：`build_summary.py` 的 `gather_*` 移植自 index.html gather。SYS prompt 唯一事實來源＝index.html `SUM_SYS_POSTMKT`，`build_summary.py SYS_POSTMKT` 需逐字同步。
+     `saveAnalysisCloud` 亦三站同步改。
+   - **四站同步但非逐字**（上列三站＋taiwan-flows；入口站沒有）：`loadSiteVer()`＋footer `#siteVer`（grep
+     `async function loadSiteVer`／`id="siteVer"`）。刻意不同：各站打自己 repo 的 commits 端點；sessionStorage key
+     各站獨立（本站 `pm_site_ver`）；本站時間走 `fmtGenTaipei`。依賴 `api.github.com/repos/shihpc/<repo>/commits/main`
+     （免金鑰、有 IP 限流，失敗靜默隱藏版本列）。改行為四站一起改，不強求逐字。
+   - **四站同一套但不要求逐字**：前端憑證區段（見第 6 條）。
+3. **lending 衍生欄重建公式三處一致**：`postmkt.json` 的 `lending.rows` 只存基礎量＋px，衍生欄由 `index.html
+   augmentLending()` 與 `build_summary.py _augment_lending()` 重建，改公式要同步（有 parity 測試）。
+4. **XSS**：innerHTML 拼字串一律過 `esc()`；CSP meta（grep `Content-Security-Policy`）的 `connect-src` 白名單在
+   新增資料源時要同步。
+5. **日期閘門**：`slot_trading_day`／`news_fresh`／`is_twse_holiday` 的跨午夜與民國年邏輯都是修過的生產事故，
+   改動前先看 `tests/test_summary_gates.py`。
+6. **金鑰**：`FINMIND_TOKEN`／`ANTHROPIC_API_KEY` 走 Actions secret。**前端金鑰存瀏覽器密碼管理器，不存
+   localStorage**（本節是家族正本；使用者 2026-10-01 裁定）：
+   - 四站（postmkt／taiwan-flow-live-v2／taiwan-stock-news／taiwan-flows）同一套，grep `// ---------- 前端憑證`
+     起至 `// ---------- 前端憑證結束`；行為改一站要四站一起改，且四站＋入口站須同批上線。
+   - 每種憑證一個 `<form data-cred="<kind>">`：`type="text"` readonly 預填固定帳號名的 username 欄
+     （`autocomplete="username"`）＋`autocomplete="current-password"` 密碼欄（**不可
+     readonly**）＋submit。submit handler `preventDefault()` 後才讀 `.value`，先打一次免費唯讀驗證，通過才收進
+     記憶體 `CRED` 並重繪，失敗當場顯示錯誤、不採用。不用 Credential Management API。
+   - 驗證只打 CSP 既有 origin、token 一律放 header：Anthropic `GET /v1/models?limit=1`；GitHub
+     `GET /repos/shihpc/postmkt`（flows 為 `/repos/shihpc/taiwan-flows`）——repo 是 public，200 **只證明 PAT 有效、
+     不證明有寫入權限**（UI 已明講）。**FinMind 不驗證**（token 不得進 URL），第一次查詢失敗才知道有誤。
+   - **家族統一 username**（改名＝使用者要在密碼管理器重存）：`anthropic-api-key`（三站共用）、
+     `github-pat-postmkt-analyses`（三站共用）、`finmind-token`（本站）、`github-pat-flows-dispatch`
+     （taiwan-flows）、入口站密碼門 `hub`。
+   - 「只在本分頁記住」預設不勾，勾了才寫 sessionStorage `cred_tab_<kind>`。**任何路徑都不得把金鑰 `setItem` 進
+     localStorage**；值不進 DOM 屬性、URL、hash。
+   - `anthKey()`／`ghToken()`／`fmToken()` 保留原名、改讀 `CRED`（逐字同步碼位元組不變）。PAT 未載入時
+     `saveAnalysisCloud` 記 `cloud="nokey"`。
+   - 舊 localStorage key `anthropic_key`／`gh_token`／`fm_token`／`tf_gh_token` 不讀作金鑰；`credInit()` 載入即
+     無條件 `removeItem`（`credLegacyPurge()`），只刪不寫，其他 key 不動。`tflive2_usw_sync` 不搬。
+   - 換瀏覽器或改表單結構需重新實機確認。
+   - 持股清單只存 localStorage、不進任何網路 payload。
+7. **外部消費者**：見「跨 repo 依賴」；資料檔位置／欄位大改前先確認跨 repo 影響。
+
+存檔對應：「不可破壞的約定（踩過坑的）」（含金鑰裁定 D1–D8、CORS 量測與實機驗證紀錄）。
 
 ## 驗證方式
 
@@ -467,13 +350,14 @@ python -m http.server 8000        # 前端本機驗證；慣例＝20 個 tab 逐
 ruff check .                      # lint（設定在 pyproject.toml）
 ```
 
-改前端後務必實測 20 tab 零 console error（歷次都這樣驗）；改 gather/SYS 後記得跨站同步檢查。
+改前端後務必實測 20 tab 零 console error；改 gather／SYS 後記得跨站同步檢查。`.mjs` 測試由 pytest 代跑
+（chipradar 由 `tests/test_frontend_moved.py`，其餘由同名 `.py`）。
 
-**手機驗收條件（2026-09-09 更正，舊寫法已被實測推翻）**：375／390／1280 三寬度下
+**手機驗收條件**：375／390／1280 三寬度下
 ①**整頁 `document.documentElement.scrollWidth == window.innerWidth`**（無**頁面級**水平捲軸）、
 ②表格各欄**全部可見、無文字裁切（逐格 `scrollWidth - clientWidth == 0`）、無換行**。
-**不得宣稱 `.tblbox` 的 `scrollWidth == clientWidth`**——`.mtable` 是 `width:100%`＋`nowrap`，
-壓到 min-content 之後由 `.tblbox` 的 `overflow:auto` 吸收，「持股異動」在 **375px ＋ 6 位數張數**
-時實測會溢出數 px（依股名長度而動，本批量到 6px）。那不影響可見性：`.tblbox` 的裁切邊界是
-**padding box**，溢出量落在其 **12px 右內距**內，不捲動也完整看得到。
-數據、量法與「刻意不修」的決定見 CHANGELOG「（同日修正之五）手機驗收條件更正」節。
+**不得宣稱 `.tblbox` 的 `scrollWidth == clientWidth`**——`.mtable` 是 `width:100%`＋`nowrap`，壓到 min-content
+後由 `.tblbox` 的 `overflow:auto` 吸收，可能溢出數 px；溢出量落在 `.tblbox` 的 12px 右內距內（裁切邊界是
+padding box），不影響可見性，刻意不修。數據與量法見 CHANGELOG「（同日修正之五）手機驗收條件更正」節。
+
+存檔對應：「驗證方式」。
