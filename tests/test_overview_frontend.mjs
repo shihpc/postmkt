@@ -12,7 +12,7 @@ assert.ok(html.indexOf(B) > 0 && html.indexOf(E) > html.indexOf(B), "找不到 o
 const pure = html.slice(html.indexOf(B), html.indexOf(E));
 const sb = { console };
 vm.createContext(sb);
-new vm.Script(pure + "\nglobalThis.S = { OV_LABEL, OV_STATUS, OV_SUMFILE_RE, ovNum, ovDate, ovFmt, ovSigned, ovLabel, ovShapeOk, ovSide, OV_SIDES, ovSources, ovRows, ovSynthSection, ovUsGateNote, ovSumBadge, ovTotals, ovFutOi, ovMktbal, ovYmd, ovHoldLayer, ovHoldMatch };").runInContext(sb);
+new vm.Script(pure + "\nglobalThis.S = { OV_LABEL, OV_STATUS, OV_SUMFILE_RE, ovNum, ovDate, ovFmt, ovSigned, ovLabel, ovShapeOk, ovSide, OV_SIDES, ovSources, ovRows, ovSynthSection, ovUsGateNote, ovSumBadge, ovTotals, ovFutOi, ovMktbal, ovYmd, ovHoldLayer, ovHoldMatch, OV_TOP_N, ovShort, ovMetrics, ovVal, ovVals, ovMd, ovPx, ovEntry, ovIx, ovTop, ovSkipLines };").runInContext(sb);
 const S = sb.S;
 let n = 0;
 const ok = (name, fn) => { fn(); n++; console.log("ok - " + name); };
@@ -74,8 +74,8 @@ ok("ovRows：形狀不合的列丟棄、順序＝資料檔順序、via 攤平成
     { key: "紡織", count: 3, hits: ["A", "C", "E"], via: { C: ["人造纖維"], E: ["領先"] } },
     { key: "2330", name: "台積電", count: 2, hits: ["a", 5] }, { key: 5, count: 2, hits: [] }, { key: "x", count: "2", hits: [] }, { key: "y", count: 2 },
   ] }));
-  assert.deepEqual(r, [{ key: "紡織", name: "", count: 3, hits: ["A", "C", "E"], via: "C：人造纖維；E：領先" },
-    { key: "2330", name: "台積電", count: 2, hits: ["a"], via: "" }]);
+  assert.deepEqual(r, [{ key: "紡織", name: "", count: 3, hits: ["A", "C", "E"], via: "C：人造纖維；E：領先", px: null },
+    { key: "2330", name: "台積電", count: 2, hits: ["a"], via: "", px: null }]);   // px（§8.4）：舊檔沒有 → null
 });
 ok("ovSynthSection：只取「盤勢綜合研判」一節，到下一個 ## 或 --- 為止", () => {
   const t = "## 精華 alpha 標的\n\n### 1. 1303 南亞\n- x\n\n---\n\n## 盤勢綜合研判\n1. 甲\n2. 乙\n\n---\n*免責*";
@@ -191,8 +191,10 @@ ok("用語：市場總覽區段與 SUBS.overview 一律「資金流出側」，�
   for (const t of [sec, sub]) assert.ok(!/放空|做空|賣出建議|偏空側|看空|賣出訊號/.test(t));
   assert.ok(sub.includes("資金流出側") && sec.includes("資金流出側"));
 });
-ok("不改 tbl()：交集表走既有 tbl(cols, rows, opts)，CSS 一律 .ov- 前綴", () => {
-  assert.ok(sec.includes("tbl(cols, rows, { sortI: 1, sortD: -1 })"));
+ok("不改 tbl()：交集表（§8 起）自繪區塊、不經 tbl()、不提供欄位排序；CSS 一律 .ov- 前綴", () => {
+  assert.ok(!/[^A-Za-z]tbl\(/.test(sec.replace(/^\s*\/\/.*$/gm, "").replace(/\/\/ [^\n]*$/gm, "")), "市場總覽區段不呼叫 tbl()");
+  assert.equal(html.split("\nfunction tbl(").length - 1, 1, "tbl() 仍只有一份定義");
+  assert.ok(!/\.sort\(/.test(sec.slice(sec.indexOf("// ---- 交集表渲染"), sec.indexOf("// ---- 我的持股對照（規格 §7，使用者"))), "交集表渲染不排序");
   const css = html.slice(html.indexOf("/* 市場總覽 tab"), html.indexOf("/* 月營收 tab"));
   for (const m of css.matchAll(/^\s*(\.[a-z][^{]*)\{/gm)) assert.ok(m[1].split(",").every(x => x.trim().startsWith(".ov-")), m[1]);
 });
@@ -338,5 +340,233 @@ ok("卡 6（讀碼）：徽章走 ovSumBadge＋fmtGenTaipei；說明句經 esc()
   assert.equal(html.split("function mdToHtml(").length - 1, 1);
   assert.ok(!/us_gate/.test(html.slice(html.indexOf("function sumCtxPostmkt("), html.indexOf("function sumCtxPostmkt(") + 200)));
   for (const w of ["偏多", "偏空", "建議", "警告", "錯誤"]) assert.ok(!pure.slice(pure.indexOf("function ovUsGateNote("), pure.indexOf("function ovSynthSection(")).replace(/^\s*\/\/.*$/gm, "").includes(w), w);
+});
+
+// ====================== §8：交集表顯示各來源的實際數值、個股收盤與漲跌、各來源前幾名、說明收合（2026-11-28） ======================
+const MT = (k, label, unit, digits, signed) => ({ k, label, unit, digits, signed: !!signed });
+const S8 = () => ({ schema: 1, date: "2026-11-27", label: "AI 研判，未經回測，非保證",
+  sectors: { base_date: "2026-11-27", sources: [
+      { id: "A", name: "產業鏈資金流：近 5 日三大法人淨買前 10", group: "flow", group_name: "法人資金流", status: "valid", counted: true, date: "2026-11-27", n: 2,
+        metrics: [MT("net", "近5日淨額", "億", 2, true)], items: [{ key: "食品", m: { net: 12.71 }, rank: 1 }, { key: "水泥", m: { net: 1.336 }, rank: 8 }] },
+      { id: "B", name: "籌碼雷達：近 5 日對近 20 日「加速流入」象限", group: "flow", group_name: "法人資金流", status: "valid", counted: true, date: "2026-11-27", n: 1,
+        metrics: [MT("a5", "近5日日均", "億/日", 2, true), MT("a20", "近20日日均", "億/日", 2, true)], items: [{ key: "食品", m: { a5: 2.54, a20: -0.004 } }] },
+      { id: "C", name: "主動 ETF 次產業加碼前 10（上卷到產業）", group: "C", status: "valid", counted: true, date: "2026-11-27", n: 1,
+        metrics: [MT("val", "主動淨額合計", "億", 2, true)], items: [{ key: "食品", via: ["乳品", "飲料", 5], m: { val: 3.5 }, rank: 2, viam: { "乳品": 2.25, "飲料": "x" } }] },
+      { id: "D", name: "連湧／新湧次產業（上卷到產業）", group: "D", status: "stale", counted: false, date: "2026-11-26", n: 1, metrics: [], items: [{ key: "半導體", via: ["基板"] }] },
+      { id: "E", name: "日級輪動雷達：連續 3 日「改善」或「領先」", group: "E", status: "valid", counted: true, date: "2026-11-27", n: 2,
+        metrics: [MT("rs", "RS-Ratio", "", 2), MT("mom", "RS-Momentum", "", 2)], items: [{ key: "水泥", via: ["領先"], m: { rs: 100.58, mom: 100.45 } }, { key: "食品", via: ["改善"], m: { rs: 99.5, mom: null } }] },
+    ], rows: [{ key: "食品", count: 3, hits: ["A", "B", "C", "E"], via: { C: ["乳品"] } }, { key: "水泥", count: 2, hits: ["A", "E"] }] },
+  stocks: { base_date: "2026-11-27", sources: [
+      { id: "a", name: "外資投信同步買超 Top30", group: "a", status: "valid", counted: true, date: "2026-11-27", n: 12,
+        metrics: [MT("f", "外資", "億", 2, true), MT("t", "投信", "億", 2, true), MT("str", "強度", "億", 2)],
+        items: Array.from({ length: 12 }, (_, i) => ({ key: String(2301 + i), name: "股" + i, rank: i + 1, m: { f: 6.47 - i, t: 4.47, str: 4.47 }, px: { close: 184.5 + i, chg_pct: 9.82 - i, date: "2026-11-27" } })) },
+      { id: "d", name: "月營收 Beat／高預期仍Beat", group: "d", status: "valid", counted: true, date: "2026-10", n: 1,
+        metrics: [MT("sur", "驚喜", "%", 1, true), MT("yoy", "年增", "%", 1, true)], items: [{ key: "2301", name: "股0", tag: "高預期仍Beat", m: { sur: 44.7, yoy: -3.25 }, px: null }] },
+      { id: "e", name: "千張大戶週增前 20", group: "e", status: "fail", counted: false, date: null, n: 0, items: [] },
+      { id: "f", name: "彙總分析精華標的", group: "f", status: "excluded", counted: false, date: null, n: 0, items: [], note: "不納入" },
+    ], rows: [{ key: "2301", name: "股0", count: 2, hits: ["a", "d"], px: { close: 1234.5, chg_pct: -0.004, date: "2026-11-26" } }] } });
+ok("§8 ovShort／ovMd：來源短名取「：」「（」之前；日期縮成 MM/DD（月頻原樣）", () => {
+  assert.equal(S.ovShort("產業鏈資金流：近 5 日三大法人淨買前 10"), "產業鏈資金流"); assert.equal(S.ovShort("主動 ETF 次產業加碼前 10（上卷到產業）"), "主動 ETF 次產業加碼前 10");
+  assert.equal(S.ovShort("選股二追蹤名單"), "選股二追蹤名單"); assert.equal(S.ovShort(null), ""); assert.equal(S.ovShort(5), "");
+  assert.equal(S.ovMd("2026-11-26"), "11/26"); assert.equal(S.ovMd("2026-10"), "2026-10"); assert.equal(S.ovMd("<b>"), ""); assert.equal(S.ovMd(null), "");
+});
+ok("§8 ovMetrics：形狀不合的丟棄、digits 夾在 0–4（否則 2）、signed 只認 true；舊檔沒有 metrics → []", () => {
+  assert.deepEqual(J(S.ovMetrics({ metrics: [MT("a", "甲", "億", 1, true), { k: "b", label: 5, unit: null, digits: 9, signed: "yes" }, { label: "沒 k" }, null, "x", { k: "" }] })),
+    [{ k: "a", label: "甲", unit: "億", digits: 1, signed: true }, { k: "b", label: "", unit: "", digits: 2, signed: false }]);
+  for (const x of [null, {}, { metrics: "x" }, { metrics: {} }]) assert.deepEqual(J(S.ovMetrics(x)), []);
+});
+ok("§8 ovVal／ovVals：數值先過有限數檢查（字串／NaN／null →「—」）、signed 才帶號與方向、四捨五入到 0 不帶負號", () => {
+  const m = MT("v", "甲", "億", 2, true), u = MT("v", "乙", "分", 1, false);
+  assert.deepEqual(J(S.ovVal(m, 12.714)), { label: "甲", unit: "億", text: "+12.71", sign: 1 });
+  assert.deepEqual(J(S.ovVal(m, -1563.2)), { label: "甲", unit: "億", text: "-1,563.20", sign: -1 });
+  assert.deepEqual(J(S.ovVal(m, -0.004)), { label: "甲", unit: "億", text: "0.00", sign: 0 });
+  assert.deepEqual(J(S.ovVal(u, 77.84)), { label: "乙", unit: "分", text: "77.8", sign: 0 });        // 非 signed：不帶號、不著色
+  for (const bad of ["1", NaN, Infinity, null, undefined, {}, true]) assert.deepEqual(J(S.ovVal(m, bad)), { label: "甲", unit: "億", text: "—", sign: 0 });
+  assert.deepEqual(J(S.ovVals([m, MT("w", "丙", "", 0)], { m: { v: 1, w: "<img>" } })).map(x => x.text), ["+1.00", "—"]);
+  assert.deepEqual(J(S.ovVals([m], { m: { __proto__: null } })).map(x => x.text), ["—"]);
+  for (const it of [null, {}, { m: null }, { m: [1] }, { m: "x" }]) assert.deepEqual(J(S.ovVals([m], it)), []);   // 舊檔：沒有 m → 不顯示數值
+});
+ok("§8 ovPx：收盤與漲跌；close 不是有限數 → null；價格資料日與基準日不同才註明日期", () => {
+  assert.deepEqual(J(S.ovPx({ close: 2180.0, chg_pct: 1.63, date: "2026-11-27" }, "2026-11-27")), { close: "2,180", chg: "+1.63%", sign: 1, note: "" });
+  assert.deepEqual(J(S.ovPx({ close: 60.55, chg_pct: -9.7, date: "2026-11-26" }, "2026-11-27")), { close: "60.55", chg: "-9.70%", sign: -1, note: "11/26" });
+  assert.deepEqual(J(S.ovPx({ close: 33.3, chg_pct: null, date: "2026-11-27" }, "2026-11-27")), { close: "33.3", chg: "", sign: 0, note: "" });
+  assert.deepEqual(J(S.ovPx({ close: 10, chg_pct: -0.004, date: "<img>" }, "2026-11-27")), { close: "10", chg: "0.00%", sign: 0, note: "" });
+  assert.equal(S.ovPx({ close: 10, chg_pct: 1, date: "2026-11-26" }, null).note, "");                // 無從比對就不註明
+  for (const bad of [null, undefined, "x", {}, { close: "10" }, { close: NaN, chg_pct: 1 }]) assert.equal(S.ovPx(bad, "2026-11-27"), null);
+});
+ok("§8 ovIx：每列只列命中且計入的來源（順序＝hits）、數值／名次／via 與資料檔一致、同組來源標 shared、列順序＝資料檔順序", () => {
+  const ix = J(S.ovIx(S8().sectors));
+  assert.deepEqual(ix.map(r => [r.key, r.count, r.entries.map(e => e.id)]), [["食品", 3, ["A", "B", "C", "E"]], ["水泥", 2, ["A", "E"]]]);
+  const [f, w] = ix, by = Object.fromEntries(f.entries.map(e => [e.id, e]));
+  assert.deepEqual(f.entries.map(e => e.shared), [true, true, false, false]);                        // A、B 同組（法人資金流）→ 畫面歸在一起標「同組算 1 票」
+  assert.deepEqual(w.entries.map(e => e.shared), [false, false]);                                    // 只中 A：不標
+  assert.deepEqual([by.A.short, by.A.rank, by.A.groupName, by.A.vals], ["產業鏈資金流", 1, "法人資金流", [{ label: "近5日淨額", unit: "億", text: "+12.71", sign: 1 }]]);
+  assert.deepEqual(by.B.vals.map(v => [v.label, v.text, v.unit, v.sign]), [["近5日日均", "+2.54", "億/日", 1], ["近20日日均", "0.00", "億/日", 0]]);
+  assert.equal(by.B.rank, null);
+  assert.deepEqual(by.C.via, [{ name: "乳品", label: "主動淨額合計", unit: "億", text: "+2.25", sign: 1 }, { name: "飲料", text: "", unit: "", sign: 0 }]);   // viam 不是有限數 → 只列名稱
+  assert.deepEqual([by.C.rank, by.C.vals[0].text], [2, "+3.50"]);
+  assert.deepEqual(by.E.via.map(v => [v.name, v.text]), [["改善", ""]]); assert.deepEqual(by.E.vals.map(v => v.text), ["99.50", "—"]);
+  assert.deepEqual(w.entries[0].vals[0].text, "+1.34"); assert.equal(w.entries[0].rank, 8);
+  assert.ok(ix.every(r => r.entries.every(e => e.id !== "D")), "過期來源不進交集列");
+  const st = J(S.ovIx(S8().stocks))[0];
+  assert.deepEqual(st.px, { close: "1,234.5", chg: "0.00%", sign: 0, note: "11/26" });
+  assert.deepEqual(st.entries.map(e => [e.id, e.rank, e.tag, e.vals.map(v => v.text + v.unit)]), [["a", 1, "", ["+6.47億", "+4.47億", "4.47億"]], ["d", null, "高預期仍Beat", ["+44.7%", "-3.3%"]]]);
+  // hits 指到不存在或未計入的來源：略過、不報錯；rank 非正整數 → null
+  const g = S8(); g.sectors.rows[1].hits = ["A", "D", "Z"]; g.sectors.sources[0].items[1].rank = "8";
+  const w2 = J(S.ovIx(g.sectors))[1]; assert.deepEqual(w2.entries.map(e => e.id), ["A"]); assert.equal(w2.entries[0].rank, null);
+});
+ok("§8 舊資料檔（沒有 metrics／m／rank／px）：照常列出命中來源與 via，不顯示數值、不報錯", () => {
+  const g = S8();
+  for (const lay of [g.sectors, g.stocks]){
+    for (const s of lay.sources){ delete s.metrics; for (const it of s.items){ delete it.m; delete it.rank; delete it.px; delete it.tag; delete it.viam; } }
+    for (const r of lay.rows) delete r.px;
+  }
+  const ix = J(S.ovIx(g.sectors));
+  assert.deepEqual(ix.map(r => [r.key, r.px, r.entries.map(e => [e.id, e.short, e.rank, e.tag, e.vals])]),
+    [["食品", null, [["A", "產業鏈資金流", null, "", []], ["B", "籌碼雷達", null, "", []], ["C", "主動 ETF 次產業加碼前 10", null, "", []], ["E", "日級輪動雷達", null, "", []]]],
+     ["水泥", null, [["A", "產業鏈資金流", null, "", []], ["E", "日級輪動雷達", null, "", []]]]]);
+  assert.deepEqual(ix[0].entries[2].via, [{ name: "乳品", text: "", unit: "", sign: 0 }, { name: "飲料", text: "", unit: "", sign: 0 }]);
+  assert.equal(J(S.ovIx(g.stocks))[0].px, null);
+  assert.deepEqual(J(S.ovTop(S.ovSources(g.stocks)[0], "2026-11-27", 3)).map(t => [t.key, t.px, t.entry.vals]), [["2301", null, []], ["2302", null, []], ["2303", null, []]]);
+  // repo 內 §8 之前的每日快照（真正的舊檔）
+  const old = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "overview", "daily", "2026-11-12.json"), "utf8"));
+  assert.ok(!old.sectors.sources.some(s => "metrics" in s), "這份快照應是 §8 之前的舊檔");
+  for (const lay of [old.sectors, old.stocks, old.out.sectors, old.out.stocks]){
+    const rows = S.ovIx(lay); assert.equal(rows.length, lay.rows.length);
+    rows.forEach((r, i) => { assert.deepEqual(J(r.entries.map(e => e.id)), lay.rows[i].hits); assert.ok(r.entries.every(e => e.vals.length === 0 && e.rank === null)); assert.equal(r.px, null); });
+    for (const s of S.ovSources(lay)) S.ovTop(s, lay.base_date, S.OV_TOP_N);
+  }
+});
+ok("§8 ovTop：各來源前 10 名＝資料檔 items 前 10 項、順序不變；未計入的來源照樣可列", () => {
+  const g = S8(), a = S.ovSources(g.stocks)[0];
+  assert.equal(S.OV_TOP_N, 10);
+  const top = J(S.ovTop(a, g.stocks.base_date, S.OV_TOP_N));
+  assert.deepEqual(top.map(t => t.key), Array.from({ length: 10 }, (_, i) => String(2301 + i)));
+  assert.deepEqual([top[0].name, top[0].px, top[0].entry.rank, top[0].entry.vals.map(v => v.text)], ["股0", { close: "184.5", chg: "+9.82%", sign: 1, note: "" }, 1, ["+6.47", "+4.47", "4.47"]]);
+  assert.equal(top[9].entry.rank, 10);
+  const d = S.ovSources(g.sectors).find(s => s.id === "D"); assert.equal(d.counted, false);
+  assert.deepEqual(J(S.ovTop(d, "2026-11-27", 10)).map(t => [t.key, t.entry.counted, t.entry.via.map(v => v.name)]), [["半導體", false, ["基板"]]]);
+});
+ok("§8 ovSkipLines：收合狀態下仍露出的短句——過期／另列寫資料日、讀取失敗寫讀取失敗；有效與不納入的來源不出現", () => {
+  const g = S8();
+  assert.deepEqual(J(S.ovSkipLines(g.sectors)), ["D 連湧／新湧次產業：資料日 11/26，未計入"]);
+  assert.deepEqual(J(S.ovSkipLines(g.stocks)), ["e 千張大戶週增前 20：讀取失敗，未計入"]);
+  g.sectors.sources[2].status = "listed"; g.sectors.sources[3].date = "<img src=x>";
+  assert.deepEqual(J(S.ovSkipLines(g.sectors)), ["C 主動 ETF 次產業加碼前 10：資料日 11/27，未計入", "D 連湧／新湧次產業：資料日 —，未計入"]);
+  assert.deepEqual(J(S.ovSkipLines(null)), []);
+});
+ok("§8 repo 內實際資料檔：每一列顯示的來源＝該列 hits、數值與名次＝資料檔該來源項目的 m／rank、個股列帶收盤", () => {
+  const real = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "overview", "latest.json"), "utf8"));
+  let nv = 0, npx = 0, nrow = 0;
+  for (const blk of [real, real.out]) for (const [name, lay] of [["sectors", blk.sectors], ["stocks", blk.stocks]]){
+    const srcBy = Object.fromEntries(lay.sources.map(s => [s.id, s]));
+    S.ovIx(lay).forEach((r, i) => {
+      const raw = lay.rows[i]; nrow++;
+      assert.equal(r.key, raw.key); assert.equal(r.count, raw.count);
+      assert.deepEqual(J(r.entries.map(e => e.id)), raw.hits);
+      for (const e of r.entries){
+        const s = srcBy[e.id], it = s.items.find(x => x.key === r.key);
+        assert.ok(it, e.id + " " + r.key); assert.equal(e.rank, it.rank === undefined ? null : it.rank);
+        assert.equal(e.vals.length, s.metrics.length);
+        s.metrics.forEach((mt, k) => {
+          const v = it.m[mt.k];
+          if (v === null){ assert.equal(e.vals[k].text, "—"); return; }
+          assert.equal(Number(e.vals[k].text.replace(/[+,]/g, "")), Number(v.toFixed(mt.digits)) || 0, `${e.id} ${r.key} ${mt.k}`); nv++;
+          assert.equal(e.vals[k].unit, mt.unit); assert.equal(e.vals[k].label, mt.label);
+        });
+        assert.deepEqual(J(e.via.map(v => v.name)), it.via || []);
+      }
+      if (name === "stocks" && raw.px){ assert.equal(Number(r.px.close.replace(/,/g, "")), raw.px.close); npx++; }
+      if (name === "sectors") assert.equal(r.px, null);
+    });
+    for (const s of S.ovSources(lay)){
+      const top = S.ovTop(s, lay.base_date, S.OV_TOP_N);
+      assert.deepEqual(J(top.map(t => t.key)), s.items.slice(0, 10).map(x => x.key));
+    }
+  }
+  assert.ok(nrow >= 4 && nv >= 10 && npx >= 1, `列 ${nrow}／數值 ${nv}／收盤 ${npx}`);
+});
+// ---- 渲染函式實跑（不需瀏覽器）：抽出交集表渲染段，配上 index.html 自己的 esc／sgn／stkBtn 執行 ----
+const rs0 = sec.indexOf("// ---- 交集表渲染"), rs1 = sec.indexOf("// ---- 我的持股對照（規格 §7，使用者");
+assert.ok(rs0 > 0 && rs1 > rs0, "找不到交集表渲染段");
+const renderSrc = sec.slice(rs0, rs1);
+const grab = re => { const m = html.match(re); assert.ok(m, String(re)); return m[0]; };
+const helpers = [grab(/^const esc = [\s\S]*?\n[^\n]*\);\n/m), grab(/^const sgn = .*$/m), grab(/^const HASH_CODE_RE = .*$/m), grab(/^const stkBtn = c => \{[\s\S]*?\n\};/m)].join("\n");
+const rsb = { console };
+vm.createContext(rsb);
+new vm.Script(helpers + "\n" + pure + "\n" + renderSrc + "\nglobalThis.R = { ovTableHtml, ovSrcHtml, ovTopsHtml, ovDet, OV_OPEN, ovSources, esc };").runInContext(rsb);
+const R = rsb.R;
+const EVIL = '<img src=x onerror="window.__pwn=1">';
+ok("§8 渲染：交集表無 <table>／無橫捲容器、未命中的來源不出現（沒有「·」）、同組歸在一起標「同組算 1 票」、數值本體包在不換行的 .ov-vn", () => {
+  const h = R.ovTableHtml(S8().sectors, false);
+  assert.ok(!/<table|tblbox|<th|·<|>·/.test(h));
+  assert.equal(h.split('class="ov-ix"').length - 1, 2);
+  assert.ok(h.indexOf("食品") < h.indexOf("水泥"), "列順序＝資料檔順序");
+  assert.ok(h.includes('<div class="ov-grpn">法人資金流（A、B 同組算 1 票）</div>'));
+  assert.equal(h.split("同組算 1 票").length - 1, 1, "只中 A 的那一列不標");
+  assert.ok(h.includes('<b class="ov-vn"><span class="up">+12.71</span> 億</b>') && h.includes('<b class="ov-vn">第 1 名</b>'));
+  assert.ok(h.includes('<span class="ov-cnt">清單數 3</span>') && !/ov-cnt[^>]*(up|down)/.test(h), "清單數中性色");
+  assert.ok(h.includes('乳品 <b class="ov-vn"><span class="up">+2.25</span> 億</b>') && h.includes('<span class="ov-v ov-tag">領先</span>'));
+  assert.ok(!h.includes("連湧"), "過期來源不出現在交集列");
+  const t = R.ovTableHtml(S8().stocks, true);
+  assert.ok(t.includes('<span class="code">2301</span><button type="button" class="stkbtn" data-stk="2301"'), "個股列保留側欄鈕");
+  assert.ok(t.includes('收 <b class="ov-vn">1,234.5</b>') && t.includes("（11/26 價）") && t.includes('<span class="ov-v ov-tag">高預期仍Beat</span>'));
+  assert.ok(t.includes('<span class="up">+44.7</span>%</b>') && t.includes('<span class="down">-3.3</span>%</b>'), "% 緊貼數字、正負經 sgn 著色");
+  assert.ok(R.ovTableHtml({ sources: [], rows: [], note: "有效計票群組只有 1 個" }, false).includes("有效計票群組只有 1 個"));
+});
+ok("§8 渲染：各來源前幾名——逐來源一個預設收合的 <details>、未計入的照列並標明、超過 10 項只列前 10", () => {
+  const h = R.ovTopsHtml(S8().stocks, true, "in:stk"), s = R.ovTopsHtml(S8().sectors, false, "in:sec");
+  assert.equal(h.split("<details").length - 1, 2); assert.equal(s.split("<details").length - 1, 5);   // 沒有項目的來源（e 失敗、f 不納入）不列
+  assert.ok(!/<details[^>]* open/.test(h + s), "預設收合");
+  assert.ok(h.includes("12 項，列前 10 項") && h.split('class="ov-ix"').length - 1 === 11 && !h.includes('<span class="code">2311</span>'));
+  assert.ok(s.includes("｜未計入（過期不計）") && s.includes('data-ovdet="in:sec:D"') && s.includes("順序＝資料檔順序"));
+  R.OV_OPEN["in:sec:D"] = true;
+  assert.ok(/<details class="ov-det ov-top" data-ovdet="in:sec:D" open>/.test(R.ovTopsHtml(S8().sectors, false, "in:sec")), "開合狀態只看記憶體 OV_OPEN");
+  delete R.OV_OPEN["in:sec:D"];
+});
+ok("§8 注入：名稱、來源名、metrics.label／unit、tag、via、viam 鍵、note、日期塞入 <img onerror> → 輸出不含任何未逃逸的標籤", () => {
+  const g = S8();
+  for (const lay of [g.sectors, g.stocks]){
+    lay.note = EVIL; lay.base_date = EVIL;
+    for (const s of lay.sources){
+      s.name = EVIL + "：x"; s.group_name = s.group_name ? EVIL : undefined; s.date = EVIL; s.note = EVIL; s.unmapped = [EVIL];
+      for (const m of s.metrics || []){ m.label = EVIL; m.unit = EVIL; }
+      for (const it of s.items){ it.name = EVIL; it.tag = EVIL; if (it.via){ it.viam = { [EVIL]: 1 }; it.via = [EVIL]; } if (it.px) it.px.date = EVIL; }
+    }
+    for (const r of lay.rows) r.name = EVIL;
+  }
+  g.sectors.sources[0].id = EVIL; g.sectors.rows[0].hits[0] = EVIL; g.sectors.rows.push({ key: EVIL, count: 2, hits: ["E"] }); g.sectors.sources[4].items.push({ key: EVIL, via: [EVIL], m: { rs: EVIL, mom: 1 } });
+  const out = [R.ovTableHtml(g.sectors, false), R.ovTableHtml(g.stocks, true), R.ovTopsHtml(g.sectors, false, EVIL), R.ovTopsHtml(g.stocks, true, "x"),
+    R.ovSrcHtml(R.ovSources(g.sectors), g.sectors.base_date), R.ovSrcHtml(R.ovSources(g.stocks), g.stocks.base_date),
+    R.ovTableHtml({ sources: [], rows: [], note: EVIL }, false), S.ovSkipLines(g.sectors).map(R.esc).join("")].join("\n");
+  assert.ok(out.includes("&lt;img src=x onerror="), "惡意字串有被帶到畫面（已逃逸）");
+  assert.ok(!/<img|onerror="window/.test(out), "不得出現未逃逸的 <img> 或可執行的 onerror 屬性");
+  const tags = new Set([...out.matchAll(/<\/?([a-zA-Z0-9]+)/g)].map(m => m[1]));
+  assert.deepEqual([...tags].sort(), ["b", "button", "details", "div", "span", "summary"]);
+});
+ok("§8 讀碼：說明預設收合（常駐只留標示句、切換、基準日、未計入短句）；<details> 開合只寫記憶體、不重繪不發請求；說明列補一句數值意義", () => {
+  const r = sec.slice(sec.indexOf("function ovRender("), sec.indexOf("// 「前往持股診斷」"));
+  const iLab = r.indexOf('class="ov-label"'), iSides = r.indexOf('class="ov-sides"'), iDet = r.indexOf('ovDet("expl", "來源與口徑說明"'), iTbl = r.indexOf("ovTableHtml(sd.sectors, false)");
+  assert.ok(iLab > 0 && iLab < iSides && iSides < iDet && iDet < iTbl);
+  assert.equal(r.split('ovDet("expl", "來源與口徑說明"').length - 1, 3, "載入中／流出側尚無資料／正常三個分支都有收合的說明");
+  // 長說明（expl）與來源狀態清單（ovSrcHtml）只出現在 ovDet(...) 的內容裡，不直接接到 h
+  assert.ok(!/h \+= [^;]*\bexpl\b(?![^;]*ovDet)/.test(r.replace(/ovDet\("expl", "來源與口徑說明", expl[^;]*;/g, "")));
+  assert.equal(r.split("ovSrcHtml(").length - 1, 2); assert.ok(r.slice(iDet).indexOf("ovSrcHtml(") < r.slice(iDet).indexOf("ovTableHtml("));
+  assert.ok(r.includes("ovSkipLines(sd.sectors).concat(ovSkipLines(sd.stocks))") && r.includes("skip.map(t => `<div>${esc(t)}</div>`)"));
+  assert.ok(r.includes("基準日 ${esc(ovDate(j.date) || \"—\")}"));
+  assert.ok(r.includes("這些數值僅供對照，<b>不影響排序</b>") && r.includes("各來源前幾名") && r.includes("不另排序不計分"));
+  assert.ok(r.indexOf("ovTableHtml(sd.stocks, true)") < r.indexOf("ovTopsHtml(sd.sectors, false") && r.indexOf("ovTopsHtml(sd.stocks, true") < r.indexOf("ovHoldHtml(j)"));
+  assert.ok(renderSrc.includes('${OV_OPEN[id] ? " open" : ""}'), "<details> 預設不帶 open");
+  const tg = sec.slice(sec.indexOf('document.addEventListener("toggle"'), sec.indexOf("// 兩側切換（document 級委派"));
+  assert.ok(tg.includes("OV_OPEN[id] = !!d.open;") && tg.trimEnd().endsWith("}, true);") && !/render\(|ovLoad|loadJSON|fetch\(/.test(tg));
+  assert.ok(!/ovLoad|loadJSON|fetch\(|XMLHttpRequest/.test(renderSrc), "交集表渲染段零請求");
+  assert.ok(!/ovLoad\(/.test(pure));
+  // 我的持股對照段仍不放側欄鈕（側欄鈕只在交集表與各來源前幾名）
+  assert.ok(!/stkBtn|ovNameHtml|ovTop/.test(sec.slice(sec.indexOf("function ovHoldCodes("), sec.indexOf("function ovRender("))));
+  // hash：沒有新增 key
+  for (const fn of ["parseHash", "currentHash", "applyHash", "syncHash"]){
+    const i = html.indexOf("function " + fn + "("), b = html.slice(i, html.indexOf("\n}\n", i));
+    assert.ok(i > 0 && !/OV_OPEN|ovdet/.test(b), fn);
+  }
 });
 console.log(`\n${n} passed`);

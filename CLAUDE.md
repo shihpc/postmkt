@@ -119,17 +119,21 @@
     `sent-pure`）、大盤餘額、盤勢綜合研判（`data/summary/index.json` 最新一場 `synthesis.text` 的
     「## 盤勢綜合研判」節經 `mdToHtml`——只呼叫不修改；徽章 `ovSumBadge` 帶產出時間；該場 `us_gate.fresh===false`
     時顯示中性說明 `ovUsGateNote`，「彙總分析」tab 同句）、晨報三件事＋開盤前定位；6、7 標「AI 研判」。
-  - 類股／個股交集：後端 `src/build_overview.py`，**前端只渲染、不重算**。資金流入側（頂層 `sectors`／`stocks`）
-    ＋資金流出側（頂層 `out`，流入側各來源的鏡像；舊檔無 `out` 時顯示「尚無資料」），切換 `OV.side` 只存記憶體
-    （`ovSide()`）。「出現清單數」以群組計（來源 A、B 併為「法人資金流」一票）；來源 D 依建置時點可能另列不計入，
-    同一基準日的每日快照以最後一次寫入為準。**用語一律「資金流出側」，不得寫成放空／賣出建議**。
+  - 類股／個股交集：後端 `src/build_overview.py`，**前端只渲染、不重算**。流入側（頂層 `sectors`／`stocks`）＋
+    流出側（頂層 `out`；舊檔無 `out` 顯示「尚無資料」），`OV.side` 只存記憶體（`ovSide()`）。清單數以群組計
+    （A、B 併「法人資金流」一票）；D 依建置時點可能另列，每日快照以最後一次寫入為準。
+    **用語一律「資金流出側」，不得寫成放空／賣出建議**。
+  - 交集表呈現（§8）：每列一塊、不經 `tbl()`、不需橫捲，只列命中來源與其數值——來源 `metrics`＋項目 `m`／`rank`／
+    `tag`／`viam`，個股 `px`（diag 收盤與漲跌）；舊檔沒有就只列來源名。`function ovIx`／`ovEntry`／`ovPx`／
+    `ovTableHtml`／`ovTopsHtml`（各來源前 10 名，資料檔順序）。說明收在預設收合的 `<details>`（開合只記
+    `OV_OPEN`）。後端只增欄位、不改判定（golden 以 `strip_s8` 去欄後比對）。
   - 我的持股對照（`.ov-myhold`；`function ovHoldMatch(`／`ovHoldLayer`／`function ovHoldHtml`／
     `function ovHoldCodes`）：列順序＝持股清單原順序，不排序、不計分、不加燈號；**隱私硬約束**：零新增網路請求、
     不寫 storage、持股代號不進 URL／hash／history；個股欄不得放 `stkBtn`／`nameCell`、不得產生連結；
     `data-ovgo="diag"` 鈕只改 `state.tab`。
   - 硬約束：盤勢 1–5 的渲染函式不得出現偏多／偏空／建議等字樣（來源檔自帶文字原樣顯示並標來源）；著色只經
     `sgn()`；出現清單數中性色、不加燈號；數值一律 `ovNum()`；彙總檔名過 `OV_SUMFILE_RE`；CSS `.ov-*`；
-    不加 hash key；未動 `tbl()`。載入中／失敗／正常與兩側都顯示標示句（`OV_LABEL`／`ovLabel()`）。
+    不加 hash key。載入中／失敗／正常與兩側都顯示標示句（`OV_LABEL`／`ovLabel()`）。
   - 測試 `tests/test_overview_frontend.mjs`、`tests/test_overview_build.py`。
 - **籌碼雷達 `chipradar`／社群聲量 `social`**（由 taiwan-flows `radar`、taiwan-stock-news `social` 搬來，
   原站已移除；驗收條件 `docs/move-radar-social.md`）：grep `// ================= 籌碼雷達 tab`、`// ==== 社群聲量`。

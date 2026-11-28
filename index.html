@@ -432,16 +432,41 @@
   .ov-ol li,.ov-ul li{margin:3px 0}
   .ov-md{font-size:.82rem}
   .ov-label{display:inline-block;font-size:.86rem;font-weight:700;color:var(--txt);border:1px solid var(--txt);border-radius:8px;padding:3px 10px;margin:4px 0 2px}
-  .ov-sides{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 2px}
+  .ov-sides{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0 2px}
   .ov-badges{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
   .ov-badge{display:inline-block;font-size:.7rem;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin-left:6px}
-  .ov-badges .ov-badge{margin-left:0}
+  .ov-badges .ov-badge,.ov-sides .ov-badge{margin-left:0}
   .ov-st{color:var(--txt)}
   .ov-src{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin:6px 0;font-size:.78rem;line-height:1.7;overflow-wrap:anywhere}
   .ov-srow{color:var(--txt)}
   .ov-srow .ov-sub{display:block;padding-left:14px}
   .ov-cnt{color:var(--txt);font-weight:700}
   .ov-hold th{cursor:default}
+  /* 交集表（規格 §8）：每列一個區塊、不需橫捲；只有數值本體（.ov-vn）不換行，其餘可換行 */
+  .ov-ixs{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:2px 12px;margin:6px 0;overflow-wrap:anywhere}
+  .ov-ix{padding:8px 0;border-top:1px solid var(--line);font-size:.8rem;line-height:1.55}
+  .ov-ixs>.ov-ix:first-child{border-top:0}
+  .ov-ixh{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px}
+  .ov-ixn{font-weight:700;font-size:.9rem;color:var(--txt)}
+  .ov-px{color:var(--muted);font-size:.8rem}
+  .ov-px b{color:var(--txt)}
+  .ov-ixh .ov-cnt{margin-left:auto;font-size:.76rem;white-space:nowrap}
+  .ov-e{display:flex;flex-wrap:wrap;align-items:baseline;gap:1px 10px;margin-top:3px;color:var(--muted)}
+  .ov-eid{color:var(--txt)}
+  .ov-vn{white-space:nowrap;font-weight:600;color:var(--txt)}
+  .ov-vl{color:var(--muted)}
+  .ov-tag{color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:0 5px;font-size:.74rem}
+  .ov-via{display:flex;flex-wrap:wrap;gap:1px 10px;flex-basis:100%;padding-left:12px;font-size:.76rem}
+  .ov-grp{border-left:2px solid var(--line);padding-left:8px;margin-top:4px}
+  .ov-grpn{color:var(--muted);font-size:.72rem}
+  .ov-skip{color:var(--muted);font-size:.76rem;line-height:1.6;margin:4px 2px}
+  .ov-det{margin:6px 0;overflow-wrap:anywhere}
+  .ov-det>summary{cursor:pointer;color:var(--muted);font-size:.8rem;padding:6px 10px;background:var(--card);border:1px solid var(--line);border-radius:10px}
+  .ov-det[open]>summary{margin-bottom:4px}
+  .ov-top{font-size:.8rem}
+  .ov-top>summary{color:var(--txt)}
+  .ov-top[open]{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:0 12px 4px}
+  .ov-top[open]>summary{border:0;padding:8px 0;background:transparent}
   .ov-go{margin-left:6px}
   /* 月營收 tab（2026-11-12 階段二，規格 docs/revenue-beatmiss.md §5）：分類一律中性色文字標籤、不新增燈號；
      漲跌著色只沿用既有 .up/.down（月增%／年增%／驚喜%）；全部 .rev-* 前綴避免撞名。 */
@@ -2104,9 +2129,92 @@ function ovSources(layer){
       note: typeof s.note === "string" ? s.note : "",
       group: typeof s.group === "string" ? s.group : s.id, groupName: typeof s.group_name === "string" ? s.group_name : "",
       items: Array.isArray(s.items) ? s.items.filter(x => x && typeof x.key === "string") : [],
+      metrics: ovMetrics(s),
       unmapped: Array.isArray(s.unmapped) ? s.unmapped.filter(x => typeof x === "string") : [] });
   }
   return out;
+}
+// ---- 交集表顯示各來源的實際數值（規格 §8；2026-11-28）----
+// 資料檔每個來源帶 metrics＝[{k,label,unit,digits,signed}]，items[] 帶 m＝{k:數值|null}（另可帶 rank／tag／viam／px）。
+// 以下全是「把資料檔的值整理成可顯示的文字」：不重算口徑、不排序、不計分。回傳的字串一律是原始字串，渲染端必須 esc()。
+// 舊資料檔（沒有 metrics／m／px）→ 各函式回空陣列或 null，畫面只列來源名、不顯示數值。
+const OV_TOP_N = 10;
+function ovShort(name){
+  return typeof name === "string" ? name.split(/[：（(]/)[0].trim() : "";
+}
+function ovMetrics(s){
+  const out = [];
+  for (const m of (s && Array.isArray(s.metrics)) ? s.metrics : []){
+    if (!m || typeof m !== "object" || typeof m.k !== "string" || !m.k) continue;
+    out.push({ k: m.k, label: typeof m.label === "string" ? m.label : "", unit: typeof m.unit === "string" ? m.unit : "",
+      digits: (Number.isInteger(m.digits) && m.digits >= 0 && m.digits <= 4) ? m.digits : 2, signed: m.signed === true });
+  }
+  return out;
+}
+// 單一數值 → { label, unit, text, sign }；v 不是有限數 → text「—」、sign 0。signed 才帶正負號與方向（供 sgn() 著色）
+function ovVal(mt, v){
+  const x = ovNum(v);
+  if (x === null) return { label: mt.label, unit: mt.unit, text: "—", sign: 0 };
+  const r = Number(x.toFixed(mt.digits)) || 0;
+  return { label: mt.label, unit: mt.unit, text: mt.signed ? ovSigned(x, mt.digits) : ovFmt(x, mt.digits), sign: mt.signed ? Math.sign(r) : 0 };
+}
+function ovVals(metrics, it){
+  const m = (it && it.m && typeof it.m === "object" && !Array.isArray(it.m)) ? it.m : null;
+  if (!m) return [];
+  return metrics.map(mt => ovVal(mt, Object.prototype.hasOwnProperty.call(m, mt.k) ? m[mt.k] : null));
+}
+// 個股收盤與漲跌：close 不是有限數 → null（不顯示）；note＝價格資料日與該表基準日不同時的日期（MM/DD），相同或無從比對回 ""
+function ovMd(d){ return ovDate(d) ? d.slice(5).replace("-", "/") : (typeof d === "string" && /^\d{4}-\d{2}$/.test(d) ? d : ""); }
+function ovPx(px, base){
+  if (!px || typeof px !== "object") return null;
+  const c = ovNum(px.close), g = ovNum(px.chg_pct), d = ovDate(px.date);
+  if (c === null) return null;
+  const r = g === null ? 0 : (Number(g.toFixed(2)) || 0);
+  return { close: c.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+    chg: g === null ? "" : ovSigned(g, 2) + "%", sign: Math.sign(r), note: (d && ovDate(base) && d !== base) ? ovMd(d) : "" };
+}
+// 一個來源對一個項目的條目：名次、分類名、數值、via（上卷前的次產業／象限；viam 有該名稱的有限數就附金額，單位取第一個 metric）
+function ovEntry(s, it){
+  it = (it && typeof it === "object") ? it : {};
+  const vm = (it.viam && typeof it.viam === "object" && !Array.isArray(it.viam)) ? it.viam : null, m0 = s.metrics[0];
+  const via = (Array.isArray(it.via) ? it.via : []).filter(x => typeof x === "string").map(nm => {
+    const v = (vm && m0 && Object.prototype.hasOwnProperty.call(vm, nm)) ? ovNum(vm[nm]) : null;
+    return v === null ? { name: nm, text: "", unit: "", sign: 0 } : { name: nm, ...ovVal(m0, v) };
+  });
+  return { id: s.id, short: ovShort(s.name), group: s.group, groupName: s.groupName, counted: s.counted,
+    rank: (Number.isInteger(it.rank) && it.rank > 0) ? it.rank : null, tag: typeof it.tag === "string" ? it.tag : "",
+    vals: ovVals(s.metrics, it), via };
+}
+// 交集表：每一列＝{ key, name, count, px, entries }；entries＝該列 hits 中每個**計入**來源的條目（順序＝hits 順序），
+// shared＝該列在同一計票群組內命中 2 個以上來源（畫面歸在一起並標「同組算 1 票」）。列的順序＝資料檔順序。
+function ovIx(layer){
+  const srcs = ovSources(layer).filter(s => s.counted), by = Object.create(null);
+  for (const s of srcs){
+    const ix = Object.create(null);
+    for (const it of s.items) if (!ix[it.key]) ix[it.key] = it;
+    by[s.id] = { s, ix };
+  }
+  return ovRows(layer).map(r => {
+    const entries = [], gn = Object.create(null);
+    for (const id of r.hits){
+      const b = by[id];
+      if (!b) continue;
+      const e = ovEntry(b.s, b.ix[r.key]);
+      gn[e.group] = (gn[e.group] || 0) + 1;
+      entries.push(e);
+    }
+    for (const e of entries) e.shared = gn[e.group] > 1;
+    return { key: r.key, name: r.name, count: r.count, px: r.px, entries };
+  });
+}
+// 各來源前幾名：該來源 items 的前 n 項（順序＝資料檔順序，不另排序），每項＝{ key, name, px, entry }
+function ovTop(s, base, n){
+  return s.items.slice(0, n).map(it => ({ key: it.key, name: typeof it.name === "string" ? it.name : "", px: ovPx(it.px, base), entry: ovEntry(s, it) }));
+}
+// 收合狀態下仍露出的短句：過期／讀取失敗／另列而未計入的來源（不納入者是定案、不是當日狀況，只在展開後說明）
+function ovSkipLines(layer){
+  return ovSources(layer).filter(s => s.status === "stale" || s.status === "fail" || s.status === "listed").map(s =>
+    `${s.id} ${ovShort(s.name)}：` + (s.status === "fail" ? "讀取失敗" : `資料日 ${ovMd(s.date) || "—"}`) + "，未計入");
 }
 // 交集列：只收 key 為字串、count 為數字、hits 為字串陣列的列；順序＝資料檔順序（後端已排：count 遞減、同數依 key 遞增）
 function ovRows(layer){
@@ -2118,7 +2226,7 @@ function ovRows(layer){
       for (const k of Object.keys(r.via))
         if (Array.isArray(r.via[k])) via.push(k + "：" + r.via[k].filter(x => typeof x === "string").join("、"));
     out.push({ key: r.key, name: typeof r.name === "string" ? r.name : "", count: r.count,
-      hits: r.hits.filter(x => typeof x === "string"), via: via.join("；") });
+      hits: r.hits.filter(x => typeof x === "string"), via: via.join("；"), px: ovPx(r.px, layer.base_date) });
   }
   return out;
 }
@@ -2335,10 +2443,53 @@ function ovBriefHtml(){
     `<li><b>${esc(x.market)}</b>：${esc(x.fact)}` + (x.view ? `<div class="ov-sub">${esc(x.view)}</div>` : "") + `</li>`).join("") + `</ul>`;
   return h + `<div class="ov-note">AI 研判：取自 taiwan-stock-news 每日晨報卡（當日 07:30 前後產製，講的是開盤前的狀態）。</div>`;
 }
+// ---- 交集表渲染（規格 §8）：每列一個區塊，不經 tbl()、不需橫捲；數值依資料檔 metrics 通用渲染 ----
+const OV_OPEN = Object.create(null);   // <details> 的開合狀態（只存記憶體；重繪後維持，不進網址、不存瀏覽器儲存、不發請求）
+const ovDet = (id, summary, body, cls) => `<details class="ov-det${cls ? " " + cls : ""}" data-ovdet="${esc(id)}"${OV_OPEN[id] ? " open" : ""}><summary>${summary}</summary>${body}</details>`;
+const ovUnit = v => (v.unit && v.text !== "—") ? (v.unit.charAt(0) === "%" ? "" : " ") + esc(v.unit) : "";   // 「%」緊貼數字，其餘單位前留一格
+const ovNumHtml = v => `<b class="ov-vn">${v.sign ? sgn(v.sign, esc(v.text)) : esc(v.text)}${ovUnit(v)}</b>`;
+const ovValHtml = v => `<span class="ov-v">${v.label ? `<span class="ov-vl">${esc(v.label)}</span> ` : ""}${ovNumHtml(v)}</span>`;
+const ovPxHtml = px => !px ? "" : `<span class="ov-px">收 <b class="ov-vn">${esc(px.close)}</b>`
+  + (px.chg ? ` <b class="ov-vn">${sgn(px.sign, esc(px.chg))}</b>` : "") + (px.note ? ` <span class="ov-sub">（${esc(px.note)} 價）</span>` : "") + `</span>`;
+function ovEntryHtml(e, withSrc){
+  let h = `<div class="ov-e">`;
+  if (withSrc) h += `<span class="ov-eid"><b>${esc(e.id)}</b> ${esc(e.short)}</span>`;
+  if (e.rank !== null) h += `<span class="ov-v"><b class="ov-vn">第 ${ovFmt(e.rank, 0)} 名</b></span>`;
+  if (e.tag) h += `<span class="ov-v ov-tag">${esc(e.tag)}</span>`;
+  // via：沒有金額的（象限名、過期來源的次產業名）當標籤接在來源名後；帶金額的（上卷前各次產業）另起一行列在數值之後
+  const amt = e.via.some(v => v.text);
+  if (e.via.length && !amt) h += e.via.map(v => `<span class="ov-v ov-tag">${esc(v.name)}</span>`).join("");
+  h += e.vals.map(ovValHtml).join("");
+  if (amt) h += `<span class="ov-via">` + e.via.map(v => `<span class="ov-v">${esc(v.name)}${v.text ? " " + ovNumHtml(v) : ""}</span>`).join("") + `</span>`;
+  return h + `</div>`;
+}
+const ovNameHtml = (key, name, isStock) => isStock
+  ? `<span class="ov-ixn"><span class="code">${esc(key)}</span>${stkBtn(key)} ${esc(name)}</span>` : `<span class="ov-ixn">${esc(key)}</span>`;
+function ovTableHtml(layer, isStock){
+  const rows = ovIx(layer);
+  if (!rows.length)
+    return `<div class="ov-na ov-pad">${esc(typeof layer.note === "string" && layer.note ? layer.note : "本日沒有出現在 2 個以上有效來源的項目")}</div>`;
+  return `<div class="ov-ixs">` + rows.map(r => {
+    let h = `<div class="ov-ix"><div class="ov-ixh">${ovNameHtml(r.key, r.name, isStock)}${isStock ? ovPxHtml(r.px) : ""}`
+      + `<span class="ov-cnt">清單數 ${ovFmt(r.count, 0)}</span></div>`;
+    for (let i = 0; i < r.entries.length; i++){
+      const e = r.entries[i];
+      if (!e.shared){ h += ovEntryHtml(e, true); continue; }
+      // 同一計票群組、同列命中 2 個以上來源：歸在一起並標明只算 1 票
+      const g = r.entries.filter(x => x.group === e.group);
+      if (g[0] !== e) continue;
+      h += `<div class="ov-grp"><div class="ov-grpn">${esc(e.groupName || "同一計票群組")}（${esc(g.map(x => x.id).join("、"))} 同組算 1 票）</div>` + g.map(x => ovEntryHtml(x, true)).join("") + `</div>`;
+    }
+    return h + `</div>`;
+  }).join("") + `</div>`;
+}
+// 來源狀態清單（放在收合的「來源與口徑說明」內）
 function ovSrcHtml(srcs, base){
   const grp = {};
   for (const s of srcs) if (s.groupName) (grp[s.groupName] = grp[s.groupName] || []).push(s.id);
   const gtxt = Object.keys(grp).filter(k => grp[k].length > 1).map(k => `${k}（${grp[k].join("、")}）`).join("；");
+  const listed = s => s.items.map(x => x.key + (typeof x.name === "string" && x.name ? " " + x.name : "")
+    + (Array.isArray(x.via) && x.via.length ? "（" + x.via.filter(v => typeof v === "string").join("、") + "）" : "")).join("、");
   return `<div class="ov-src">` + `<div class="ov-sub">基準日 ${esc(ovDate(base) || "—")}（日頻來源的資料日須等於基準日才計入）</div>`
     + (gtxt ? `<div class="ov-sub">同一計票群組內命中幾個來源都只算 1 票：${esc(gtxt)}——它們讀同一份資料的同一個區間，不是獨立來源。</div>` : "")
     + srcs.map(s => `<div class="ov-srow"><b>${esc(s.id)}</b> ${esc(s.name)}`
@@ -2347,23 +2498,19 @@ function ovSrcHtml(srcs, base){
       + (s.groupName ? `<span class="ov-badge">計票群組：${esc(s.groupName)}</span>` : "")
       + (s.note ? `<span class="ov-sub">${esc(s.note)}</span>` : "")
       + (s.unmapped.length ? `<span class="ov-sub">未上卷（一個次產業名對到多個產業或查無對映）：${esc(s.unmapped.join("、"))}</span>` : "")
-      + (!s.counted && s.items.length ? `<span class="ov-sub">另列（不計入交集）：${esc(s.items.map(x => x.key + (typeof x.name === "string" && x.name ? " " + x.name : "")).join("、"))}</span>` : "")
+      + (!s.counted && s.items.length ? `<span class="ov-sub">另列（不計入交集）：${esc(listed(s))}</span>` : "")
       + `</div>`).join("") + `</div>`;
 }
-function ovTableHtml(layer, isStock){
-  const srcs = ovSources(layer), rows = ovRows(layer), cs = srcs.filter(s => s.counted);
-  let h = ovSrcHtml(srcs, layer.base_date);
-  if (!rows.length){
-    return h + `<div class="ov-na ov-pad">${esc(typeof layer.note === "string" && layer.note ? layer.note : "本日沒有出現在 2 個以上有效來源的項目")}</div>`;
-  }
-  const mark = id => r => r.hits.includes(id) ? "●" : `<span class="mut">·</span>`;
-  const cols = [
-    isStock ? { h: "個股", cls: "l", f: r => nameCell({ c: r.key, n: r.name }) } : { h: "產業", cls: "l", f: r => esc(r.key) },
-    { h: "出現清單數（群組計）", f: r => `<span class="ov-cnt">${ovFmt(r.count, 0)}</span>` },
-    ...cs.map(s => ({ h: esc(s.id), f: mark(s.id) })),
-  ];
-  if (!isStock) cols.push({ h: "依據（上卷前的次產業／象限）", cls: "l", f: r => r.via ? esc(r.via) : `<span class="mut">—</span>` });
-  return h + tbl(cols, rows, { sortI: 1, sortD: -1 });
+// 各來源前幾名（規格 §8.4-3）：逐來源一個預設收合的 <details>；順序＝資料檔 items 順序，不另排序、不計分；未計入的來源照列並標明
+function ovTopsHtml(layer, isStock, tag){
+  return ovSources(layer).filter(s => s.items.length).map(s => {
+    const top = ovTop(s, layer.base_date, OV_TOP_N);
+    const sum = `<b>${esc(s.id)}</b> ${esc(ovShort(s.name))}<span class="ov-sub">　${ovFmt(s.items.length, 0)} 項`
+      + (s.items.length > top.length ? `，列前 ${ovFmt(top.length, 0)} 項` : "") + (s.counted ? "" : `｜未計入（${esc(s.text)}）`) + `</span>`;
+    const body = `<div class="ov-sub">${esc(s.name)}｜資料日 ${esc(s.date || "—")}｜順序＝資料檔順序</div>` + top.map(t =>
+      `<div class="ov-ix"><div class="ov-ixh">${ovNameHtml(t.key, t.name, isStock)}${isStock ? ovPxHtml(t.px) : ""}</div>${ovEntryHtml(t.entry, false)}</div>`).join("");
+    return ovDet(tag + ":" + s.id, sum, body, "ov-top");
+  }).join("") || `<div class="ov-na ov-pad">沒有可列出的來源清單</div>`;
 }
 // ---- 我的持股對照（規格 §7，使用者 2026-11-13 裁定「暫以最小作法」）----
 // 持股清單沿用持股診斷的讀取入口 diagHoldings()（讀取包 try/catch、壞資料當空），只取代號並過既有白名單 HOLD_CODE_RE。
@@ -2415,28 +2562,40 @@ function ovRender(){
   h += ovCard("6 盤勢綜合研判", "sumidx", ovSumDate(), ovSumHtml, { ai: true });
   h += ovCard("7 晨報今日三件事＋開盤前定位", "brief", br ? "晨報日 " + (ovDate(br.date) || "—") : "", ovBriefHtml, { ai: true });
   h += `</div>`;
-  // 交集兩段：三種狀態（載入中／讀取失敗／正常含部分來源缺）都逐字顯示標示句
-  h += `<div class="msection">交集表<span class="n">後端每日產出 · 前端只渲染</span></div>`
-    + `<div class="ov-label">${esc(ovLabel(j))}</div>`
-    + `<div class="ov-sides">` + OV_SIDES.map(([k, t]) => `<button class="subtab${out === (k === "out") ? " active" : ""}" data-ovside="${esc(k)}">${esc(t)}</button>`).join("") + `</div>`
-    + `<div class="ov-note">依「出現在幾個來源清單」由多到少排列——這個排序<b>沒有回測依據</b>（資金流入側：使用者 2026-11-12 裁定標示後先上線；資金流出側：2026-11-13 沿用同一裁定條件追加；每日快照留存供事後驗證）。`
-    + `各來源的資料日與是否計入列在每張表上方；「出現清單數」以計票群組計（同檔同窗的來源併為一組、只算 1 票，各來源欄仍分別標出命中）。`
+  // 交集兩段：三種狀態（載入中／讀取失敗／正常含部分來源缺）都逐字顯示標示句。
+  // 常駐只留標示句、兩側切換、基準日與未計入來源的短句；口徑、計票與來源狀態收進預設收合的「來源與口徑說明」（規格 §8.4-1）。
+  const sd = j ? ovSide(j, OV.side) : null;
+  const expl = `<div class="ov-note">依「出現在幾個來源清單」由多到少排列——這個排序<b>沒有回測依據</b>（資金流入側：使用者 2026-11-12 裁定標示後先上線；資金流出側：2026-11-13 沿用同一裁定條件追加；每日快照留存供事後驗證）。`
+    + `「清單數」以計票群組計（同檔同窗的來源併為一組、只算 1 票，各來源仍分別列出）。`
+    + `每列列出命中的來源與該來源自己的入選數值（例：近 5 日淨額、名次、驚喜%），個股另附收盤與漲跌；這些數值僅供對照，<b>不影響排序</b>。`
     + (out
       ? `目前顯示<b>資金流出側</b>：各來源是流入側的鏡像——A 近 5 日三大法人淨賣前 10、B 籌碼雷達「加速流出」象限（與 A 同檔同窗、併為一組）、C 主動 ETF 次產業減碼前 10、E 日級輪動雷達連續 3 日「轉弱」或「落後」；a 外資投信同步賣超、b 主動 ETF 跨 ETF 減碼共識（≥2 檔）、d 月營收 Miss／低預期仍Miss、e 千張大戶週減前 20。`
         + `連湧／新湧（D）與選股二追蹤名單（c）沒有流出側的對應來源，不納入。本表只描述資金流出的現況，不是操作建議。`
-      : `目前顯示<b>資金流入側</b>；連湧／新湧（D）只有資料日與基準日相同時才計入：晚間產出時它的資料日是前一交易日、只另列不計入，隔天早上更新後重新產出時才計入（實際狀態見類股表上方的來源列）。`)
+      : `目前顯示<b>資金流入側</b>；連湧／新湧（D）只有資料日與基準日相同時才計入：晚間產出時它的資料日是前一交易日、只另列不計入，隔天早上更新後重新產出時才計入（實際狀態見下方來源列）。`)
     + `日級輪動雷達來源（E）另註：其回測 12 格中信賴區間不跨 0 的為 0 格（0/12 顯著）。</div>`;
+  h += `<div class="msection" id="ovIxTop">交集表<span class="n">${out ? "資金流出側" : "資金流入側"}</span></div>`
+    + `<div class="ov-label">${esc(ovLabel(j))}</div>`
+    + `<div class="ov-sides">` + OV_SIDES.map(([k, t]) => `<button class="subtab${out === (k === "out") ? " active" : ""}" data-ovside="${esc(k)}">${esc(t)}</button>`).join("")
+    + (j ? `<span class="ov-badge">基準日 ${esc(ovDate(j.date) || "—")}</span>` : "") + `</div>`;
   if (!j){
-    h += `<div class="ov-na ov-pad">${OV.err.ov ? "交集表資料尚未產生或讀取失敗（data/overview/latest.json）；上方盤勢七項不受影響" : "載入中…"}</div>`;
+    h += `<div class="ov-na ov-pad">${OV.err.ov ? "交集表資料尚未產生或讀取失敗（data/overview/latest.json）；上方盤勢七項不受影響" : "載入中…"}</div>`
+      + ovDet("expl", "來源與口徑說明", expl);
   } else {
     const gen = sentGenOk(j.generated_at) ? fmtGenTaipei(j.generated_at) : "";
-    const sd = ovSide(j, OV.side);
-    h += `<div class="ov-badges"><span class="ov-badge">交集表日期 ${esc(ovDate(j.date) || "—")}</span>`
+    const meta = `<div class="ov-badges"><span class="ov-badge">交集表日期 ${esc(ovDate(j.date) || "—")}</span>`
       + `<span class="ov-badge">產出 ${gen ? esc(gen) + "（台灣）" : "—"}</span></div>`;
-    if (!sd) h += `<div class="ov-na ov-pad">資金流出側尚無資料（資料檔還沒有這一側，待下一次每日產出）；資金流入側不受影響</div>`;
+    if (!sd) h += `<div class="ov-na ov-pad">資金流出側尚無資料（資料檔還沒有這一側，待下一次每日產出）；資金流入側不受影響</div>` + ovDet("expl", "來源與口徑說明", expl + meta);
     else {
-      h += `<div class="msection">類股交集<span class="n">${out ? "資金流出側" : "資金流入側"} · 主鍵＝產業鏈「產業」（47 條，多對多、非市佔）</span></div>` + ovTableHtml(sd.sectors, false);
-      h += `<div class="msection">個股交集<span class="n">${out ? "資金流出側" : "資金流入側"} · 主鍵＝股票代號</span></div>` + ovTableHtml(sd.stocks, true);
+      const skip = ovSkipLines(sd.sectors).concat(ovSkipLines(sd.stocks));
+      if (skip.length) h += `<div class="ov-skip">` + skip.map(t => `<div>${esc(t)}</div>`).join("") + `</div>`;
+      h += ovDet("expl", "來源與口徑說明", expl + meta
+        + `<div class="ov-lbl">類股層來源（主鍵＝產業鏈「產業」，47 條，多對多、非市佔）</div>` + ovSrcHtml(ovSources(sd.sectors), sd.sectors.base_date)
+        + `<div class="ov-lbl">個股層來源（主鍵＝股票代號）</div>` + ovSrcHtml(ovSources(sd.stocks), sd.stocks.base_date));
+      h += `<div class="msection">類股交集<span class="n">${out ? "資金流出側" : "資金流入側"}</span></div>` + ovTableHtml(sd.sectors, false);
+      h += `<div class="msection">個股交集<span class="n">${out ? "資金流出側" : "資金流入側"}</span></div>` + ovTableHtml(sd.stocks, true);
+      h += `<div class="msection">各來源前幾名<span class="n">${out ? "資金流出側" : "資金流入側"} · 資料檔順序 · 不另排序不計分</span></div>`
+        + `<div class="ov-lbl">類股層</div>` + ovTopsHtml(sd.sectors, false, OV.side + ":sec")
+        + `<div class="ov-lbl">個股層</div>` + ovTopsHtml(sd.stocks, true, OV.side + ":stk");
     }
   }
   h += `<div class="ov-myhold">` + ovHoldHtml(j) + `</div>`;
@@ -2448,6 +2607,13 @@ document.addEventListener("click", e => {
   if (!b || state.tab !== "overview" || b.getAttribute("data-ovgo") !== "diag") return;
   state.tab = "diag"; pmUserRender();
 });
+// <details> 開合：toggle 不冒泡，以捕獲階段記下開合狀態（只寫記憶體 OV_OPEN，讓之後的重繪維持原樣；不重繪、不發請求）
+document.addEventListener("toggle", e => {
+  const d = e.target;
+  if (!d || !d.getAttribute || state.tab !== "overview") return;
+  const id = d.getAttribute("data-ovdet");
+  if (id) OV_OPEN[id] = !!d.open;
+}, true);
 // 兩側切換（document 級委派；只改記憶體狀態後重繪，不發請求）
 document.addEventListener("click", e => {
   const b = e.target.closest && e.target.closest("[data-ovside]");
