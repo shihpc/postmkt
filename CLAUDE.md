@@ -301,7 +301,7 @@ commit／push 與失敗告警在 `.github/actions/` composite。
 2. **跨站同步碼**：
    - **三站逐字同步**（postmkt／taiwan-flow-live-v2／taiwan-stock-news）：`callClaude`／`mdToHtml`／
      `linkifyStocks`／`ghSaveAnalysis`／`sumCtx*`（gather）；費用估算 `insightCostText`／`INSIGHT_PRICES`／`USD_TWD`（grep
-     `// ---- 本次費用估算`）。改動需三站同步。
+     `// ---- 本次費用估算`）。改動需三站同步（`claude-harness/tools/check_sync.py` 每日比對）。
    - **Python 移植副本**：`build_summary.py` 的 `gather_*` 移植自 index.html gather。SYS prompt 唯一事實來源＝index.html `SUM_SYS_POSTMKT`，`build_summary.py SYS_POSTMKT` 需逐字同步。
      `saveAnalysisCloud` 亦三站同步改。
    - **四站同步但非逐字**（上列三站＋taiwan-flows；入口站沒有）：`loadSiteVer()`＋footer `#siteVer`（grep
